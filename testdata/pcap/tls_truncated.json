@@ -1,0 +1,7 @@
+{
+  "fixture": "tls_truncated.pcap",
+  "description": "ClientHello cut off before the SNI extension: detected as TLS, hostname unknown.",
+  "expected_flows": [
+    { "proto": "tcp", "dst_ip": "192.0.2.32", "dst_port": 443, "hostname": null, "security": "tls", "url": null, "ech": false }
+  ]
+}

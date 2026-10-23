@@ -1,0 +1,13 @@
+name: caution-raw-ip
+description: In caution mode a connection to an IP with no hostname and an unusual port raises one alert, reported with the highest-scoring reason (raw_ip).
+mode: caution
+profile: default
+baseline:
+  - api.example.com
+
+events:
+  - { at: 0s, dst: "198.51.100.7:8443", security: tls, process: /opt/agent/bin/agent, pid: 200 }
+
+expect:
+  alerts:
+    - { host: null, dst: "198.51.100.7:8443", reason: raw_ip }

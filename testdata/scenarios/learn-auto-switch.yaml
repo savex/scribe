@@ -1,0 +1,20 @@
+name: learn-auto-switch
+description: Learn mode with a time limit switches to caution and starts alerting after the limit.
+mode: learn
+learn_for: 1h
+then: caution
+profile: default
+baseline: []
+
+events:
+  - { at: 0s,  dst: "192.0.2.10:443",    host: api.example.com, security: tls }
+  - { at: 59m, dst: "192.0.2.11:443",    host: cdn.example.com, security: tls }
+  - { at: 61m, dst: "198.51.100.7:8443",                        security: plaintext }
+
+expect:
+  mode: caution
+  baseline_added:
+    - api.example.com
+    - cdn.example.com
+  alerts:
+    - { host: null, dst: "198.51.100.7:8443", reason: raw_ip }

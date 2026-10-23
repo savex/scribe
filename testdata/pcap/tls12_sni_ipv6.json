@@ -1,0 +1,7 @@
+{
+  "fixture": "tls12_sni_ipv6.pcap",
+  "description": "TLS 1.2-only ClientHello with SNI over IPv6.",
+  "expected_flows": [
+    { "proto": "tcp", "dst_ip": "2001:db8::10", "dst_port": 443, "hostname": "legacy.example.com", "security": "tls", "url": null, "ech": false }
+  ]
+}

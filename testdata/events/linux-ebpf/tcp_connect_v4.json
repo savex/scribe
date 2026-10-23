@@ -1,0 +1,17 @@
+{
+  "source": "linux-ebpf",
+  "status": "draft",
+  "description": "tcp_connect kprobe record for an IPv4 connect, then the ClientHello seen by the socket filter.",
+  "records": [
+    { "type": "tcp_connect", "ts_ns": 1700000000000000000, "tgid": 4242, "pid": 4243, "uid": 1000,
+      "comm": "curl", "cgroup_id": 7777, "family": 2,
+      "saddr": "10.0.0.2", "sport": 50001, "daddr": "192.0.2.10", "dport": 443 },
+    { "type": "payload", "ts_ns": 1700000000003000000, "tgid": 4242, "family": 2,
+      "saddr": "10.0.0.2", "sport": 50001, "daddr": "192.0.2.10", "dport": 443,
+      "payload_pcap": "../../pcap/tls13_sni_ipv4.pcap" }
+  ],
+  "expected": [
+    { "pid": 4242, "process_path": "/proc/4242/exe", "proto": "tcp", "dst_ip": "192.0.2.10", "dst_port": 443,
+      "hostname": "api.example.com", "security": "tls", "kind": "new_flow" }
+  ]
+}

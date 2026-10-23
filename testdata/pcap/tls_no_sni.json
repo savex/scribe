@@ -1,0 +1,7 @@
+{
+  "fixture": "tls_no_sni.pcap",
+  "description": "ClientHello without SNI and no prior DNS answer: hostname stays unknown.",
+  "expected_flows": [
+    { "proto": "tcp", "dst_ip": "192.0.2.11", "dst_port": 443, "hostname": null, "security": "tls", "url": null, "ech": false }
+  ]
+}

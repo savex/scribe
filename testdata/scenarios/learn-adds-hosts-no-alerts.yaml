@@ -1,0 +1,18 @@
+name: learn-adds-hosts-no-alerts
+description: Learn mode adds every new host to the baseline and never alerts, even for raw IPs and plaintext.
+mode: learn
+profile: default
+baseline: []
+
+events:
+  - { at: 0s,  dst: "192.0.2.10:443",   host: api.example.com,   security: tls,       process: /usr/bin/curl, pid: 100 }
+  - { at: 1s,  dst: "192.0.2.20:80",    host: plain.example.com, security: plaintext, process: /usr/bin/curl, pid: 100 }
+  - { at: 2s,  dst: "198.51.100.7:8443",                         security: plaintext, process: /opt/agent/bin/agent, pid: 200 }
+
+expect:
+  mode: learn
+  alerts: []
+  baseline_added:
+    - api.example.com
+    - plain.example.com
+    - 198.51.100.7

@@ -1,0 +1,8 @@
+{
+  "fixture": "dns_cname_then_tls.pcap",
+  "description": "DNS A query answered through a CNAME, then TLS without SNI to the answer IP: hostname is the name that was queried.",
+  "expected_flows": [
+    { "proto": "udp", "dst_ip": "192.0.2.53", "dst_port": 53, "hostname": null, "security": "plaintext", "url": null, "ech": false },
+    { "proto": "tcp", "dst_ip": "192.0.2.50", "dst_port": 443, "hostname": "cdn.example.com", "security": "tls", "url": null, "ech": false }
+  ]
+}

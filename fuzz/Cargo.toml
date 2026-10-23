@@ -1,0 +1,32 @@
+# cargo-fuzz targets. Separate workspace: needs nightly and libFuzzer, so the main build never touches it.
+#   cargo install cargo-fuzz
+#   cargo +nightly fuzz run tls_client_hello -- -max_total_time=1800
+[package]
+name = "scribe-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+scribe-enrich = { path = "../crates/enrich" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "tls_client_hello"
+path = "fuzz_targets/tls_client_hello.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "http_request"
+path = "fuzz_targets/http_request.rs"
+test = false
+doc = false
+bench = false

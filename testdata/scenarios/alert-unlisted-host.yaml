@@ -1,0 +1,16 @@
+name: alert-unlisted-host
+description: Alert mode alerts on every host that is not on the baseline, and stays quiet for listed hosts over TLS.
+mode: alert
+profile: default
+baseline:
+  - api.example.com
+
+events:
+  - { at: 0s, dst: "192.0.2.10:443", host: api.example.com,  security: tls }
+  - { at: 1s, dst: "192.0.2.12:443", host: docs.example.com, security: tls }
+  - { at: 2s, dst: "[2001:db8::50]:443", host: v6.example.com, security: tls }
+
+expect:
+  alerts:
+    - { host: docs.example.com, dst: "192.0.2.12:443", reason: unlisted_host }
+    - { host: v6.example.com,   dst: "[2001:db8::50]:443", reason: unlisted_host }

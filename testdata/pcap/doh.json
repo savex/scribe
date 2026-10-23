@@ -1,0 +1,7 @@
+{
+  "fixture": "doh.pcap",
+  "description": "TLS to a public DNS-over-HTTPS resolver; later DNS lookups from this client are invisible.",
+  "expected_flows": [
+    { "proto": "tcp", "dst_ip": "8.8.8.8", "dst_port": 443, "hostname": "dns.google", "security": "tls", "url": null, "ech": false }
+  ]
+}

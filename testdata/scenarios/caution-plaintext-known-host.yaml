@@ -1,0 +1,17 @@
+name: caution-plaintext-known-host
+description: In caution mode plaintext traffic alerts even when the host is on the baseline; TLS to the same host does not.
+mode: caution
+profile: default
+baseline:
+  - plain.example.com
+
+events:
+  - { at: 0s, dst: "192.0.2.20:443", host: plain.example.com, security: tls }
+  - { at: 1s, dst: "192.0.2.20:80",  host: plain.example.com, security: plaintext }
+  - { at: 2s, dst: "192.0.2.20:80",  host: plain.example.com, kind: request, url: "http://plain.example.com/download?id=42" }
+
+expect:
+  alerts:
+    - { host: plain.example.com, dst: "192.0.2.20:80", reason: plaintext }
+  hosts:
+    plain.example.com: { connections: 2, requests: 1, tls_seen: true, plaintext_seen: true }

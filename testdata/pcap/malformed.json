@@ -1,0 +1,5 @@
+{
+  "fixture": "malformed.pcap",
+  "description": "Short frames, bad IPv4 header length, bad total length, unknown ethertype, bad TCP data offset: no flows and no panic.",
+  "expected_flows": []
+}

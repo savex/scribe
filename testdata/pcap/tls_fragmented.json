@@ -1,0 +1,7 @@
+{
+  "fixture": "tls_fragmented.pcap",
+  "description": "ClientHello split across two in-order TCP segments; SNI spans the split.",
+  "expected_flows": [
+    { "proto": "tcp", "dst_ip": "192.0.2.30", "dst_port": 443, "hostname": "split.example.com", "security": "tls", "url": null, "ech": false }
+  ]
+}

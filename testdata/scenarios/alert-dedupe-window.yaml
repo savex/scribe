@@ -1,0 +1,21 @@
+name: alert-dedupe-window
+description: Repeated connections from the same process to the same host alert once per dedupe window; another process alerts separately.
+mode: alert
+profile: default
+baseline: []
+dedupe_window: 10m
+
+events:
+  - { at: 0s,  dst: "192.0.2.12:443", host: docs.example.com, security: tls, process: /usr/bin/curl, pid: 100 }
+  - { at: 30s, dst: "192.0.2.12:443", host: docs.example.com, security: tls, process: /usr/bin/curl, pid: 100 }
+  - { at: 9m,  dst: "192.0.2.12:443", host: docs.example.com, security: tls, process: /usr/bin/curl, pid: 101 }
+  - { at: 9m,  dst: "192.0.2.12:443", host: docs.example.com, security: tls, process: /usr/bin/wget, pid: 102 }
+  - { at: 11m, dst: "192.0.2.12:443", host: docs.example.com, security: tls, process: /usr/bin/curl, pid: 103 }
+
+expect:
+  alerts:
+    - { host: docs.example.com, dst: "192.0.2.12:443", process: /usr/bin/curl, reason: unlisted_host }
+    - { host: docs.example.com, dst: "192.0.2.12:443", process: /usr/bin/wget, reason: unlisted_host }
+    - { host: docs.example.com, dst: "192.0.2.12:443", process: /usr/bin/curl, reason: unlisted_host }
+  hosts:
+    docs.example.com: { connections: 5 }

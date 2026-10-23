@@ -1,0 +1,5 @@
+GET / HTTP/1.1
+Host: seed.example.com
+User-Agent: scribe-fixture/1.0
+Accept: */*
+

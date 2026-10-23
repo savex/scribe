@@ -1,0 +1,18 @@
+name: hostname-unresolved
+description: Flows whose hostname is hidden (ECH outer name only, DNS over HTTPS) are tracked by IP and flagged as unresolved, not dropped.
+mode: alert
+profile: default
+baseline:
+  - public.example.com
+  - dns.google
+
+events:
+  - { at: 0s, dst: "8.8.8.8:443",    host: dns.google, security: tls }
+  - { at: 1s, dst: "192.0.2.12:443", host: public.example.com, security: tls }
+  - { at: 2s, dst: "192.0.2.60:443", security: tls }
+
+expect:
+  alerts:
+    - { host: null, dst: "192.0.2.60:443", reason: unlisted_host }
+  hosts:
+    192.0.2.60: { connections: 1, tls_seen: true }

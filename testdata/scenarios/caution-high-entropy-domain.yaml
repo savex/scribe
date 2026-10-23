@@ -1,0 +1,12 @@
+name: caution-high-entropy-domain
+description: In caution mode a random-looking domain (DGA style) raises an alert even over TLS.
+mode: caution
+profile: default
+baseline: []
+
+events:
+  - { at: 0s, dst: "192.0.2.40:443", host: x7qk2v9zr4tplm8w.example.net, security: tls, process: /tmp/updater, pid: 300 }
+
+expect:
+  alerts:
+    - { host: x7qk2v9zr4tplm8w.example.net, dst: "192.0.2.40:443", reason: high_entropy }
