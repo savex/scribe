@@ -1,0 +1,14 @@
+[package]
+name = "scribe-sensor-conformance"
+description = "Shared test suite every capture sensor must pass, plus a local traffic generator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+scribe-core.workspace = true
+scribe-test-support.workspace = true
+
+[dev-dependencies]
+scribe-sensor-pcap.workspace = true
