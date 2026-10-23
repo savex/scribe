@@ -24,11 +24,17 @@ crates/
   storage-sqlite/       default backend
   storage-postgres/     PostgreSQL backend (feature `postgres`)
   storage-conformance/  shared test suite every backend must pass
+  sensor-conformance/   shared test suite every sensor must pass + traffic generator
+  test-support/         test doubles, packet builders, fixture generator
   daemon/               `scribed` service
   cli/                  `scribe` command line client
 macos/ScribeExtension/  Network Extension (Swift), planned
-ui/                     optional Tauri UI, planned
+ui/                     optional Tauri UI, planned (mock API scenarios in ui/tests)
 config/                 example configuration
+testdata/               pcap fixtures, daemon scenarios, raw sensor records, schema snapshots
+fuzz/                   cargo-fuzz targets and seed corpus
+tests/e2e/              install / upgrade / uninstall tests per OS
+workfiles/              plan, diagrams, test approach
 ```
 
 ## Build
@@ -37,7 +43,10 @@ config/                 example configuration
 cargo build                       # SQLite backend only
 cargo build --features postgres   # add PostgreSQL
 cargo test
+cargo run -p scribe-test-support --bin gen-fixtures   # regenerate testdata/pcap and fuzz seeds
 ```
+
+See [workfiles/test-approach.md](workfiles/test-approach.md) for how testing is organised.
 
 ## Status
 
