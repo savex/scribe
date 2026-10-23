@@ -1,6 +1,6 @@
 //! Backend-independent test suite for [`StateStore`] and [`EventSink`] implementations.
 //!
-//! Each backend crate calls these from its own `tests/conformance.rs`:
+//! Each backend crate calls these from its own `tests/<backend>_conformance.rs`:
 //!
 //! ```ignore
 //! scribe_storage_conformance::block_on(state_store_suite(&store));

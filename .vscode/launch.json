@@ -1,0 +1,115 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug scribed (daemon)",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin=scribed", "--package=scribe-daemon", "--all-features"],
+        "filter": { "name": "scribed", "kind": "bin" }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "env": { "RUST_BACKTRACE": "1" }
+    },
+    {
+      "name": "Debug scribe (CLI) with arguments",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin=scribe", "--package=scribe-cli"],
+        "filter": { "name": "scribe", "kind": "bin" }
+      },
+      "args": "${input:cliArgs}",
+      "cwd": "${workspaceFolder}",
+      "env": { "RUST_BACKTRACE": "1" }
+    },
+    {
+      "name": "Debug unit tests in a crate",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["test", "--no-run", "--lib", "--all-features", "--package=${input:package}"],
+        "filter": { "kind": "lib" }
+      },
+      "args": ["${input:testFilter}"],
+      "cwd": "${workspaceFolder}",
+      "env": { "RUST_BACKTRACE": "1" }
+    },
+    {
+      "name": "Debug an integration test file",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["test", "--no-run", "--all-features", "--test=${input:integrationTest}"],
+        "filter": { "name": "${input:integrationTest}", "kind": "test" }
+      },
+      "args": ["${input:testFilter}", "--include-ignored"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1",
+        "SCRIBE_TEST_POSTGRES_URL": "postgres://scribe:scribe@localhost:5432/scribe_test"
+      }
+    },
+    {
+      "name": "Debug gen-fixtures",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build", "--bin=gen-fixtures", "--package=scribe-test-support"],
+        "filter": { "name": "gen-fixtures", "kind": "bin" }
+      },
+      "args": ["--check"],
+      "cwd": "${workspaceFolder}",
+      "env": { "RUST_BACKTRACE": "1" }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "cliArgs",
+      "type": "promptString",
+      "description": "Arguments for scribe (e.g. --version, mode caution, hosts)",
+      "default": "--version"
+    },
+    {
+      "id": "package",
+      "type": "pickString",
+      "description": "Crate whose unit tests to debug",
+      "options": [
+        "scribe-core",
+        "scribe-enrich",
+        "scribe-storage-api",
+        "scribe-storage-manager",
+        "scribe-storage-sqlite",
+        "scribe-storage-postgres",
+        "scribe-storage-conformance",
+        "scribe-sensor-conformance",
+        "scribe-sensor-pcap",
+        "scribe-test-support"
+      ],
+      "default": "scribe-enrich"
+    },
+    {
+      "id": "integrationTest",
+      "type": "pickString",
+      "description": "Integration test file (tests/<name>.rs) to debug",
+      "options": [
+        { "label": "test-support: doubles", "value": "doubles" },
+        { "label": "test-support: fixtures_up_to_date", "value": "fixtures_up_to_date" },
+        { "label": "storage-conformance: reference", "value": "reference" },
+        { "label": "sensor-conformance: traffic_generator", "value": "traffic_generator" },
+        { "label": "sensor-conformance: sensors (needs capture rights)", "value": "sensors" },
+        { "label": "storage-sqlite: sqlite_conformance", "value": "sqlite_conformance" },
+        { "label": "storage-postgres: postgres_conformance (needs Postgres)", "value": "postgres_conformance" }
+      ],
+      "default": "doubles"
+    },
+    {
+      "id": "testFilter",
+      "type": "promptString",
+      "description": "Only run tests whose name contains this (empty = all)",
+      "default": ""
+    }
+  ]
+}

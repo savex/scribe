@@ -1,0 +1,151 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo: build",
+      "type": "shell",
+      "command": "cargo build --workspace --all-features",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo: test (all)",
+      "type": "shell",
+      "command": "cargo test --workspace --all-features",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo: test crate",
+      "type": "shell",
+      "command": "cargo test --all-features --package ${input:package}",
+      "group": "test",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo: test (including ignored)",
+      "detail": "Runs not-yet-implemented backend and sensor tests too; expect failures",
+      "type": "shell",
+      "command": "cargo test --workspace --all-features -- --include-ignored",
+      "group": "test",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "storage: Postgres conformance",
+      "detail": "Needs a disposable Postgres database",
+      "type": "shell",
+      "command": "cargo test --package scribe-storage-postgres --test postgres_conformance -- --ignored",
+      "options": { "env": { "SCRIBE_TEST_POSTGRES_URL": "${input:postgresUrl}" } },
+      "group": "test",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "sensors: privileged conformance (sudo)",
+      "detail": "Builds as you, runs the sensor suite with sudo",
+      "type": "shell",
+      "command": "bin=$(cargo test -p scribe-sensor-conformance --test sensors --no-run --message-format=json | jq -r 'select(.reason == \"compiler-artifact\" and .target.name == \"sensors\" and .executable != null) | .executable') && sudo \"$bin\" --ignored",
+      "windows": {
+        "command": "cargo test -p scribe-sensor-conformance --test sensors -- --ignored"
+      },
+      "group": "test",
+      "presentation": { "focus": true },
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "lint: fmt check",
+      "type": "shell",
+      "command": "cargo fmt --all --check",
+      "problemMatcher": []
+    },
+    {
+      "label": "lint: clippy",
+      "type": "shell",
+      "command": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "fixtures: regenerate",
+      "type": "shell",
+      "command": "cargo run -q -p scribe-test-support --bin gen-fixtures",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "fixtures: check",
+      "type": "shell",
+      "command": "cargo run -q -p scribe-test-support --bin gen-fixtures -- --check",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "fixtures: rebuild DB snapshots",
+      "type": "shell",
+      "command": "testdata/db/build.sh",
+      "problemMatcher": []
+    },
+    {
+      "label": "version: show",
+      "type": "shell",
+      "command": "echo \"current: $(scripts/version.sh current)  cargo: $(scripts/version.sh cargo)  latest tag: $(scripts/version.sh latest-tag)\" && scripts/version.sh check",
+      "problemMatcher": []
+    },
+    {
+      "label": "run: scribed",
+      "type": "shell",
+      "command": "cargo run --all-features --bin scribed",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "run: scribe CLI",
+      "type": "shell",
+      "command": "cargo run --bin scribe -- ${input:cliArgs}",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "ci: Tests workflow (local)",
+      "detail": "Same checks as the lint + test jobs of .github/workflows/tests.yml",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "lint: fmt check",
+        "lint: clippy",
+        "cargo: test (all)",
+        "fixtures: check",
+        "version: show"
+      ],
+      "group": "test",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "package",
+      "type": "pickString",
+      "description": "Crate to test",
+      "options": [
+        "scribe-core",
+        "scribe-enrich",
+        "scribe-storage-api",
+        "scribe-storage-manager",
+        "scribe-storage-sqlite",
+        "scribe-storage-postgres",
+        "scribe-storage-conformance",
+        "scribe-sensor-conformance",
+        "scribe-sensor-pcap",
+        "scribe-test-support",
+        "scribe-daemon",
+        "scribe-cli"
+      ],
+      "default": "scribe-enrich"
+    },
+    {
+      "id": "postgresUrl",
+      "type": "promptString",
+      "description": "Postgres URL of a disposable test database",
+      "default": "postgres://scribe:scribe@localhost:5432/scribe_test"
+    },
+    {
+      "id": "cliArgs",
+      "type": "promptString",
+      "description": "Arguments for scribe",
+      "default": "--version"
+    }
+  ]
+}
