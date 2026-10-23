@@ -48,6 +48,36 @@ cargo run -p scribe-test-support --bin gen-fixtures   # regenerate testdata/pcap
 
 See [workfiles/test-approach.md](workfiles/test-approach.md) for how testing is organised.
 
+## Versioning
+
+Git tags are the source of truth: `vMAJOR.MINOR.PATCH`, optionally with a pre-release
+label (`v1.0.0-rc.1`). The workspace version in `Cargo.toml` always equals the latest
+release tag.
+
+- `scribe --version` / `scribed --version` print the version from the nearest tag:
+  `1.2.0` on a tagged commit, `1.2.0+3.gabc1234` three commits later
+  (built by `crates/core/build.rs`; release builds set it from the tag).
+- [`scripts/version.sh`](scripts/version.sh) shows and checks versions
+  (`current`, `latest-tag`, `next minor rc.1`, `check`, ...).
+
+To release, run the **Bump version** workflow (choose patch / minor / major, an optional
+pre-release label, or an explicit version). It commits `Release vX.Y.Z` to `main`, tags it
+and starts **Release**, which builds Linux, macOS and Windows binaries and publishes a
+GitHub Release. Pushing a `v*` tag by hand starts **Release** too.
+
+## CI workflows
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| Release | push of a `v*` tag (or started by Bump version) | verify tag, test, build 4 targets, publish release |
+| Version tracking | every push to `main` | `Cargo.toml` vs tags, version report |
+| Bump version | manual | next version, commit, tag, start Release |
+| Tests | manual | fmt, clippy, Rust 1.70 check, tests on 3 OSes, fixtures, SQLite / Postgres |
+| Sensor tests | manual | privileged sensor conformance on 3 OSes |
+| Fuzz | manual | cargo-fuzz on the parsers |
+| UI tests | manual | Vitest + Playwright against the mock API (skips until the UI exists) |
+| End-to-end | manual | install / modes / upgrade / uninstall from a release's packages |
+
 ## Status
 
 Skeleton. Interfaces and the storage conformance suite are in place; sensors,

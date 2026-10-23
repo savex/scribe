@@ -2,7 +2,7 @@
 
 use std::process::ExitCode;
 
-use scribe_core::Mode;
+use scribe_core::{Mode, VERSION};
 
 const USAGE: &str = "usage: scribe <command>
 
@@ -11,11 +11,21 @@ commands:
   hosts                list tracked hosts with counters
   mode <learn|caution|alert>
                        switch policy mode
-  export               dump hosts and baseline";
+  export               dump hosts and baseline
+  version, --version   print version";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["version"] | ["--version"] | ["-V"] => {
+            println!("scribe {VERSION}");
+            ExitCode::SUCCESS
+        }
         ["status"] | ["hosts"] | ["export"] => {
             eprintln!("not implemented yet: local API to scribed is pending");
             ExitCode::FAILURE

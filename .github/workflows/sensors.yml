@@ -1,0 +1,59 @@
+# Manual: privileged sensor conformance (test-approach section 5.2). Test binaries are built
+# as the runner user and only executed with root / admin rights.
+name: Sensor tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "Operating systems"
+        type: choice
+        options: [all, ubuntu, macos, windows]
+        default: all
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  sensors:
+    name: Sensors (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os == 'all' && '["ubuntu-latest","macos-latest","windows-latest"]' || format('["{0}-latest"]', inputs.os)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install capture libraries (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -yq libpcap-dev
+      # TODO(windows): install Npcap silently (needs the Npcap OEM installer) for the pcap sensor.
+
+      - name: Traffic generator (no privileges)
+        run: cargo test -p scribe-sensor-conformance --test traffic_generator --locked
+
+      - name: Build privileged tests
+        id: build
+        shell: bash
+        run: |
+          bin=$(cargo test -p scribe-sensor-conformance --test sensors --no-run --locked --message-format=json \
+            | jq -r 'select(.reason == "compiler-artifact" and .target.name == "sensors" and .executable != null) | .executable')
+          echo "bin=$bin" >> "$GITHUB_OUTPUT"
+
+      - name: Run privileged tests
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            "${{ steps.build.outputs.bin }}" --ignored   # runner is already an administrator
+          else
+            sudo "${{ steps.build.outputs.bin }}" --ignored
+          fi
+
+  # TODO: Linux kernel matrix (5.8, 5.15, 6.1, latest) with virtme-ng once the eBPF sensor exists.
+  # TODO: macOS Network Extension needs a self-hosted Mac with the MDM approval profile.

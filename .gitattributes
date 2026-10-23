@@ -1,0 +1,7 @@
+# LF everywhere so generated fixtures compare byte-for-byte on every OS (Windows checkouts included).
+* text=auto eol=lf
+
+# Binary fixtures
+*.pcap binary
+*.db binary
+fuzz/corpus/** binary

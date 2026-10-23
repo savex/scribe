@@ -7,6 +7,9 @@ pub mod event;
 pub mod mode;
 pub mod sensor;
 
+/// Version from the nearest `v*` git tag, e.g. `1.2.0` or `1.2.0+3.gabc1234` (see `build.rs`).
+pub const VERSION: &str = env!("SCRIBE_VERSION");
+
 pub use alert::{Alert, AlertOutput};
 pub use clock::{Clock, SystemClock};
 pub use event::{FlowEvent, FlowKind, Protocol, Security};

@@ -1,0 +1,90 @@
+# Manual: picks the next version from the latest tag, writes it to Cargo.toml / Cargo.lock,
+# commits "Release vX.Y.Z" to main, tags it and starts the Release workflow.
+name: Bump version
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Part to bump (ignored when 'version' is set)"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      prerelease:
+        description: "Optional pre-release label, e.g. rc.1 or beta.2"
+        type: string
+        required: false
+      version:
+        description: "Explicit version instead of a bump, e.g. 1.0.0"
+        type: string
+        required: false
+      dry_run:
+        description: "Only show what would happen"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: bump-version
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Work out the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUMP: ${{ inputs.bump }}
+          INPUT_PRE: ${{ inputs.prerelease }}
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then
+            version=${INPUT_VERSION#v}
+            scripts/version.sh validate "$version"
+          else
+            version=$(scripts/version.sh next "$INPUT_BUMP" "$INPUT_PRE")
+          fi
+          git rev-parse -q --verify "refs/tags/v$version" >/dev/null \
+            && { echo "::error::tag v$version already exists"; exit 1; }
+          echo "Latest tag: $(scripts/version.sh latest-tag) -> new version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Update Cargo.toml and Cargo.lock
+        run: |
+          scripts/version.sh set "${{ steps.version.outputs.version }}"
+          cargo check --workspace --locked --quiet
+          git diff
+
+      - name: Commit and tag
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet; then
+            git commit -am "Release v$VERSION"
+          fi
+          git tag -a "v$VERSION" -m "scribe $VERSION"
+          git push --atomic origin HEAD:main "refs/tags/v$VERSION"
+
+      - name: Start release
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh workflow run release.yml --ref "v$VERSION" -f tag="v$VERSION"
+          echo "Tagged v$VERSION and started the Release workflow." >> "$GITHUB_STEP_SUMMARY"

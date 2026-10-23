@@ -1,0 +1,48 @@
+# Automatic: tracks the version on every push to main.
+# Fails if Cargo.toml is behind the latest release tag; reports what the next releases would be.
+name: Version tracking
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check Cargo.toml against tags
+        run: scripts/version.sh check
+
+      - name: Report
+        run: |
+          current=$(scripts/version.sh current)
+          cargo=$(scripts/version.sh cargo)
+          tag=$(scripts/version.sh latest-tag)
+          since="n/a"
+          [[ -n $tag ]] && since=$(git rev-list --count "$tag..HEAD")
+          {
+            echo "### Version"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| This commit | \`$current\` |"
+            echo "| Cargo.toml | \`$cargo\` |"
+            echo "| Latest release tag | \`${tag:-none}\` |"
+            echo "| Commits since release | $since |"
+            echo "| Next patch / minor / major | \`$(scripts/version.sh next patch)\` / \`$(scripts/version.sh next minor)\` / \`$(scripts/version.sh next major)\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n $tag && "v$cargo" != "$tag" ]]; then
+            echo "::notice::Cargo.toml is $cargo but the latest tag is $tag; run the 'Bump version' workflow to release it."
+          fi
+          echo "$current" > version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: version
+          path: version.txt

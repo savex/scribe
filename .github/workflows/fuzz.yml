@@ -1,0 +1,44 @@
+# Manual: fuzz the packet parsers (test-approach sections 5.1 and 9).
+name: Fuzz
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Fuzz target"
+        type: choice
+        options: [all, tls_client_hello, http_request]
+        default: all
+      seconds:
+        description: "Run time per target in seconds"
+        type: number
+        default: 1800
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.target == 'all' && '["tls_client_hello","http_request"]' || format('["{0}"]', inputs.target)) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Fuzz
+        working-directory: fuzz
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=${{ inputs.seconds }}
+      - name: Upload crash inputs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}

@@ -1,0 +1,125 @@
+# Manual: the "every PR" stage of workfiles/test-approach.md — lint, unit and isolated
+# component tests, fixtures, storage conformance and schema snapshots.
+name: Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      os:
+        description: "Operating systems for the test matrix"
+        type: choice
+        options: [all, ubuntu, macos, windows]
+        default: all
+      backend_conformance:
+        description: "Also run the (ignored) SQLite / Postgres conformance tests"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: Lint, fixtures, version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Fixtures match generator
+        run: cargo run -q -p scribe-test-support --bin gen-fixtures -- --check
+      - name: Version consistency
+        run: scripts/version.sh check
+
+  msrv:
+    name: Minimum Rust version (1.70)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.70.0
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets --all-features --locked
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os == 'all' && '["ubuntu-latest","macos-latest","windows-latest"]' || format('["{0}-latest"]', inputs.os)) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit and isolated component tests
+        run: cargo test --workspace --all-features --locked
+      - name: Default features only (SQLite)
+        run: cargo test -p scribe-daemon --locked
+
+  sqlite:
+    name: SQLite backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Schema snapshots are intact
+        run: |
+          for db in testdata/db/sqlite/*.db; do
+            echo "$db: $(sqlite3 "$db" 'PRAGMA integrity_check; PRAGMA user_version;' | tr '\n' ' ')"
+            [[ $(sqlite3 "$db" 'PRAGMA integrity_check;') == ok ]]
+          done
+      - name: Conformance
+        run: |
+          args=()
+          [[ "${{ inputs.backend_conformance }}" == "true" ]] && args=(-- --ignored)
+          cargo test -p scribe-storage-sqlite --locked "${args[@]}"
+
+  postgres:
+    name: Postgres backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: scribe
+          POSTGRES_PASSWORD: scribe
+          POSTGRES_DB: scribe_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U scribe"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: scribe
+      PGPASSWORD: scribe
+      SCRIBE_TEST_POSTGRES_URL: postgres://scribe:scribe@localhost:5432/scribe_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Migrations and schema snapshot load cleanly
+        run: |
+          createdb scribe_snapshot
+          psql -v ON_ERROR_STOP=1 -q -d scribe_snapshot -f crates/storage-postgres/migrations/0001_init.sql
+          psql -v ON_ERROR_STOP=1 -q -d scribe_snapshot -f crates/storage-postgres/migrations/0001_init.sql
+          psql -v ON_ERROR_STOP=1 -q -d scribe_snapshot -f testdata/db/postgres/v1_seed.sql
+          psql -d scribe_snapshot -c 'SELECT count(*) AS hosts FROM hosts'
+      - name: Conformance
+        run: |
+          args=()
+          [[ "${{ inputs.backend_conformance }}" == "true" ]] && args=(-- --ignored)
+          cargo test -p scribe-storage-postgres --locked "${args[@]}"

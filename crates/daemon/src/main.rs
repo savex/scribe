@@ -2,7 +2,7 @@
 //!
 //! Runs as root / SYSTEM under systemd, launchd or the Windows Service Control Manager.
 
-use scribe_core::{Mode, Sensor};
+use scribe_core::{Mode, Sensor, VERSION};
 use scribe_storage_manager::Registry;
 
 fn platform_sensor() -> Box<dyn Sensor> {
@@ -20,9 +20,21 @@ fn main() {
     let sensor = platform_sensor();
     let registry = Registry::with_builtin();
 
-    println!("scribed {} (not functional yet)", env!("CARGO_PKG_VERSION"));
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("scribed {VERSION}");
+        return;
+    }
+
+    println!("scribed {VERSION} (not functional yet)");
     println!("  mode:     {mode}");
-    println!("  sensor:   {} (process info: {})", sensor.name(), sensor.has_process_info());
-    println!("  storage:  {}", registry.kinds().collect::<Vec<_>>().join(", "));
+    println!(
+        "  sensor:   {} (process info: {})",
+        sensor.name(),
+        sensor.has_process_info()
+    );
+    println!(
+        "  storage:  {}",
+        registry.kinds().collect::<Vec<_>>().join(", ")
+    );
     // TODO: load config, start sensor -> enrich -> policy -> storage pipeline, serve local API.
 }

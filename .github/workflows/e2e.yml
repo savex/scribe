@@ -1,0 +1,61 @@
+# Manual: end-to-end tests against the installer packages of a published release
+# (test-approach section 8). Needs .deb / .pkg / .msi assets, which arrive with plan phase 13.
+name: End-to-end
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to test, e.g. v1.2.0"
+        required: true
+        type: string
+      os:
+        description: "Operating systems"
+        type: choice
+        options: [all, ubuntu, macos, windows]
+        default: all
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: E2E (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os == 'all' && '["ubuntu-latest","macos-latest","windows-latest"]' || format('["{0}-latest"]', inputs.os)) }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Download package
+        id: pkg
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Linux) pattern='*.deb' ;;
+            macOS) pattern='*.pkg' ;;
+            Windows) pattern='*.msi' ;;
+          esac
+          gh release download "$TAG" --pattern "$pattern" --dir pkg \
+            || { echo "::error::release $TAG has no $pattern asset (installer packaging is plan phase 13)"; exit 1; }
+          echo "path=$(ls pkg/* | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Run (Linux)
+        if: runner.os == 'Linux'
+        run: sudo tests/e2e/linux/run.sh "${{ steps.pkg.outputs.path }}"
+
+      - name: Run (macOS)
+        if: runner.os == 'macOS'
+        run: sudo tests/e2e/macos/run.sh "${{ steps.pkg.outputs.path }}"
+
+      - name: Run (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: tests/e2e/windows/run.ps1 -Package "${{ steps.pkg.outputs.path }}"
