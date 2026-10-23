@@ -22,7 +22,10 @@ mod tests {
 
     #[test]
     fn detects_tls_handshake() {
-        assert_eq!(detect_security(&[0x16, 0x03, 0x01, 0x02, 0x00]), Security::Tls);
+        assert_eq!(
+            detect_security(&[0x16, 0x03, 0x01, 0x02, 0x00]),
+            Security::Tls
+        );
     }
 
     #[test]

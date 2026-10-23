@@ -13,7 +13,11 @@ pub struct FakeSensor {
 
 impl FakeSensor {
     pub fn new(events: Vec<FlowEvent>) -> Self {
-        Self { events, has_process_info: true, running: false }
+        Self {
+            events,
+            has_process_info: true,
+            running: false,
+        }
     }
 
     /// Behave like the pcap fallback, which cannot attribute flows to processes.

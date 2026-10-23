@@ -35,16 +35,25 @@ impl Registry {
     }
 
     pub fn build_state(&self, config: &BackendConfig) -> Result<Box<dyn StateStore>> {
-        self.factory(&config.kind)?.build_state(&config.options).unwrap_or_else(|| {
-            Err(StorageError::Config(format!("'{}' cannot be used as state store", config.kind)))
-        })
+        self.factory(&config.kind)?
+            .build_state(&config.options)
+            .unwrap_or_else(|| {
+                Err(StorageError::Config(format!(
+                    "'{}' cannot be used as state store",
+                    config.kind
+                )))
+            })
     }
 
     pub fn build_sink(&self, config: &SinkConfig) -> Result<Box<dyn EventSink>> {
         let kind = &config.backend.kind;
-        self.factory(kind)?.build_sink(&config.name, &config.backend.options).unwrap_or_else(|| {
-            Err(StorageError::Config(format!("'{kind}' cannot be used as event sink")))
-        })
+        self.factory(kind)?
+            .build_sink(&config.name, &config.backend.options)
+            .unwrap_or_else(|| {
+                Err(StorageError::Config(format!(
+                    "'{kind}' cannot be used as event sink"
+                )))
+            })
     }
 
     fn factory(&self, kind: &str) -> Result<&dyn StorageFactory> {

@@ -9,7 +9,11 @@ pub struct ClientHelloOptions {
 
 /// TLS 1.3 ClientHello with the given SNI.
 pub fn client_hello_sni(host: &str) -> Vec<u8> {
-    client_hello(&ClientHelloOptions { sni: Some(host.into()), tls13: true, ech: false })
+    client_hello(&ClientHelloOptions {
+        sni: Some(host.into()),
+        tls13: true,
+        ech: false,
+    })
 }
 
 /// A complete TLS record containing one ClientHello handshake message.
@@ -42,7 +46,11 @@ pub fn client_hello(opts: &ClientHelloOptions) -> Vec<u8> {
     body.extend([0x11; 32]); // random
     body.push(32);
     body.extend([0x22; 32]); // legacy_session_id
-    let suites: &[u16] = if opts.tls13 { &[0x1301, 0x1302, 0xc02f] } else { &[0xc02f, 0xc030] };
+    let suites: &[u16] = if opts.tls13 {
+        &[0x1301, 0x1302, 0xc02f]
+    } else {
+        &[0xc02f, 0xc030]
+    };
     body.extend(((suites.len() * 2) as u16).to_be_bytes());
     for suite in suites {
         body.extend(suite.to_be_bytes());

@@ -21,7 +21,9 @@ impl FromStr for Mode {
             "learn" => Ok(Mode::Learn),
             "caution" => Ok(Mode::Caution),
             "alert" => Ok(Mode::Alert),
-            other => Err(format!("unknown mode '{other}', expected learn|caution|alert")),
+            other => Err(format!(
+                "unknown mode '{other}', expected learn|caution|alert"
+            )),
         }
     }
 }

@@ -13,10 +13,19 @@ use scribe_test_support::packets::{http, tls};
 
 #[derive(Debug, Clone)]
 pub enum Case {
-    TlsSni { host: &'static str },
-    PlainHttp { host: &'static str, path: &'static str },
-    PlainTcp { payload: &'static [u8] },
-    Udp { payload: &'static [u8] },
+    TlsSni {
+        host: &'static str,
+    },
+    PlainHttp {
+        host: &'static str,
+        path: &'static str,
+    },
+    PlainTcp {
+        payload: &'static [u8],
+    },
+    Udp {
+        payload: &'static [u8],
+    },
 }
 
 impl Case {
@@ -44,7 +53,12 @@ pub struct Receipt(JoinHandle<io::Result<Vec<u8>>>);
 
 impl Receipt {
     pub fn wait(self) -> io::Result<Vec<u8>> {
-        self.0.join().unwrap_or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "server thread panicked")))
+        self.0.join().unwrap_or_else(|_| {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "server thread panicked",
+            ))
+        })
     }
 }
 
@@ -66,7 +80,16 @@ pub fn send(case: &Case) -> io::Result<(Expected, Receipt)> {
                 ),
                 _ => (None, Security::Plaintext, None),
             };
-            Ok((Expected { proto: Protocol::Tcp, dst, hostname, security, url }, receipt))
+            Ok((
+                Expected {
+                    proto: Protocol::Tcp,
+                    dst,
+                    hostname,
+                    security,
+                    url,
+                },
+                receipt,
+            ))
         }
     }
 }
@@ -101,7 +124,12 @@ fn send_udp(payload: Vec<u8>) -> io::Result<(Expected, Receipt)> {
 
     let client = UdpSocket::bind("127.0.0.1:0")?;
     client.send_to(&payload, dst)?;
-    let expected =
-        Expected { proto: Protocol::Udp, dst, hostname: None, security: Security::Unknown, url: None };
+    let expected = Expected {
+        proto: Protocol::Udp,
+        dst,
+        hostname: None,
+        security: Security::Unknown,
+        url: None,
+    };
     Ok((expected, Receipt(handle)))
 }

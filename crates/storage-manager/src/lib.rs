@@ -50,8 +50,11 @@ impl StorageManager {
     // TODO: move to buffered per-sink tasks so one slow sink cannot block the others.
     pub async fn publish(&self, events: &[StoredEvent]) -> Result<()> {
         for (cfg, sink) in &self.sinks {
-            let selected: Vec<StoredEvent> =
-                events.iter().filter(|e| cfg.accepts(e.kind())).cloned().collect();
+            let selected: Vec<StoredEvent> = events
+                .iter()
+                .filter(|e| cfg.accepts(e.kind()))
+                .cloned()
+                .collect();
             if !selected.is_empty() {
                 sink.write_batch(&selected).await?;
             }

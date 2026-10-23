@@ -26,23 +26,37 @@ pub struct SuiteOptions {
 
 impl Default for SuiteOptions {
     fn default() -> Self {
-        Self { expect_process_info: true, timeout: Duration::from_secs(1) }
+        Self {
+            expect_process_info: true,
+            timeout: Duration::from_secs(1),
+        }
     }
 }
 
 pub fn default_cases() -> Vec<Case> {
     vec![
-        Case::TlsSni { host: "conformance.example.com" },
-        Case::PlainHttp { host: "plain.example.com", path: "/conformance?id=1" },
-        Case::PlainTcp { payload: b"\x00\x01SCRIBE-CONFORMANCE" },
-        Case::Udp { payload: b"scribe-conformance-udp" },
+        Case::TlsSni {
+            host: "conformance.example.com",
+        },
+        Case::PlainHttp {
+            host: "plain.example.com",
+            path: "/conformance?id=1",
+        },
+        Case::PlainTcp {
+            payload: b"\x00\x01SCRIBE-CONFORMANCE",
+        },
+        Case::Udp {
+            payload: b"scribe-conformance-udp",
+        },
     ]
 }
 
 /// Runs every case and returns all mismatches instead of stopping at the first one.
 pub fn run_sensor_suite(sensor: &mut dyn Sensor, opts: &SuiteOptions) -> Result<(), Vec<String>> {
     let (tx, rx) = mpsc::channel();
-    sensor.start(tx).map_err(|e| vec![format!("{}: start failed: {e}", sensor.name())])?;
+    sensor
+        .start(tx)
+        .map_err(|e| vec![format!("{}: start failed: {e}", sensor.name())])?;
 
     let mut failures = Vec::new();
     for case in default_cases() {
@@ -54,7 +68,10 @@ pub fn run_sensor_suite(sensor: &mut dyn Sensor, opts: &SuiteOptions) -> Result<
                 }
                 match wait_for(&rx, &expected, opts.timeout) {
                     Some(event) => failures.extend(compare(&case, &expected, &event, opts)),
-                    None => failures.push(format!("{case:?}: no event for {} within {:?}", expected.dst, opts.timeout)),
+                    None => failures.push(format!(
+                        "{case:?}: no event for {} within {:?}",
+                        expected.dst, opts.timeout
+                    )),
                 }
             }
             Err(err) => failures.push(format!("{case:?}: could not send traffic: {err}")),
@@ -80,25 +97,62 @@ fn wait_for(rx: &Receiver<FlowEvent>, expected: &Expected, timeout: Duration) ->
     }
 }
 
-fn compare(case: &Case, expected: &Expected, event: &FlowEvent, opts: &SuiteOptions) -> Vec<String> {
+fn compare(
+    case: &Case,
+    expected: &Expected,
+    event: &FlowEvent,
+    opts: &SuiteOptions,
+) -> Vec<String> {
     let mut out = Vec::new();
     let mut check = |field: &str, ok: bool, got: String, want: String| {
         if !ok {
             out.push(format!("{case:?}: {field} is {got}, expected {want}"));
         }
     };
-    check("proto", event.proto == expected.proto, format!("{:?}", event.proto), format!("{:?}", expected.proto));
-    check("hostname", event.hostname == expected.hostname, format!("{:?}", event.hostname), format!("{:?}", expected.hostname));
-    check("url", event.url == expected.url, format!("{:?}", event.url), format!("{:?}", expected.url));
+    check(
+        "proto",
+        event.proto == expected.proto,
+        format!("{:?}", event.proto),
+        format!("{:?}", expected.proto),
+    );
+    check(
+        "hostname",
+        event.hostname == expected.hostname,
+        format!("{:?}", event.hostname),
+        format!("{:?}", expected.hostname),
+    );
+    check(
+        "url",
+        event.url == expected.url,
+        format!("{:?}", event.url),
+        format!("{:?}", expected.url),
+    );
     // UDP payloads are opaque, so only TCP cases pin the security classification.
     if expected.proto != scribe_core::Protocol::Udp {
-        check("security", event.security == expected.security, format!("{:?}", event.security), format!("{:?}", expected.security));
+        check(
+            "security",
+            event.security == expected.security,
+            format!("{:?}", event.security),
+            format!("{:?}", expected.security),
+        );
     }
     if opts.expect_process_info {
         let pid = std::process::id();
-        check("pid", event.pid == Some(pid), format!("{:?}", event.pid), pid.to_string());
-        let exe = std::env::current_exe().ok().map(|p| p.to_string_lossy().into_owned());
-        check("process_path", event.process_path == exe, format!("{:?}", event.process_path), format!("{exe:?}"));
+        check(
+            "pid",
+            event.pid == Some(pid),
+            format!("{:?}", event.pid),
+            pid.to_string(),
+        );
+        let exe = std::env::current_exe()
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned());
+        check(
+            "process_path",
+            event.process_path == exe,
+            format!("{:?}", event.process_path),
+            format!("{exe:?}"),
+        );
     }
     out
 }

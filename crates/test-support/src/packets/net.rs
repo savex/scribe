@@ -78,7 +78,11 @@ fn ip_packet(src: IpAddr, dst: IpAddr, proto: u8, payload: &[u8]) -> (u16, Vec<u
 }
 
 fn ethernet(ethertype: u16, payload: &[u8], from_client: bool) -> Vec<u8> {
-    let (dst, src) = if from_client { (GATEWAY_MAC, CLIENT_MAC) } else { (CLIENT_MAC, GATEWAY_MAC) };
+    let (dst, src) = if from_client {
+        (GATEWAY_MAC, CLIENT_MAC)
+    } else {
+        (CLIENT_MAC, GATEWAY_MAC)
+    };
     let mut f = Vec::with_capacity(14 + payload.len());
     f.extend(dst);
     f.extend(src);
@@ -132,7 +136,12 @@ pub struct TcpFlow {
 
 impl TcpFlow {
     pub fn new(client: SocketAddr, server: SocketAddr) -> Self {
-        Self { client, server, client_seq: 1000, server_seq: 5000 }
+        Self {
+            client,
+            server,
+            client_seq: 1000,
+            server_seq: 5000,
+        }
     }
 
     /// SYN, SYN-ACK, ACK.
@@ -140,8 +149,24 @@ impl TcpFlow {
         let (c, s) = (self.client, self.server);
         let frames = vec![
             tcp_frame(c, s, self.client_seq, 0, SYN, &[], true),
-            tcp_frame(s, c, self.server_seq, self.client_seq + 1, SYN | ACK, &[], false),
-            tcp_frame(c, s, self.client_seq + 1, self.server_seq + 1, ACK, &[], true),
+            tcp_frame(
+                s,
+                c,
+                self.server_seq,
+                self.client_seq + 1,
+                SYN | ACK,
+                &[],
+                false,
+            ),
+            tcp_frame(
+                c,
+                s,
+                self.client_seq + 1,
+                self.server_seq + 1,
+                ACK,
+                &[],
+                true,
+            ),
         ];
         self.client_seq += 1;
         self.server_seq += 1;
@@ -164,8 +189,15 @@ impl TcpFlow {
     }
 
     pub fn client_fin(&mut self) -> Vec<u8> {
-        let frame =
-            tcp_frame(self.client, self.server, self.client_seq, self.server_seq, FIN | ACK, &[], true);
+        let frame = tcp_frame(
+            self.client,
+            self.server,
+            self.client_seq,
+            self.server_seq,
+            FIN | ACK,
+            &[],
+            true,
+        );
         self.client_seq += 1;
         frame
     }

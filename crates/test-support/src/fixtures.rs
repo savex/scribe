@@ -31,11 +31,25 @@ pub struct ExpectedFlow {
 
 impl ExpectedFlow {
     fn tcp(dst: &str, hostname: Option<&'static str>, security: &'static str) -> Self {
-        Self { proto: "tcp", dst: addr(dst), hostname, security, url: None, ech: false }
+        Self {
+            proto: "tcp",
+            dst: addr(dst),
+            hostname,
+            security,
+            url: None,
+            ech: false,
+        }
     }
 
     fn dns(dst: &str) -> Self {
-        Self { proto: "udp", dst: addr(dst), hostname: None, security: "plaintext", url: None, ech: false }
+        Self {
+            proto: "udp",
+            dst: addr(dst),
+            hostname: None,
+            security: "plaintext",
+            url: None,
+            ech: false,
+        }
     }
 }
 
@@ -61,7 +75,11 @@ impl Fixture {
                 )
             })
             .collect();
-        let flows = if flows.is_empty() { "[]".to_owned() } else { format!("[\n{}\n  ]", flows.join(",\n")) };
+        let flows = if flows.is_empty() {
+            "[]".to_owned()
+        } else {
+            format!("[\n{}\n  ]", flows.join(",\n"))
+        };
         format!(
             "{{\n  \"fixture\": \"{}.pcap\",\n  \"description\": {},\n  \"expected_flows\": {}\n}}\n",
             self.name,
@@ -93,7 +111,14 @@ fn tcp_session(client: &str, server: &str, payloads: &[&[u8]]) -> Vec<Vec<u8>> {
     frames
 }
 
-fn dns_exchange(client: &str, server: &str, id: u16, name: &str, qtype: u16, answers: &[Answer]) -> Vec<Vec<u8>> {
+fn dns_exchange(
+    client: &str,
+    server: &str,
+    id: u16,
+    name: &str,
+    qtype: u16,
+    answers: &[Answer],
+) -> Vec<Vec<u8>> {
     let (c, s) = (addr(client), addr(server));
     vec![
         udp_frame(c, s, &dns::query(id, name, qtype), true),
@@ -102,12 +127,18 @@ fn dns_exchange(client: &str, server: &str, id: u16, name: &str, qtype: u16, ans
 }
 
 fn no_sni_hello() -> Vec<u8> {
-    client_hello(&ClientHelloOptions { sni: None, tls13: true, ech: false })
+    client_hello(&ClientHelloOptions {
+        sni: None,
+        tls13: true,
+        ech: false,
+    })
 }
 
 /// Frames that a decoder must reject without panicking.
 fn malformed_frames() -> Vec<Vec<u8>> {
-    let valid = TcpFlow::new(addr("10.0.0.2:50012"), addr("192.0.2.99:443")).handshake().remove(0);
+    let valid = TcpFlow::new(addr("10.0.0.2:50012"), addr("192.0.2.99:443"))
+        .handshake()
+        .remove(0);
 
     let mut bad_ihl = valid.clone();
     bad_ihl[14] = 0x4f; // IHL 15 words = 60 bytes, longer than the real header
@@ -121,7 +152,14 @@ fn malformed_frames() -> Vec<Vec<u8>> {
     let mut bad_tcp_offset = valid.clone();
     bad_tcp_offset[14 + 20 + 12] = 0x10; // data offset 1 word, below the 5-word minimum
 
-    vec![valid[..10].to_vec(), valid[..20].to_vec(), bad_ihl, bad_total_len, unknown_ethertype, bad_tcp_offset]
+    vec![
+        valid[..10].to_vec(),
+        valid[..20].to_vec(),
+        bad_ihl,
+        bad_total_len,
+        unknown_ethertype,
+        bad_tcp_offset,
+    ]
 }
 
 pub fn all() -> Vec<Fixture> {
@@ -153,7 +191,11 @@ pub fn all() -> Vec<Fixture> {
             Answer::A("edge.example.net", "192.0.2.50".parse().unwrap()),
         ],
     );
-    dns_cname.extend(tcp_session("10.0.0.2:50006", "192.0.2.50:443", &[&no_sni_hello()]));
+    dns_cname.extend(tcp_session(
+        "10.0.0.2:50006",
+        "192.0.2.50:443",
+        &[&no_sni_hello()],
+    ));
 
     let mut dns_aaaa = dns_exchange(
         "[fd00::2]:53002",
@@ -161,9 +203,16 @@ pub fn all() -> Vec<Fixture> {
         0x1002,
         "v6.example.com",
         dns::TYPE_AAAA,
-        &[Answer::Aaaa("v6.example.com", "2001:db8::50".parse().unwrap())],
+        &[Answer::Aaaa(
+            "v6.example.com",
+            "2001:db8::50".parse().unwrap(),
+        )],
     );
-    dns_aaaa.extend(tcp_session("[fd00::2]:50007", "[2001:db8::50]:443", &[&no_sni_hello()]));
+    dns_aaaa.extend(tcp_session(
+        "[fd00::2]:50007",
+        "[2001:db8::50]:443",
+        &[&no_sni_hello()],
+    ));
 
     vec![
         Fixture {
@@ -288,18 +337,38 @@ pub fn fuzz_seeds() -> Vec<(&'static str, &'static str, Vec<u8>)> {
         (
             "tls_client_hello",
             "tls12_sni",
-            client_hello(&ClientHelloOptions { sni: Some("seed.example.com".into()), tls13: false, ech: false }),
+            client_hello(&ClientHelloOptions {
+                sni: Some("seed.example.com".into()),
+                tls13: false,
+                ech: false,
+            }),
         ),
         (
             "tls_client_hello",
             "ech",
-            client_hello(&ClientHelloOptions { sni: Some("public.example.com".into()), tls13: true, ech: true }),
+            client_hello(&ClientHelloOptions {
+                sni: Some("public.example.com".into()),
+                tls13: true,
+                ech: true,
+            }),
         ),
         ("tls_client_hello", "truncated", hello[..60].to_vec()),
         ("tls_client_hello", "empty", vec![]),
-        ("http_request", "get", http::get_request("seed.example.com", "/")),
-        ("http_request", "get_query", http::get_request("seed.example.com", "/a/b?c=d&e=f")),
-        ("http_request", "no_host", b"GET / HTTP/1.0\r\n\r\n".to_vec()),
+        (
+            "http_request",
+            "get",
+            http::get_request("seed.example.com", "/"),
+        ),
+        (
+            "http_request",
+            "get_query",
+            http::get_request("seed.example.com", "/a/b?c=d&e=f"),
+        ),
+        (
+            "http_request",
+            "no_host",
+            b"GET / HTTP/1.0\r\n\r\n".to_vec(),
+        ),
         ("http_request", "binary", b"\x00\x01\x02\xff".to_vec()),
     ]
 }
@@ -310,7 +379,10 @@ pub fn generated_files() -> Vec<(PathBuf, Vec<u8>)> {
     for fixture in all() {
         let dir = Path::new("testdata/pcap");
         files.push((dir.join(format!("{}.pcap", fixture.name)), fixture.pcap()));
-        files.push((dir.join(format!("{}.json", fixture.name)), fixture.golden_json().into_bytes()));
+        files.push((
+            dir.join(format!("{}.json", fixture.name)),
+            fixture.golden_json().into_bytes(),
+        ));
     }
     for (target, name, data) in fuzz_seeds() {
         files.push((Path::new("fuzz/corpus").join(target).join(name), data));

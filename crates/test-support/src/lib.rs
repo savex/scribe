@@ -1,11 +1,11 @@
 //! Shared test helpers. Never a dependency of production crates, only `[dev-dependencies]`.
 //!
-//! - [`clock`]: `FakeClock`
-//! - [`sensor`]: `FakeSensor` and the `flow()` event builder
-//! - [`storage`]: `MemoryStore`, `MemorySink`, `FaultySink`
-//! - [`alerts`]: `RecordingAlertSink`
-//! - [`packets`]: Ethernet/IP/TCP/UDP, TLS, DNS and HTTP builders plus a pcap writer
-//! - [`fixtures`]: the pcap fixtures in `testdata/pcap/` and fuzz seeds, built from code
+//! - [`clock`] — `FakeClock`
+//! - [`sensor`] — `FakeSensor` and the `flow()` event builder
+//! - [`storage`] — `MemoryStore`, `MemorySink`, `FaultySink`
+//! - [`alerts`] — `RecordingAlertSink`
+//! - [`packets`] — Ethernet/IP/TCP/UDP, TLS, DNS and HTTP builders plus a pcap writer
+//! - [`fixtures`] — the pcap fixtures in `testdata/pcap/` and fuzz seeds, built from code
 //!
 //! Regenerate fixtures with `cargo run -p scribe-test-support --bin gen-fixtures`.
 

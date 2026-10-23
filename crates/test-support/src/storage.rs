@@ -6,9 +6,8 @@ use std::time::Duration;
 
 use scribe_core::Security;
 use scribe_storage_api::{
-    AlertState, Baseline, BaselineEntry, BoxFuture, EventQuery, EventSink, Health, Host,
-    HostDelta, HostId, HostQuery, Page, Result, SinkCaps, StateStore, StorageError, StoreCaps,
-    StoredEvent,
+    AlertState, Baseline, BaselineEntry, BoxFuture, EventQuery, EventSink, Health, Host, HostDelta,
+    HostId, HostQuery, Page, Result, SinkCaps, StateStore, StorageError, StoreCaps, StoredEvent,
 };
 
 /// In-memory reference [`StateStore`]. Also proves the conformance suite itself is correct.
@@ -73,7 +72,13 @@ impl StateStore for MemoryStore {
 
     fn get_host<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<Option<Host>>> {
         Box::pin(async move {
-            Ok(self.hosts.lock().unwrap().iter().find(|h| h.name == name).cloned())
+            Ok(self
+                .hosts
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|h| h.name == name)
+                .cloned())
         })
     }
 
@@ -89,21 +94,39 @@ impl StateStore for MemoryStore {
             let hosts = self.hosts.lock().unwrap();
             let matching: Vec<Host> = hosts
                 .iter()
-                .filter(|h| q.name_contains.as_deref().map_or(true, |s| h.name.contains(s)))
+                .filter(|h| {
+                    q.name_contains
+                        .as_deref()
+                        .map_or(true, |s| h.name.contains(s))
+                })
                 .cloned()
                 .collect();
             let total = matching.len() as u64;
-            let items =
-                matching.into_iter().skip(q.offset).take(q.limit.unwrap_or(usize::MAX)).collect();
-            Ok(Page { items, total: Some(total) })
+            let items = matching
+                .into_iter()
+                .skip(q.offset)
+                .take(q.limit.unwrap_or(usize::MAX))
+                .collect();
+            Ok(Page {
+                items,
+                total: Some(total),
+            })
         })
     }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {
         Box::pin(async move {
-            let entries =
-                self.baselines.lock().unwrap().get(profile).cloned().unwrap_or_default();
-            Ok(Baseline { profile: profile.to_owned(), entries })
+            let entries = self
+                .baselines
+                .lock()
+                .unwrap()
+                .get(profile)
+                .cloned()
+                .unwrap_or_default();
+            Ok(Baseline {
+                profile: profile.to_owned(),
+                entries,
+            })
         })
     }
 
@@ -124,7 +147,10 @@ impl StateStore for MemoryStore {
 
     fn put_alert_state<'a>(&'a self, state: &'a AlertState) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
-            self.alerts.lock().unwrap().insert(state.key.clone(), state.clone());
+            self.alerts
+                .lock()
+                .unwrap()
+                .insert(state.key.clone(), state.clone());
             Ok(())
         })
     }
@@ -156,7 +182,11 @@ impl EventSink for MemorySink {
     }
 
     fn capabilities(&self) -> SinkCaps {
-        SinkCaps { queryable: true, native_retention: false, max_batch: usize::MAX }
+        SinkCaps {
+            queryable: true,
+            native_retention: false,
+            max_batch: usize::MAX,
+        }
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {

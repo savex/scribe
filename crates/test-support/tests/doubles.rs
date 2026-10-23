@@ -5,7 +5,9 @@ use std::time::Duration;
 use scribe_core::{Alert, AlertOutput, Clock, Protocol, Security, Sensor};
 use scribe_storage_api::{EventSink, StoredEvent};
 use scribe_storage_conformance::block_on;
-use scribe_test_support::{flow, FakeClock, FakeSensor, FaultySink, MemorySink, RecordingAlertSink};
+use scribe_test_support::{
+    flow, FakeClock, FakeSensor, FaultySink, MemorySink, RecordingAlertSink,
+};
 
 #[test]
 fn fake_sensor_replays_events_in_order() {

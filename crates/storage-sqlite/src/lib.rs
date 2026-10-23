@@ -53,7 +53,10 @@ impl SqliteStore {
 
 impl StateStore for SqliteStore {
     fn capabilities(&self) -> StoreCaps {
-        StoreCaps { transactions: true, full_text_search: false }
+        StoreCaps {
+            transactions: true,
+            full_text_search: false,
+        }
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {
@@ -109,7 +112,10 @@ pub struct SqliteSink {
 impl SqliteSink {
     pub fn from_options(name: &str, options: &BackendOptions) -> Result<Self> {
         let path = required_option(options, KIND, "path")?;
-        Ok(Self { name: name.to_owned(), path: path.into() })
+        Ok(Self {
+            name: name.to_owned(),
+            path: path.into(),
+        })
     }
 
     pub fn path(&self) -> &PathBuf {
@@ -123,7 +129,11 @@ impl EventSink for SqliteSink {
     }
 
     fn capabilities(&self) -> SinkCaps {
-        SinkCaps { queryable: true, native_retention: false, max_batch: 1000 }
+        SinkCaps {
+            queryable: true,
+            native_retention: false,
+            max_batch: 1000,
+        }
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {

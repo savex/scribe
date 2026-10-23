@@ -44,7 +44,9 @@ pub struct PostgresStore {
 impl PostgresStore {
     pub fn from_options(options: &BackendOptions) -> Result<Self> {
         let url = required_option(options, KIND, "url")?;
-        Ok(Self { url: url.to_owned() })
+        Ok(Self {
+            url: url.to_owned(),
+        })
     }
 
     pub fn url(&self) -> &str {
@@ -54,7 +56,10 @@ impl PostgresStore {
 
 impl StateStore for PostgresStore {
     fn capabilities(&self) -> StoreCaps {
-        StoreCaps { transactions: true, full_text_search: true }
+        StoreCaps {
+            transactions: true,
+            full_text_search: true,
+        }
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {
@@ -110,7 +115,10 @@ pub struct PostgresSink {
 impl PostgresSink {
     pub fn from_options(name: &str, options: &BackendOptions) -> Result<Self> {
         let url = required_option(options, KIND, "url")?;
-        Ok(Self { name: name.to_owned(), url: url.to_owned() })
+        Ok(Self {
+            name: name.to_owned(),
+            url: url.to_owned(),
+        })
     }
 
     pub fn url(&self) -> &str {
@@ -124,7 +132,11 @@ impl EventSink for PostgresSink {
     }
 
     fn capabilities(&self) -> SinkCaps {
-        SinkCaps { queryable: true, native_retention: false, max_batch: 5000 }
+        SinkCaps {
+            queryable: true,
+            native_retention: false,
+            max_batch: 5000,
+        }
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {

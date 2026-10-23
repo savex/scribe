@@ -36,7 +36,11 @@ impl StorageConfig {
         };
         Self {
             state: backend.clone(),
-            sinks: vec![SinkConfig { name: "local-history".into(), backend, events: vec![] }],
+            sinks: vec![SinkConfig {
+                name: "local-history".into(),
+                backend,
+                events: vec![],
+            }],
         }
     }
 }

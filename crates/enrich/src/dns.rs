@@ -14,7 +14,8 @@ impl DnsCache {
     }
 
     pub fn insert(&mut self, ip: IpAddr, hostname: impl Into<String>, ttl: Duration) {
-        self.entries.insert(ip, (hostname.into(), Instant::now() + ttl));
+        self.entries
+            .insert(ip, (hostname.into(), Instant::now() + ttl));
     }
 
     pub fn lookup(&self, ip: &IpAddr) -> Option<&str> {
