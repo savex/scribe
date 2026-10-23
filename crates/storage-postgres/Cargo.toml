@@ -1,0 +1,13 @@
+[package]
+name = "scribe-storage-postgres"
+description = "PostgreSQL storage backend: state store and event sink"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-storage-api.workspace = true
+# TODO: tokio-postgres (or sqlx with the postgres feature)
+
+[dev-dependencies]
+scribe-storage-conformance.workspace = true

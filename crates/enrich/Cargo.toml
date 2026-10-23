@@ -1,0 +1,9 @@
+[package]
+name = "scribe-enrich"
+description = "Hostname resolution (DNS cache, TLS SNI, HTTP Host) and TLS detection"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-core.workspace = true

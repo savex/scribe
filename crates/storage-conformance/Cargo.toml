@@ -1,0 +1,10 @@
+[package]
+name = "scribe-storage-conformance"
+description = "Shared test suite every storage backend must pass"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-core.workspace = true
+scribe-storage-api.workspace = true

@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+
+[workspace.dependencies]
+scribe-core = { path = "crates/core" }
+scribe-enrich = { path = "crates/enrich" }
+scribe-storage-api = { path = "crates/storage-api" }
+scribe-storage-manager = { path = "crates/storage-manager", default-features = false }
+scribe-storage-sqlite = { path = "crates/storage-sqlite" }
+scribe-storage-postgres = { path = "crates/storage-postgres" }
+scribe-storage-conformance = { path = "crates/storage-conformance" }
+scribe-sensor-linux = { path = "crates/sensor-linux" }
+scribe-sensor-windows = { path = "crates/sensor-windows" }
+scribe-sensor-pcap = { path = "crates/sensor-pcap" }

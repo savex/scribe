@@ -1,0 +1,9 @@
+[package]
+name = "scribe-sensor-pcap"
+description = "Cross-platform fallback sensor on libpcap / Npcap (no per-process info)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-core.workspace = true

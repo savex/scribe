@@ -1,0 +1,9 @@
+[package]
+name = "scribe-sensor-linux"
+description = "Linux sensor: eBPF probes on connect / sendmsg with process attribution"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-core.workspace = true

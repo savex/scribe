@@ -1,0 +1,13 @@
+[package]
+name = "scribe-storage-sqlite"
+description = "SQLite storage backend (default): state store and event sink"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-storage-api.workspace = true
+# TODO: rusqlite = { version = "...", features = ["bundled"] }
+
+[dev-dependencies]
+scribe-storage-conformance.workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "scribe-cli"
+description = "Command line client for the scribe daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "scribe"
+path = "src/main.rs"
+
+[dependencies]
+scribe-core.workspace = true

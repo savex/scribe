@@ -1,0 +1,28 @@
+[package]
+name = "scribe-daemon"
+description = "Background service: capture, enrichment, policy engine, storage, local API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "scribed"
+path = "src/main.rs"
+
+[features]
+default = ["sqlite"]
+sqlite = ["scribe-storage-manager/sqlite"]
+postgres = ["scribe-storage-manager/postgres"]
+
+[dependencies]
+scribe-core.workspace = true
+scribe-enrich.workspace = true
+scribe-storage-api.workspace = true
+scribe-storage-manager.workspace = true
+scribe-sensor-pcap.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+scribe-sensor-linux.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+scribe-sensor-windows.workspace = true

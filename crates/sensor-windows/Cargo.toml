@@ -1,0 +1,9 @@
+[package]
+name = "scribe-sensor-windows"
+description = "Windows sensor: ETW kernel-network and DNS-client providers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-core.workspace = true
