@@ -1,0 +1,18 @@
+[package]
+name = "scribe-test-support"
+description = "Test doubles, packet builders and fixture generator shared by scribe tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "gen-fixtures"
+path = "src/bin/gen_fixtures.rs"
+
+[dependencies]
+scribe-core.workspace = true
+scribe-storage-api.workspace = true
+
+[dev-dependencies]
+scribe-storage-conformance.workspace = true

@@ -15,6 +15,8 @@ scribe-storage-manager = { path = "crates/storage-manager", default-features = f
 scribe-storage-sqlite = { path = "crates/storage-sqlite" }
 scribe-storage-postgres = { path = "crates/storage-postgres" }
 scribe-storage-conformance = { path = "crates/storage-conformance" }
+scribe-sensor-conformance = { path = "crates/sensor-conformance" }
+scribe-test-support = { path = "crates/test-support" }
 scribe-sensor-linux = { path = "crates/sensor-linux" }
 scribe-sensor-windows = { path = "crates/sensor-windows" }
 scribe-sensor-pcap = { path = "crates/sensor-pcap" }

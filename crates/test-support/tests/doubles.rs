@@ -1,0 +1,64 @@
+use std::net::IpAddr;
+use std::sync::mpsc;
+use std::time::Duration;
+
+use scribe_core::{Alert, AlertOutput, Clock, Protocol, Security, Sensor};
+use scribe_storage_api::{EventSink, StoredEvent};
+use scribe_storage_conformance::block_on;
+use scribe_test_support::{flow, FakeClock, FakeSensor, FaultySink, MemorySink, RecordingAlertSink};
+
+#[test]
+fn fake_sensor_replays_events_in_order() {
+    let events = vec![
+        flow("192.0.2.10:443").host("a.example").tls().build(),
+        flow("192.0.2.11:53").udp().plaintext().build(),
+    ];
+    let mut sensor = FakeSensor::new(events);
+    let (tx, rx) = mpsc::channel();
+    sensor.start(tx).unwrap();
+
+    let got: Vec<_> = rx.try_iter().collect();
+    assert_eq!(got.len(), 2);
+    assert_eq!(got[0].hostname.as_deref(), Some("a.example"));
+    assert_eq!(got[0].security, Security::Tls);
+    assert_eq!(got[1].proto, Protocol::Udp);
+}
+
+#[test]
+fn fake_clock_moves_only_when_told() {
+    let clock = FakeClock::default();
+    let start = clock.now();
+    assert_eq!(clock.now(), start);
+    clock.advance(Duration::from_secs(90));
+    assert_eq!(clock.now(), start + Duration::from_secs(90));
+}
+
+#[test]
+fn faulty_sink_fails_then_recovers() {
+    let sink = FaultySink::new(MemorySink::default());
+    let batch = vec![StoredEvent::Flow(flow("192.0.2.10:443").build())];
+
+    sink.set_failing(true);
+    assert!(block_on(sink.write_batch(&batch)).is_err());
+    sink.set_failing(false);
+    assert!(block_on(sink.write_batch(&batch)).is_ok());
+
+    assert_eq!(sink.attempts(), 2);
+    assert_eq!(sink.inner().events().len(), 1);
+}
+
+#[test]
+fn recording_alert_sink_keeps_alerts() {
+    let sink = RecordingAlertSink::default();
+    sink.notify(&Alert {
+        ts: FakeClock::default().now(),
+        host: None,
+        dst_ip: IpAddr::from([198, 51, 100, 7]),
+        dst_port: 8443,
+        process_path: None,
+        score: 80,
+        reason: "raw_ip".into(),
+    });
+    assert_eq!(sink.count(), 1);
+    assert_eq!(sink.alerts()[0].reason, "raw_ip");
+}

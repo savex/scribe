@@ -34,6 +34,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "scribe-sensor-conformance"
+version = "0.1.0"
+dependencies = [
+ "scribe-core",
+ "scribe-sensor-pcap",
+ "scribe-test-support",
+]
+
+[[package]]
 name = "scribe-sensor-linux"
 version = "0.1.0"
 dependencies = [
@@ -67,6 +76,7 @@ version = "0.1.0"
 dependencies = [
  "scribe-core",
  "scribe-storage-api",
+ "scribe-test-support",
 ]
 
 [[package]]
@@ -90,6 +100,15 @@ dependencies = [
 name = "scribe-storage-sqlite"
 version = "0.1.0"
 dependencies = [
+ "scribe-storage-api",
+ "scribe-storage-conformance",
+]
+
+[[package]]
+name = "scribe-test-support"
+version = "0.1.0"
+dependencies = [
+ "scribe-core",
  "scribe-storage-api",
  "scribe-storage-conformance",
 ]
