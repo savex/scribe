@@ -1,0 +1,41 @@
+{
+  "scenario": "typical",
+  "status": { "api_version": 1, "daemon_version": "0.1.0", "mode": "caution",
+              "sensor": { "name": "linux-ebpf", "process_info": true, "health": "ok" },
+              "storage": { "state": { "kind": "sqlite", "health": "ok" },
+                           "sinks": [ { "name": "local-history", "kind": "sqlite", "health": "ok" },
+                                      { "name": "central", "kind": "postgres", "health": "degraded", "detail": "spooling: 1,204 events" } ] } },
+  "hosts": {
+    "total": 5,
+    "items": [
+      { "name": "api.example.com", "on_list": true,  "first_seen": "2023-11-14T22:13:20Z", "last_seen": "2023-11-15T09:00:00Z",
+        "conn_count": 1532, "req_count": 0, "bytes_out": 7340032, "tls_seen": true, "plaintext_seen": false,
+        "processes": ["/usr/bin/curl", "/usr/lib/firefox/firefox"] },
+      { "name": "plain.example.com", "on_list": true, "first_seen": "2023-11-14T22:13:21Z", "last_seen": "2023-11-15T08:10:00Z",
+        "conn_count": 12, "req_count": 40, "bytes_out": 20480, "tls_seen": true, "plaintext_seen": true,
+        "processes": ["/usr/bin/apt"] },
+      { "name": "docs.example.com", "on_list": false, "first_seen": "2023-11-15T08:55:00Z", "last_seen": "2023-11-15T08:55:00Z",
+        "conn_count": 1, "req_count": 0, "bytes_out": 517, "tls_seen": true, "plaintext_seen": false,
+        "processes": ["/usr/lib/firefox/firefox"] },
+      { "name": "198.51.100.7", "on_list": false, "unresolved": true, "first_seen": "2023-11-15T08:58:00Z", "last_seen": "2023-11-15T08:59:30Z",
+        "conn_count": 4, "req_count": 0, "bytes_out": 64, "tls_seen": false, "plaintext_seen": true,
+        "processes": ["/opt/agent/bin/agent"] },
+      { "name": "an-extremely-long-subdomain-name-that-tests-truncation.region-1.service.example.net", "on_list": false,
+        "first_seen": "2023-11-15T08:59:00Z", "last_seen": "2023-11-15T08:59:00Z",
+        "conn_count": 1, "req_count": 0, "bytes_out": 517, "tls_seen": true, "plaintext_seen": false,
+        "processes": ["C:\\Program Files\\Example Corp\\Example Application With Long Name\\bin\\example.exe"] }
+    ]
+  },
+  "alerts": {
+    "total": 2,
+    "items": [
+      { "id": 2, "ts": "2023-11-15T08:58:00Z", "host": null, "dst": "198.51.100.7:8443", "process_path": "/opt/agent/bin/agent",
+        "score": 80, "reason": "raw_ip", "acknowledged": false },
+      { "id": 1, "ts": "2023-11-15T08:10:00Z", "host": "plain.example.com", "dst": "192.0.2.20:80", "process_path": "/usr/bin/apt",
+        "score": 60, "reason": "plaintext", "acknowledged": true }
+    ]
+  },
+  "baseline": { "profile": "default", "entries": [
+    { "host": "api.example.com", "source": "learned", "added_at": "2023-11-14T22:13:20Z" },
+    { "host": "plain.example.com", "source": "manual", "added_at": "2023-11-14T22:13:21Z" } ] }
+}

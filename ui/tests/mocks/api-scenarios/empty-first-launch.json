@@ -1,0 +1,9 @@
+{
+  "scenario": "empty-first-launch",
+  "status": { "api_version": 1, "daemon_version": "0.1.0", "mode": "learn", "learn_ends_at": "2023-11-21T22:13:20Z",
+              "sensor": { "name": "pcap", "process_info": false, "health": "ok" },
+              "storage": { "state": { "kind": "sqlite", "health": "ok" }, "sinks": [] } },
+  "hosts": { "items": [], "total": 0 },
+  "alerts": { "items": [], "total": 0 },
+  "baseline": { "profile": "default", "entries": [] }
+}

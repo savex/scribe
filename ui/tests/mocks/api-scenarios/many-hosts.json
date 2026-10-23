@@ -1,0 +1,8 @@
+{
+  "scenario": "many-hosts",
+  "extends": "typical.json",
+  "generate": {
+    "hosts": { "count": 10000, "name_pattern": "host-{n}.load.example.com", "on_list_ratio": 0.9,
+               "conn_count": { "min": 1, "max": 100000 }, "seed": 42 }
+  }
+}

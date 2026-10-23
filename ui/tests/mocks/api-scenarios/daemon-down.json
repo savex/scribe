@@ -1,0 +1,4 @@
+{
+  "scenario": "daemon-down",
+  "connect": { "error": "ECONNREFUSED", "retry_after_ms": 2000 }
+}
