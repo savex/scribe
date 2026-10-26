@@ -34,8 +34,13 @@ config/                 example configuration
 testdata/               pcap fixtures, daemon scenarios, raw sensor records, schema snapshots
 fuzz/                   cargo-fuzz targets and seed corpus
 tests/e2e/              install / upgrade / uninstall tests per OS
-workfiles/              plan, diagrams, test approach
+workfiles/              plan, diagrams, test approach, status
+.claude/skills/         scribe-conventions: agreed assumptions and config values
 ```
+
+Design decisions and config values are collected in
+[.claude/skills/scribe-conventions/SKILL.md](.claude/skills/scribe-conventions/SKILL.md);
+rules for AI assistants are in [CLAUDE.md](CLAUDE.md).
 
 ## Build
 
