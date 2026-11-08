@@ -1,6 +1,6 @@
 # scribe specification
 
-*Version 0.4 (draft), 2026-11-08: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
+*Version 0.5 (draft), 2026-11-08: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
 Built from [plan.md](plan.md), [diagram.md](diagram.md), [status.md](status.md) and the
 [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md). When they disagree,
 the code and the skill win; update this document in the same commit.
@@ -188,6 +188,9 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-14 | Build | Minimum Rust version follows the dependencies: 1.89 now, raised only when a dependency needs it (expected 1.98 with the eBPF sensor); CI builds with exactly that version | Decided |
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
 | NFR-16 | Extensibility | New backends and sensors must pass their conformance suites | Implemented |
+| NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Proposed |
+| NFR-18 | Tamper evidence | Audit and alert records are hash-chained; hosts send heartbeats to the remote sink, so stopped daemons and deleted rows are visible | Proposed |
+| NFR-19 | Release integrity | Release checksums signed, build provenance attested, dependencies checked by `cargo deny` / `cargo audit` | Proposed |
 
 ## 6. Entry points
 
@@ -543,6 +546,82 @@ SQLite stores timestamps as epoch milliseconds; PostgreSQL uses `TIMESTAMPTZ`, `
 - Only metadata is stored, never payloads (NFR-12).
 - Data stays on the host unless the admin configures a remote sink; credentials never sit in plain config (NFR-10).
 - Test data never contains real user traffic; only documentation address ranges and `example.com` / `example.net` names.
+
+#### 12.1.1 Security design per interaction (Proposed)
+
+Principle: locally, who is calling matters more than encryption (the peer identity comes from the OS);
+everything that leaves the host uses TLS plus authentication. All crypto uses `ring`, and TLS uses
+`rustls` with the `ring` provider, so there is no OpenSSL dependency.
+
+**Local API (CLI / UI ↔ daemon, section 6.3, phases 5 and 10)**
+
+- Unix socket inside a `root:scribe` directory with mode `0750` (e.g. `/run/scribe/api.sock`); the socket file's own mode is not relied on, because BSD-derived systems have ignored it.
+- Windows named pipe: explicit access list (SYSTEM, Administrators, `scribe`, `scribe-admin`), `first_pipe_instance(true)` against pipe-name squatting, `reject_remote_clients(true)`.
+- Caller identity read once per connection from the OS (`peer_cred()`, pipe client token) and attached to tonic request extensions; identity claims inside messages are ignored.
+- Clients check the server: the CLI and UI require the socket to be owned by root, or the pipe server process (`GetNamedPipeServerProcessId`) to run as SYSTEM, before sending anything; this stops a fake `scribed`.
+- Limits: gRPC message size, per-call timeouts and a cap on concurrent streams (e.g. `status --watch`).
+- `export`: the daemon streams records; the CLI writes the file as the calling user. The daemon never writes to a client-supplied path.
+- Silencing controls (`hibernate`, mode, `reset`): admin only, audited, maximum `--for` duration (no open-ended hibernation by default), an alert when hibernation starts.
+- UI (Tauri): read-only by default; control calls ask for elevation (polkit, Authorization Services, UAC) instead of permanent `scribe-admin` membership; strict content security policy, no remote content, only the IPC commands it needs.
+
+**macOS Network Extension ↔ daemon (XPC, section 6.5)**
+
+- launchd Mach service; code-signing requirement checked in both directions (Team ID + bundle ID, `setCodeSigningRequirement` or the audit token with `SecCode`).
+- Messages are untrusted bytes: versioned schema, size limits, decoder fuzzed with the other parsers.
+
+**Sensors and privileges (NFR-8)**
+
+- Privilege split: loading eBPF, the ETW kernel session and opening pcap stay in the small privileged part; the parsers (SNI, QUIC, HTTP, DNS) run after privileges are dropped.
+- Linux: pinned bpffs maps root-only; keep only `CAP_BPF` / `CAP_PERFMON` as needed, drop the rest after attaching.
+- systemd unit: `NoNewPrivileges`, `ProtectSystem=strict` with `ReadWritePaths` for data and logs, `PrivateTmp`, `CapabilityBoundingSet`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK`, `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute`.
+- Windows: service SID; processing under `NT SERVICE\scribed` instead of SYSTEM where the ETW session allows it.
+
+**Postgres sink (leaves the host)**
+
+- TLS on by default via `tokio-postgres-rustls`; the config check rejects `sslmode=disable` / `prefer` for any non-loopback host; default `verify-full`, optional `ca` path.
+- TLS client certificates as an alternative to passwords; the key referenced like `credentials` (`keychain:` and the others).
+- Least-privilege role: the sink account has `INSERT` only on the event tables (no `SELECT` / `UPDATE` / `DELETE`); one role per host with row-level security on `host_id`, so a compromised host can't forge or erase another host's history.
+- scribed tags its own connections so its sink traffic doesn't alert; a plaintext connection from scribed itself still alerts.
+
+**Webhook alerts and threat lists**
+
+- HTTPS only (`http://` only to loopback); optional certificate pinning; no redirects to other hosts; timeouts and size limits.
+- Webhook requests signed with HMAC-SHA256 in `X-Scribe-Signature: t=<ts>,v1=<mac>`; the timestamp lets receivers reject replays; the secret comes from a keychain reference, never the URL; the payload follows `privacy.url_query`.
+- Threat lists: optional integrity check per list (pinned `sha256` or a `minisign` public key); a failed refresh keeps the last good list; maximum entry count.
+
+**Data at rest**
+
+- Default: strict file modes plus full-disk encryption. Database, spool, logs and exports are created `0600` or `0640 root:scribe-admin`.
+- Like sshd's StrictModes, scribed refuses to start if the config, `data_dir` or a `file:` credential is writable by group or others.
+- Optional `storage.encrypt = true`: SQLCipher (`rusqlite` feature `bundled-sqlcipher`) and AES-256-GCM spool records (`ring`), key in the keychain / DPAPI / Secret Service (TPM-sealed where available). The daemon must open the key unattended at boot, so this protects stolen disks and backups, not a live root attacker.
+- The per-install HMAC key for `privacy.url_query = "hash"` lives in the same secret store, not as a plain file in `data_dir`.
+
+**Tamper evidence (NFR-18)**
+
+- Audit and alert records carry a sequence number and `prev_hmac`, so deleted or edited rows show up locally and in the sink.
+- Each host writes a heartbeat to the remote sink; the central side alerts on gaps.
+- Daemon stops, crashes and sequence gaps are stored as `audit` events.
+
+**Remote / fleet API**
+
+- No TCP listener; the central Postgres sink gives the fleet view, and SSH-forwarding the Unix socket works without new code.
+- If ever required: off by default, loopback by default, TLS client certificates only (tonic `tls-ring`), the same read / control split and audit as the local API.
+
+**Releases and supply chain (NFR-19)**
+
+- `SHA256SUMS` signed (Sigstore cosign keyless with GitHub OIDC, or minisign); `actions/attest-build-provenance`; Authenticode (Windows), notarization (macOS), signed `.deb` / `.rpm` repositories.
+- `cargo deny` and `cargo audit` in the Tests workflow.
+- Actions pinned by commit SHA; minimal `permissions:` per job, most of all for Bump version, which pushes to `main`.
+
+**Suggested order**
+
+| When | What |
+|---|---|
+| Phases 5 / 10 (API, daemon commands) | Local API access checks and limits, StrictModes checks, hibernate limits |
+| Postgres / alert phases | Postgres TLS on by default and sink role; HTTPS and signed webhooks |
+| Native sensors | XPC code signing; privilege split and service hardening |
+| Phase 13 (installers) | Release signing and attestations; optional encryption at rest |
+| Any time | `cargo deny` / `cargo audit`; Actions pinned by SHA |
 
 ### 12.2 URL privacy (`privacy.url_query`)
 

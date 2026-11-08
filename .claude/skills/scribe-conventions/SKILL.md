@@ -211,6 +211,35 @@ Three counters per host and per process + host, plus time buckets (hourly propos
 | `scribed` exit codes | 0 success, 1 runtime failure, 2 usage or configuration error (including a bad `SCRIBE_LOG`) | Decided (implemented) |
 | `scribed` lifecycle | arguments → config → logging → create data and spool folders → storage via registry + `migrate()` (a not-implemented backend only warns) → wait for Ctrl-C or SIGTERM → flush sinks → exit 0. Windows service-manager stop arrives with phase 5 | Decided (implemented) |
 
+## 9a. Security (proposed)
+
+Full design: `workfiles/specs.md` 12.1.1. Locally, who is calling matters more than encryption (identity from the OS); everything leaving the host uses TLS plus authentication.
+
+| Item | Value | State |
+|---|---|---|
+| TLS library | `rustls` with the `ring` provider (no OpenSSL); tonic `tls-ring` if TLS is ever needed | Proposed |
+| API socket | `/run/scribe/api.sock` in a `root:scribe` `0750` directory; socket file mode not relied on | Proposed |
+| Named pipe | Explicit access list, `first_pipe_instance(true)`, `reject_remote_clients(true)` | Proposed |
+| Caller identity | From the OS per connection, put in tonic request extensions; never from message fields | Proposed |
+| Server check by clients | Socket owned by root / pipe server runs as SYSTEM, checked before sending | Proposed |
+| API limits | Message size, per-call timeout, concurrent stream cap | Proposed |
+| `export` | Daemon streams; CLI writes the file as the caller; daemon never writes client-supplied paths | Proposed |
+| Silencing controls | `hibernate`, mode, `reset`: admin only, audited; `hibernate` has a maximum `--for` and raises an alert | Proposed |
+| UI control calls | Elevation via polkit / Authorization Services / UAC; strict CSP, no remote content | Proposed |
+| XPC | Code-signing requirement both ways (Team ID + bundle ID); schema, size limits, fuzzed decoder | Proposed |
+| Privilege split | Privileged part only loads / attaches sensors; parsers run unprivileged | Proposed |
+| systemd hardening | `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, `CapabilityBoundingSet`, `RestrictAddressFamilies`, `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute` | Proposed |
+| Postgres transport | `tokio-postgres-rustls`, default `verify-full`; `disable` / `prefer` rejected for non-loopback hosts; optional client certificates | Proposed |
+| Postgres role | Sink role `INSERT` only; one role per host, row-level security on `host_id` | Proposed |
+| Webhook | HTTPS only (except loopback), no cross-host redirects, `X-Scribe-Signature: t=<ts>,v1=<hmac-sha256>`, secret by keychain reference | Proposed |
+| Threat lists | HTTPS, optional pinned `sha256` or `minisign` key, keep last good list, entry cap | Proposed |
+| File modes | `0600` / `0640 root:scribe-admin`; startup refused if config, `data_dir` or `file:` credential is group/other-writable | Proposed |
+| Encryption at rest | Default: file modes + full-disk encryption; optional `storage.encrypt = true` (SQLCipher + AES-256-GCM spool, key in OS secret store) | Proposed |
+| URL hash key | Kept in the OS secret store | Proposed |
+| Tamper evidence | Sequence number + `prev_hmac` on audit and alert records; heartbeats to the remote sink | Proposed |
+| Remote API | None; Postgres sink for fleet view, SSH forwarding for remote control; if ever added: off by default, client certificates only | Proposed |
+| Release integrity | Signed `SHA256SUMS`, build provenance attestation, `cargo deny` / `cargo audit`, Actions pinned by SHA, minimal `permissions:` | Proposed |
+
 ## 10. Versioning and releases
 
 | Item | Value | State |

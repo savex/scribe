@@ -15,6 +15,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Planned `scribe daemon` subcommands in the spec and plan: `status` (live counters and critical metrics),
   `health`, `reset` (counters, caches, config reload), `hibernate [--for]` and `wakeup`; daemon run states,
   config reload rules, read vs control API access; phases 5 and 10 re-estimated (+3.5 days).
+- Proposed security design for every interaction in the spec (section 12.1.1, NFR-17 to NFR-19) and the
+  conventions skill: local API access checks, XPC code signing, privilege split, TLS for Postgres / webhook /
+  threat lists, encryption at rest, tamper evidence, release signing.
 
 ### Fixed
 - Workspace version in `Cargo.toml` / `Cargo.lock` synced to 0.1.1 to match the `v0.1.1` tag
