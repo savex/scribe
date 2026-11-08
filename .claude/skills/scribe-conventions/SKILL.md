@@ -196,7 +196,7 @@ Three counters per host and per process + host, plus time buckets (hourly propos
 | Local API | gRPC (`tonic`) over a Unix socket (Linux, macOS) or named pipe (Windows) | Proposed |
 | New crates | `crates/policy` (`scribe-policy`, no I/O), `crates/alerts` (`scribe-alerts`), `crates/api` (`scribe-api`, features `server` / `client`) + `proto/scribe/v1/api.proto` | Decided (option A, `workfiles/specs.md` 7.2) |
 | API access | Socket readable only by the owner and the admin group | Proposed |
-| CLI commands | `status`, `hosts`, `mode <learn\|caution\|alert>`, `alerts`, `alerts ack`, `baseline add/rm`, `export`, `version` / `--version` | Partly decided (`version`, mode parsing exist) |
+| CLI commands | `status`, `hosts`, `mode <learn\|caution\|alert>`, `alerts`, `alerts ack <id>`, `baseline add\|rm <host>` (`remove` alias), `export`, `version` / `--version`; exit codes 0 / 1 / 2 | Decided (parsing implemented with `clap`; commands answer "not implemented" until phase 10) |
 | Linux service | systemd unit `scribed` | Proposed (used by e2e script) |
 | macOS service | launchd `com.scribe.daemon`; uninstaller `/Library/Application Support/scribe/uninstall.sh` | Proposed (used by e2e script) |
 | Windows service | `scribed` | Proposed (used by e2e script) |

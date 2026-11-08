@@ -36,6 +36,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   size rotation, journald (Linux) and unified logging (macOS); falls back to stderr with a warning.
 - `scribed` runs as a long-lived process: `--config`, `--check-config` and `--version`; loads the config, starts
   logging, opens storage, waits for Ctrl-C or SIGTERM and shuts down cleanly. Exit codes 0 / 1 / 2.
+- `scribe` CLI parses all commands with `clap` (`status`, `hosts`, `mode`, `alerts [ack <id>]`,
+  `baseline add|rm`, `export`, `version`); everything except `version` reports "not implemented yet" (exit 1).
 
 ### Changed
 - Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,

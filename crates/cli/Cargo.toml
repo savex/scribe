@@ -5,9 +5,13 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[lib]
+path = "src/lib.rs"
+
 [[bin]]
 name = "scribe"
 path = "src/main.rs"
 
 [dependencies]
 scribe-core.workspace = true
+clap.workspace = true

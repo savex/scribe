@@ -561,6 +561,7 @@ dependencies = [
 name = "scribe-cli"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "scribe-core",
 ]
 
