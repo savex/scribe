@@ -32,6 +32,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `SCRIBE_CONFIG`, OS default, built-in defaults; full v1 model with errors that name file, line and column;
   cross-field checks; paths and percentages resolved for the host; effective config printable as TOML.
 - `SinkConfig` carries retention and batching settings.
+- Logging (`scribe_daemon::logging`): level with `SCRIBE_LOG` override, text or JSON, log file with daily or
+  size rotation, journald (Linux) and unified logging (macOS); falls back to stderr with a warning.
 
 ### Changed
 - Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,

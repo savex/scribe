@@ -153,6 +153,9 @@ Full option table: `workfiles/specs.md` section 9.1.
 | Config code | `crates/daemon/src/config/` (model, load, resolve); built-in defaults equal `config/scribe.toml`, enforced by a test | Decided (implemented) |
 | Config checks | Unknown keys and bad values rejected with line and column; sqlite needs `path`, postgres needs `url` without a password; sink names unique; threat list has exactly one of `path` / `url`, `refresh` only with `url`; storage kind must be built in | Decided (implemented) |
 | Empty `log.file` | `""` writes to stderr | Decided (implemented) |
+| Log rotation | `daily`: `scribed.<date>.log` with a `scribed.log` symlink to today's file (Unix); `size`: `scribed.log` → `.1` … `.<keep>`; `keep` rotated files kept | Decided (implemented) |
+| Log fallback | A log file or system log that can't be used falls back to stderr with a warning; scribed still starts | Decided (implemented) |
+| System log | journald with identifier `scribed` (Linux); unified logging subsystem `com.scribe.daemon` (macOS) | Decided (implemented) |
 | Windows system log | `log.output = "system"` / `"both"` rejected on Windows until the installer registers the Event Log source (phase 13) | Decided (implemented) |
 | Durations | `45s`, `10m`, `1h`, `7d` | Draft default |
 | Linux | config `/etc/scribe/scribe.toml`, data `/var/lib/scribe/`, log `/var/log/scribe/scribed.log`, system log journald / syslog | Decided |

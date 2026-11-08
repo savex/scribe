@@ -154,6 +154,8 @@ output = "file"
 #   Windows  <install dir>\logs\scribed.log   (next to scribed.exe)
 # "" writes to stderr instead, e.g. when running scribed in a terminal.
 # file = "/var/log/scribe/scribed.log"
+# daily: one file per day, scribed.2026-11-08.log; on Linux and macOS scribed.log points at today's.
+# size:  scribed.log, rotated to scribed.log.1 … scribed.log.<keep> when it reaches max_size.
 rotate = "daily"          # daily | size
-max_size = "50MiB"        # used when rotate = "size"
+max_size = "50MiB"        # used when rotate = "size"; an absolute size, not a percentage
 keep = 14                 # rotated files to keep
