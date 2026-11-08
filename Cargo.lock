@@ -662,8 +662,10 @@ name = "scribe-storage-manager"
 version = "0.1.0"
 dependencies = [
  "scribe-storage-api",
+ "scribe-storage-conformance",
  "scribe-storage-postgres",
  "scribe-storage-sqlite",
+ "scribe-test-support",
 ]
 
 [[package]]

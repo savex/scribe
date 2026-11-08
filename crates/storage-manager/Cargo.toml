@@ -14,3 +14,7 @@ postgres = ["dep:scribe-storage-postgres"]
 scribe-storage-api.workspace = true
 scribe-storage-sqlite = { workspace = true, optional = true }
 scribe-storage-postgres = { workspace = true, optional = true }
+
+[dev-dependencies]
+scribe-storage-conformance.workspace = true
+scribe-test-support.workspace = true

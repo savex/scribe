@@ -38,6 +38,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   logging, opens storage, waits for Ctrl-C or SIGTERM and shuts down cleanly. Exit codes 0 / 1 / 2.
 - `scribe` CLI parses all commands with `clap` (`status`, `hosts`, `mode`, `alerts [ack <id>]`,
   `baseline add|rm`, `export`, `version`); everything except `version` reports "not implemented yet" (exit 1).
+- Tests for the storage manager: registry kinds and roles, routing by event kind, error propagation.
 
 ### Changed
 - Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,
