@@ -123,10 +123,15 @@ jobs:
       - name: Migrations and schema snapshot load cleanly
         run: |
           createdb scribe_snapshot
-          psql -v ON_ERROR_STOP=1 -q -d scribe_snapshot -f crates/storage-postgres/migrations/0001_init.sql
-          psql -v ON_ERROR_STOP=1 -q -d scribe_snapshot -f crates/storage-postgres/migrations/0001_init.sql
-          psql -v ON_ERROR_STOP=1 -q -d scribe_snapshot -f testdata/db/postgres/v1_seed.sql
+          run() { psql -v ON_ERROR_STOP=1 -q -d scribe_snapshot -f "$1"; }
+          run crates/storage-postgres/migrations/0001_init.sql
+          run crates/storage-postgres/migrations/0001_init.sql
+          run testdata/db/postgres/v1_seed.sql
+          run crates/storage-postgres/migrations/0002_modules.sql
+          run crates/storage-postgres/migrations/0002_modules.sql
+          run testdata/db/postgres/v2_seed.sql
           psql -d scribe_snapshot -c 'SELECT count(*) AS hosts FROM hosts'
+          psql -d scribe_snapshot -c 'SELECT kind, module, count(*) FROM events GROUP BY 1, 2 ORDER BY 1'
       - name: Conformance
         run: |
           args=()

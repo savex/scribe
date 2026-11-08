@@ -1,0 +1,16 @@
+-- Data added on top of seed_v1.sql for the schema v2 snapshot: a database that ran v1, was
+-- migrated with 0002, then recorded module data. Same placeholders as seed_v1.sql.
+
+INSERT INTO schema_migrations (version, applied_at) VALUES (2, :TS(1700100000000));
+
+INSERT INTO events (id, ts, kind, module, host, schema_version, payload) VALUES
+  (5, :TS(1700100001000), 'flow', NULL, 'plain.example.com', 2,
+     '{"pid":100,"process_path":"/usr/bin/curl","proto":"tcp","dst_ip":"192.0.2.20","dst_port":80,"hostname":"plain.example.com","notes":{"url":"http://plain.example.com/download?id=<redacted>"},"security":"plaintext","bytes_out":96,"kind":"payload"}'),
+  (6, :TS(1700100001000), 'url.request', 'url', 'plain.example.com', 1,
+     '{"method":"GET","url":"http://plain.example.com/download?id=<redacted>"}');
+
+INSERT INTO metrics (id, ts, module, name, labels, value) VALUES
+  (1, :TS(1700100060000), 'url', 'url.requests', '{}', 1);
+
+INSERT INTO module_state (module, key, value, updated_at) VALUES
+  ('url', 'requests.plain.example.com', '8', :TS(1700100001000));

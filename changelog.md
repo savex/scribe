@@ -42,6 +42,12 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `put_module_state`; `SCHEMA_VERSION` is 2. `MemoryStore` keeps module state; the storage conformance suite
   checks module records, metric samples, flow notes and module state; the manager routes module kinds by name.
 
+- Phase 0b step 4: schema v2. Migration `0002_modules.sql` for SQLite and Postgres: `events` accepts module
+  record kinds and gains `module`; new `metrics` and `module_state` tables. New snapshots `sqlite/v2.db` and
+  `postgres/v2_seed.sql` from `seed_v2.sql`; the v1 snapshot is unchanged. `build.sh` only writes missing
+  snapshots (`--force <version>` to rebuild one); the Tests workflow loads and repeats 0002 on Postgres; both
+  backends check one migration per schema version and a snapshot for each.
+
 ### Fixed
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
   52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;

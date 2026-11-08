@@ -14,7 +14,12 @@ use scribe_storage_api::{
 
 pub const KIND: &str = "sqlite";
 
-pub const MIGRATIONS: &[&str] = &[include_str!("../migrations/0001_init.sql")];
+/// Migration `n` (1-based) brings the schema to version `n`; the list ends at
+/// [`scribe_storage_api::SCHEMA_VERSION`].
+pub const MIGRATIONS: &[&str] = &[
+    include_str!("../migrations/0001_init.sql"),
+    include_str!("../migrations/0002_modules.sql"),
+];
 
 pub struct SqliteFactory;
 
