@@ -201,6 +201,9 @@ Three counters per host and per process + host, plus time buckets (hourly propos
 | macOS service | launchd `com.scribe.daemon`; uninstaller `/Library/Application Support/scribe/uninstall.sh` | Proposed (used by e2e script) |
 | Windows service | `scribed` | Proposed (used by e2e script) |
 | Privileges | Runs as root / SYSTEM, drops privileges after the sensor starts | Proposed |
+| `scribed` flags | `--config <path>`, `--check-config` (prints the effective config as TOML, paths absolute, percentages explained), `--version` / `-V` | Decided (implemented) |
+| `scribed` exit codes | 0 success, 1 runtime failure, 2 usage or configuration error (including a bad `SCRIBE_LOG`) | Decided (implemented) |
+| `scribed` lifecycle | arguments → config → logging → create data and spool folders → storage via registry + `migrate()` (a not-implemented backend only warns) → wait for Ctrl-C or SIGTERM → flush sinks → exit 0. Windows service-manager stop arrives with phase 5 | Decided (implemented) |
 
 ## 10. Versioning and releases
 

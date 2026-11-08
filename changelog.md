@@ -34,6 +34,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - `SinkConfig` carries retention and batching settings.
 - Logging (`scribe_daemon::logging`): level with `SCRIBE_LOG` override, text or JSON, log file with daily or
   size rotation, journald (Linux) and unified logging (macOS); falls back to stderr with a warning.
+- `scribed` runs as a long-lived process: `--config`, `--check-config` and `--version`; loads the config, starts
+  logging, opens storage, waits for Ctrl-C or SIGTERM and shuts down cleanly. Exit codes 0 / 1 / 2.
 
 ### Changed
 - Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,
