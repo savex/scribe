@@ -8,7 +8,7 @@ use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use scribe_core::{Protocol, Security};
+use scribe_core::{Protocol, Security, HEAD_MAX};
 use scribe_test_support::packets::{http, tls};
 
 #[derive(Debug, Clone)]
@@ -45,7 +45,8 @@ pub struct Expected {
     pub dst: SocketAddr,
     pub hostname: Option<String>,
     pub security: Security,
-    pub url: Option<String>,
+    /// The client bytes the sensor must pass on (TCP cases), cut to [`HEAD_MAX`].
+    pub head: Option<Vec<u8>>,
 }
 
 /// Bytes the local server received; join to wait for them.
@@ -67,15 +68,12 @@ pub fn send(case: &Case) -> io::Result<(Expected, Receipt)> {
     match case {
         Case::Udp { .. } => send_udp(payload),
         _ => {
+            let head = payload[..payload.len().min(HEAD_MAX)].to_vec();
             let (dst, receipt) = send_tcp(payload)?;
-            let (hostname, security, url) = match case {
-                Case::TlsSni { host } => (Some(host.to_string()), Security::Tls, None),
-                Case::PlainHttp { host, path } => (
-                    Some(host.to_string()),
-                    Security::Plaintext,
-                    Some(format!("http://{host}{path}")),
-                ),
-                _ => (None, Security::Plaintext, None),
+            let (hostname, security) = match case {
+                Case::TlsSni { host } => (Some(host.to_string()), Security::Tls),
+                Case::PlainHttp { host, .. } => (Some(host.to_string()), Security::Plaintext),
+                _ => (None, Security::Plaintext),
             };
             Ok((
                 Expected {
@@ -83,7 +81,7 @@ pub fn send(case: &Case) -> io::Result<(Expected, Receipt)> {
                     dst,
                     hostname,
                     security,
-                    url,
+                    head: Some(head),
                 },
                 receipt,
             ))
@@ -126,7 +124,7 @@ fn send_udp(payload: Vec<u8>) -> io::Result<(Expected, Receipt)> {
         dst,
         hostname: None,
         security: Security::Unknown,
-        url: None,
+        head: None,
     };
     Ok((expected, Receipt(handle)))
 }

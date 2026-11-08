@@ -7,7 +7,7 @@
 
 use std::sync::mpsc::Sender;
 
-use scribe_core::{FlowEvent, Sensor, SensorError};
+use scribe_core::{Observation, Sensor, SensorError};
 
 #[derive(Default)]
 pub struct EbpfSensor;
@@ -21,7 +21,7 @@ impl Sensor for EbpfSensor {
         true
     }
 
-    fn start(&mut self, _out: Sender<FlowEvent>) -> Result<(), SensorError> {
+    fn start(&mut self, _out: Sender<Observation>) -> Result<(), SensorError> {
         // TODO: load and attach eBPF programs, read the ring buffer.
         Err(SensorError::Unsupported("eBPF sensor not implemented yet"))
     }

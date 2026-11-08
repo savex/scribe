@@ -44,5 +44,9 @@ expect:
     api.example.com: { connections: 1, requests: 0, bytes: 512, tls_seen: true, plaintext_seen: false }
 ```
 
+`kind: request` with `url` is shorthand: the runner builds the HTTP GET bytes a sensor would pass on
+(`FlowBuilder::http_get`, a `FlowKind::Payload` observation) and the URL module turns them into the
+`url` note. Alerts that show a URL read it from that note.
+
 Reason ids used so far: `unlisted_host`, `raw_ip`, `unusual_port`, `high_entropy`,
 `plaintext`, `new_process`, `threat_list`.

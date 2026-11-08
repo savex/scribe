@@ -6,7 +6,7 @@
 
 use std::sync::mpsc::Sender;
 
-use scribe_core::{FlowEvent, Sensor, SensorError};
+use scribe_core::{Observation, Sensor, SensorError};
 
 #[derive(Default)]
 pub struct EtwSensor;
@@ -20,7 +20,7 @@ impl Sensor for EtwSensor {
         true
     }
 
-    fn start(&mut self, _out: Sender<FlowEvent>) -> Result<(), SensorError> {
+    fn start(&mut self, _out: Sender<Observation>) -> Result<(), SensorError> {
         // TODO: open a real-time ETW session and translate events.
         Err(SensorError::Unsupported("ETW sensor not implemented yet"))
     }

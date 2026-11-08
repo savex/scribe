@@ -703,6 +703,7 @@ dependencies = [
  "scribe-core",
  "scribe-storage-api",
  "scribe-storage-conformance",
+ "serde_json",
 ]
 
 [[package]]

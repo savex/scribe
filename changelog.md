@@ -32,6 +32,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `scribe-module-api` crate: `Module`, `Manifest` with naming checks, `FlowHook`, `Source`, `Emitter`,
   `ModuleContext`, `Signal`, `Reload`, and `ConfigDoc`, which reads `[modules.<id>]` with exact line numbers.
 
+- Phase 0b step 2: `FlowEvent.url` replaced by module `notes`; `FlowKind::Request` renamed `Payload`. Sensors
+  now send `Observation`s (event plus up to `HEAD_MAX` = 4 KiB of client bytes). `FakeSensor` replays
+  observations on every start; `FlowBuilder` gains `payload`, `http_get`, `note` and `observe`. The sensor
+  conformance suite checks the client bytes instead of the URL; pcap fixture expectations moved to `notes.url`.
+
 ### Fixed
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
   52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;

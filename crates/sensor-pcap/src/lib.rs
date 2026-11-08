@@ -3,7 +3,7 @@
 
 use std::sync::mpsc::Sender;
 
-use scribe_core::{FlowEvent, Sensor, SensorError};
+use scribe_core::{Observation, Sensor, SensorError};
 
 pub struct PcapSensor {
     pub interface: Option<String>,
@@ -18,7 +18,7 @@ impl Sensor for PcapSensor {
         false
     }
 
-    fn start(&mut self, _out: Sender<FlowEvent>) -> Result<(), SensorError> {
+    fn start(&mut self, _out: Sender<Observation>) -> Result<(), SensorError> {
         // TODO: add the `pcap` crate, capture outbound SYN / UDP / DNS / ClientHello packets.
         Err(SensorError::Unsupported("pcap sensor not implemented yet"))
     }

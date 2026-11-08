@@ -258,7 +258,7 @@ fn flow_event(host: &str) -> StoredEvent {
         dst_ip: IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10)),
         dst_port: 443,
         hostname: Some(host.into()),
-        url: None,
+        notes: Default::default(),
         security: Security::Tls,
         bytes_out: 512,
         kind: FlowKind::NewFlow,

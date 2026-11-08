@@ -1,13 +1,14 @@
 use std::sync::mpsc::Sender;
 
-use crate::FlowEvent;
+use crate::Observation;
 
-/// A platform capture backend. Implementations push normalized events into `out`.
+/// A platform capture backend. Implementations push observations (normalized events plus the
+/// first client bytes) into `out`. `start` may be called again after `stop`.
 pub trait Sensor: Send {
     fn name(&self) -> &'static str;
     /// Whether events carry pid / process path.
     fn has_process_info(&self) -> bool;
-    fn start(&mut self, out: Sender<FlowEvent>) -> Result<(), SensorError>;
+    fn start(&mut self, out: Sender<Observation>) -> Result<(), SensorError>;
     fn stop(&mut self);
 }
 

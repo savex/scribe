@@ -25,6 +25,7 @@ pub struct ExpectedFlow {
     pub dst: SocketAddr,
     pub hostname: Option<&'static str>,
     pub security: &'static str,
+    /// `notes.url`: what the URL module must attach.
     pub url: Option<&'static str>,
     pub ech: bool,
 }
@@ -64,13 +65,13 @@ impl Fixture {
             .iter()
             .map(|f| {
                 format!(
-                    "    {{ \"proto\": \"{}\", \"dst_ip\": \"{}\", \"dst_port\": {}, \"hostname\": {}, \"security\": \"{}\", \"url\": {}, \"ech\": {} }}",
+                    "    {{ \"proto\": \"{}\", \"dst_ip\": \"{}\", \"dst_port\": {}, \"hostname\": {}, \"security\": \"{}\", \"notes\": {}, \"ech\": {} }}",
                     f.proto,
                     f.dst.ip(),
                     f.dst.port(),
                     json_opt(f.hostname),
                     f.security,
-                    json_opt(f.url),
+                    notes_json(f.url),
                     f.ech
                 )
             })
@@ -95,6 +96,14 @@ fn addr(s: &str) -> SocketAddr {
 
 fn json_str(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// `{ "url": "…" }` or `{}`.
+fn notes_json(url: Option<&str>) -> String {
+    match url {
+        Some(url) => format!("{{ \"url\": {} }}", json_opt(Some(url))),
+        None => "{}".to_owned(),
+    }
 }
 
 fn json_opt(s: Option<&str>) -> String {

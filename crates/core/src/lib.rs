@@ -16,7 +16,7 @@ pub const VERSION: &str = env!("SCRIBE_VERSION");
 
 pub use alert::{Alert, AlertOutput};
 pub use clock::{Clock, SystemClock};
-pub use event::{FlowEvent, FlowKind, Protocol, Security};
+pub use event::{FlowEvent, FlowKind, Observation, Protocol, Security, HEAD_MAX};
 pub use mode::Mode;
 pub use module::{MetricSample, ModuleRecord, Notes};
 pub use sensor::{Sensor, SensorError};

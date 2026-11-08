@@ -13,7 +13,7 @@ pub mod traffic;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
-use scribe_core::{FlowEvent, Sensor};
+use scribe_core::{Observation, Sensor};
 
 pub use traffic::{Case, Expected};
 
@@ -66,8 +66,12 @@ pub fn run_sensor_suite(sensor: &mut dyn Sensor, opts: &SuiteOptions) -> Result<
                     failures.push(format!("{case:?}: local server error: {err}"));
                     continue;
                 }
-                match wait_for(&rx, &expected, opts.timeout) {
-                    Some(event) => failures.extend(compare(&case, &expected, &event, opts)),
+                let seen = wait_for(&rx, &expected, opts.timeout);
+                match seen.first() {
+                    Some(first) => {
+                        failures.extend(compare(&case, &expected, &first.event, opts));
+                        failures.extend(check_head(&case, &expected, &seen));
+                    }
                     None => failures.push(format!(
                         "{case:?}: no event for {} within {:?}",
                         expected.dst, opts.timeout
@@ -86,21 +90,56 @@ pub fn run_sensor_suite(sensor: &mut dyn Sensor, opts: &SuiteOptions) -> Result<
     }
 }
 
-fn wait_for(rx: &Receiver<FlowEvent>, expected: &Expected, timeout: Duration) -> Option<FlowEvent> {
+/// Observations for the expected destination, until the expected head bytes arrived (or, when
+/// none are expected, until the first one) or the timeout ran out.
+fn wait_for(
+    rx: &Receiver<Observation>,
+    expected: &Expected,
+    timeout: Duration,
+) -> Vec<Observation> {
     let deadline = Instant::now() + timeout;
-    loop {
-        let left = deadline.checked_duration_since(Instant::now())?;
-        let event = rx.recv_timeout(left).ok()?;
-        if event.dst_ip == expected.dst.ip() && event.dst_port == expected.dst.port() {
-            return Some(event);
+    let mut seen = Vec::new();
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        let Ok(obs) = rx.recv_timeout(left) else {
+            break;
+        };
+        if obs.event.dst_ip != expected.dst.ip() || obs.event.dst_port != expected.dst.port() {
+            continue;
         }
+        seen.push(obs);
+        let done = match &expected.head {
+            None => true,
+            Some(want) => seen.iter().any(|o| head_matches(o, want)),
+        };
+        if done {
+            break;
+        }
+    }
+    seen
+}
+
+fn head_matches(obs: &Observation, want: &[u8]) -> bool {
+    // A sensor may pass on only the first segment, so a non-empty prefix of `want` counts too.
+    obs.head
+        .as_deref()
+        .is_some_and(|got| !got.is_empty() && (got.starts_with(want) || want.starts_with(got)))
+}
+
+/// The sensor must pass on the client's first bytes for TCP cases, in some observation.
+fn check_head(case: &Case, expected: &Expected, seen: &[Observation]) -> Vec<String> {
+    match &expected.head {
+        Some(want) if !seen.iter().any(|o| head_matches(o, want)) => vec![format!(
+            "{case:?}: no observation carried the first {} client bytes",
+            want.len()
+        )],
+        _ => Vec::new(),
     }
 }
 
 fn compare(
     case: &Case,
     expected: &Expected,
-    event: &FlowEvent,
+    event: &scribe_core::FlowEvent,
     opts: &SuiteOptions,
 ) -> Vec<String> {
     let mut out = Vec::new();
@@ -120,12 +159,6 @@ fn compare(
         event.hostname == expected.hostname,
         format!("{:?}", event.hostname),
         format!("{:?}", expected.hostname),
-    );
-    check(
-        "url",
-        event.url == expected.url,
-        format!("{:?}", event.url),
-        format!("{:?}", expected.url),
     );
     // UDP payloads are opaque, so only TCP cases pin the security classification.
     if expected.proto != scribe_core::Protocol::Udp {
