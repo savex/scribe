@@ -657,6 +657,7 @@ name = "scribe-storage-api"
 version = "0.1.1"
 dependencies = [
  "scribe-core",
+ "serde_json",
  "thiserror",
 ]
 
@@ -667,17 +668,20 @@ dependencies = [
  "scribe-core",
  "scribe-storage-api",
  "scribe-test-support",
+ "serde_json",
 ]
 
 [[package]]
 name = "scribe-storage-manager"
 version = "0.1.1"
 dependencies = [
+ "scribe-core",
  "scribe-storage-api",
  "scribe-storage-conformance",
  "scribe-storage-postgres",
  "scribe-storage-sqlite",
  "scribe-test-support",
+ "serde_json",
 ]
 
 [[package]]
@@ -686,6 +690,7 @@ version = "0.1.1"
 dependencies = [
  "scribe-storage-api",
  "scribe-storage-conformance",
+ "serde_json",
 ]
 
 [[package]]
@@ -694,6 +699,7 @@ version = "0.1.1"
 dependencies = [
  "scribe-storage-api",
  "scribe-storage-conformance",
+ "serde_json",
 ]
 
 [[package]]

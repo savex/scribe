@@ -7,7 +7,8 @@ use std::time::Duration;
 use scribe_core::Security;
 use scribe_storage_api::{
     AlertState, Baseline, BaselineEntry, BoxFuture, EventQuery, EventSink, Health, Host, HostDelta,
-    HostId, HostQuery, Page, Result, SinkCaps, StateStore, StorageError, StoreCaps, StoredEvent,
+    HostId, HostQuery, ModuleState, Page, Result, SinkCaps, StateStore, StorageError, StoreCaps,
+    StoredEvent,
 };
 
 /// In-memory reference [`StateStore`]. Also proves the conformance suite itself is correct.
@@ -17,6 +18,7 @@ pub struct MemoryStore {
     ips: Mutex<HashMap<IpAddr, HostId>>,
     baselines: Mutex<HashMap<String, Vec<BaselineEntry>>>,
     alerts: Mutex<HashMap<String, AlertState>>,
+    modules: Mutex<HashMap<String, ModuleState>>,
 }
 
 impl MemoryStore {
@@ -157,6 +159,35 @@ impl StateStore for MemoryStore {
 
     fn get_alert_state<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>> {
         Box::pin(async move { Ok(self.alerts.lock().unwrap().get(key).cloned()) })
+    }
+
+    fn module_state<'a>(&'a self, module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
+        Box::pin(async move {
+            Ok(self
+                .modules
+                .lock()
+                .unwrap()
+                .get(module)
+                .cloned()
+                .unwrap_or_default())
+        })
+    }
+
+    fn put_module_state<'a>(
+        &'a self,
+        module: &'a str,
+        key: &'a str,
+        value: &'a serde_json::Value,
+    ) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            self.modules
+                .lock()
+                .unwrap()
+                .entry(module.to_owned())
+                .or_default()
+                .insert(key.to_owned(), value.clone());
+            Ok(())
+        })
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {

@@ -205,6 +205,64 @@ fn routes_events_to_subscribed_sinks_only() {
 }
 
 #[test]
+fn routes_module_records_and_metrics_by_name() {
+    let (registry, created) = registry();
+    let config = StorageConfig {
+        state: backend("memory"),
+        sinks: vec![
+            sink(
+                "urls",
+                "memory",
+                vec![EventKind::parse("url.request").unwrap()],
+            ),
+            sink("metrics", "memory", vec![EventKind::Metric]),
+        ],
+    };
+    let manager = StorageManager::from_config(&registry, &config).unwrap();
+    let ts = std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let record = StoredEvent::Module(scribe_core::ModuleRecord {
+        ts,
+        module: "url".into(),
+        kind: "url.request".into(),
+        schema: 1,
+        host: Some("plain.example.com".into()),
+        payload: serde_json::json!({ "url": "http://plain.example.com/" }),
+    });
+    let other = StoredEvent::Module(scribe_core::ModuleRecord {
+        kind: "url.other".into(),
+        ..match &record {
+            StoredEvent::Module(r) => r.clone(),
+            _ => unreachable!(),
+        }
+    });
+    let metric = StoredEvent::Metric(scribe_core::MetricSample {
+        ts,
+        module: "kperf".into(),
+        name: "kperf.tcp_retrans".into(),
+        labels: Default::default(),
+        value: 1.0,
+    });
+    block_on(manager.publish(&[record, other, metric])).unwrap();
+
+    let created = created.lock().unwrap();
+    let get = |name: &str| {
+        created
+            .iter()
+            .find(|(n, _)| n == name)
+            .unwrap()
+            .1
+            .inner()
+            .events()
+    };
+    let urls = get("urls");
+    assert_eq!(urls.len(), 1);
+    assert_eq!(urls[0].kind().name(), "url.request");
+    let metrics = get("metrics");
+    assert_eq!(metrics.len(), 1);
+    assert_eq!(metrics[0].module(), Some("kperf"));
+}
+
+#[test]
 fn sink_failures_reach_the_caller() {
     let (registry, created) = registry();
     let config = StorageConfig {
@@ -247,5 +305,5 @@ fn sink_defaults() {
     assert_eq!(s.retention, Some(Duration::from_secs(30 * 86_400)));
     assert_eq!(s.batch_max_events, 500);
     assert_eq!(s.batch_max_wait, Duration::from_secs(1));
-    assert!(s.accepts(EventKind::Audit));
+    assert!(s.accepts(&EventKind::Audit));
 }

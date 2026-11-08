@@ -6,6 +6,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+serde_json.workspace = true
 scribe-storage-api.workspace = true
 # TODO: tokio-postgres (or sqlx with the postgres feature)
 

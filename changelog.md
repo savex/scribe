@@ -37,6 +37,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   observations on every start; `FlowBuilder` gains `payload`, `http_get`, `note` and `observe`. The sensor
   conformance suite checks the client bytes instead of the URL; pcap fixture expectations moved to `notes.url`.
 
+- Phase 0b step 3: storage interface for modules. `EventKind` gains `Metric` and `Module("<module>.<name>")`
+  with `name` / `parse`; `StoredEvent` gains `Metric` and `Module`; `StateStore` gains `module_state` and
+  `put_module_state`; `SCHEMA_VERSION` is 2. `MemoryStore` keeps module state; the storage conformance suite
+  checks module records, metric samples, flow notes and module state; the manager routes module kinds by name.
+
 ### Fixed
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
   52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;

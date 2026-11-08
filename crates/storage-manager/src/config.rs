@@ -38,8 +38,8 @@ impl SinkConfig {
 }
 
 impl SinkConfig {
-    pub fn accepts(&self, kind: EventKind) -> bool {
-        self.events.is_empty() || self.events.contains(&kind)
+    pub fn accepts(&self, kind: &EventKind) -> bool {
+        self.events.is_empty() || self.events.contains(kind)
     }
 }
 

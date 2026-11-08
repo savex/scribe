@@ -2,7 +2,8 @@
 //!
 //! Storage is split into two roles:
 //! - [`StateStore`] (exactly one): hosts, counters, baselines, alert state. Read on the hot path.
-//! - [`EventSink`] (zero or more): append-only flow, alert and audit records.
+//! - [`StateStore`] also keeps each module's state (key → JSON value).
+//! - [`EventSink`] (zero or more): append-only flow, alert, audit, metric and module records.
 //!
 //! Backends register a [`StorageFactory`] with the storage manager.
 

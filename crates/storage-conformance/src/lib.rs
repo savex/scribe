@@ -15,11 +15,12 @@ use std::task::{Context, Poll, Wake, Waker};
 use std::thread::{self, Thread};
 use std::time::{Duration, SystemTime};
 
-use scribe_core::{FlowEvent, FlowKind, Protocol, Security};
+use scribe_core::{FlowEvent, FlowKind, MetricSample, ModuleRecord, Protocol, Security};
 use scribe_storage_api::{
     AlertState, AuditRecord, BaselineEntry, EntrySource, EventKind, EventQuery, EventSink,
     HostDelta, HostQuery, StateStore, StoredEvent,
 };
+use serde_json::json;
 
 /// Minimal executor so the suite does not pull in an async runtime.
 pub fn block_on<F: Future>(fut: F) -> F::Output {
@@ -50,6 +51,7 @@ pub async fn state_store_suite(store: &dyn StateStore) {
     list_hosts_paginates(store).await;
     baseline_round_trip(store).await;
     alert_state_round_trip(store).await;
+    module_state_round_trip(store).await;
 }
 
 pub async fn event_sink_suite(sink: &dyn EventSink) {
@@ -60,8 +62,10 @@ pub async fn event_sink_suite(sink: &dyn EventSink) {
 
     let batch = vec![
         flow_event("a.example"),
-        flow_event("b.example"),
+        noted_flow_event("b.example"),
         audit_event("started"),
+        metric_event("kperf.tcp_retrans", 3.0),
+        module_event("url.request", "http://plain.example.com/download"),
     ];
     sink.write_batch(&batch).await.expect("write_batch");
     sink.flush().await.expect("flush");
@@ -70,7 +74,20 @@ pub async fn event_sink_suite(sink: &dyn EventSink) {
         return;
     }
     let all = sink.query(&EventQuery::default()).await.expect("query all");
-    assert_eq!(all.items.len(), 3, "all written events are returned");
+    assert_eq!(all.items.len(), 5, "all written events are returned");
+    let noted = all
+        .items
+        .iter()
+        .find_map(|e| match e {
+            StoredEvent::Flow(f) if !f.notes.is_empty() => Some(f),
+            _ => None,
+        })
+        .expect("flow notes are kept");
+    assert_eq!(
+        noted.notes.get_str("url"),
+        Some("http://plain.example.com/b"),
+        "flow notes round-trip"
+    );
 
     let flows = sink
         .query(&EventQuery {
@@ -81,6 +98,45 @@ pub async fn event_sink_suite(sink: &dyn EventSink) {
         .expect("query flows");
     assert_eq!(flows.items.len(), 2, "kind filter");
     assert!(flows.items.iter().all(|e| e.kind() == EventKind::Flow));
+
+    let module = sink
+        .query(&EventQuery {
+            kinds: vec![EventKind::parse("url.request").unwrap()],
+            ..Default::default()
+        })
+        .await
+        .expect("query module records");
+    assert_eq!(module.items.len(), 1, "module record kind filter");
+    match &module.items[0] {
+        StoredEvent::Module(r) => {
+            assert_eq!((r.module.as_ref(), r.kind.as_ref()), ("url", "url.request"));
+            assert_eq!(r.schema, 1);
+            assert_eq!(r.host.as_deref(), Some("plain.example.com"));
+            assert_eq!(
+                r.payload,
+                json!({ "url": "http://plain.example.com/download" }),
+                "module payload round-trips"
+            );
+        }
+        other => panic!("expected a module record, got {other:?}"),
+    }
+
+    let metrics = sink
+        .query(&EventQuery {
+            kinds: vec![EventKind::Metric],
+            ..Default::default()
+        })
+        .await
+        .expect("query metrics");
+    assert_eq!(metrics.items.len(), 1, "metric kind filter");
+    match &metrics.items[0] {
+        StoredEvent::Metric(m) => {
+            assert_eq!(m.name, "kperf.tcp_retrans");
+            assert_eq!(m.value, 3.0);
+            assert_eq!(m.labels.get("iface").map(String::as_str), Some("eth0"));
+        }
+        other => panic!("expected a metric sample, got {other:?}"),
+    }
 
     let limited = sink
         .query(&EventQuery {
@@ -233,6 +289,39 @@ async fn alert_state_round_trip(store: &dyn StateStore) {
     assert!(got.acknowledged);
 }
 
+async fn module_state_round_trip(store: &dyn StateStore) {
+    let empty = store.module_state("url").await.expect("module_state");
+    assert!(empty.is_empty(), "a module with no state gets an empty map");
+
+    store
+        .put_module_state("url", "requests", &json!(1))
+        .await
+        .expect("put");
+    store
+        .put_module_state("url", "last", &json!({ "host": "plain.example.com" }))
+        .await
+        .expect("put");
+    store
+        .put_module_state("url", "requests", &json!(2))
+        .await
+        .expect("overwrite");
+    store
+        .put_module_state("kperf", "requests", &json!("other"))
+        .await
+        .expect("put other module");
+
+    let url = store.module_state("url").await.expect("module_state");
+    assert_eq!(url.len(), 2);
+    assert_eq!(url["requests"], json!(2), "put replaces the value");
+    assert_eq!(url["last"], json!({ "host": "plain.example.com" }));
+    let kperf = store.module_state("kperf").await.expect("module_state");
+    assert_eq!(
+        kperf["requests"],
+        json!("other"),
+        "modules don't share keys"
+    );
+}
+
 fn now() -> SystemTime {
     SystemTime::now()
 }
@@ -262,6 +351,36 @@ fn flow_event(host: &str) -> StoredEvent {
         security: Security::Tls,
         bytes_out: 512,
         kind: FlowKind::NewFlow,
+    })
+}
+
+fn noted_flow_event(host: &str) -> StoredEvent {
+    let StoredEvent::Flow(mut flow) = flow_event(host) else {
+        unreachable!()
+    };
+    flow.notes
+        .insert("url", json!("http://plain.example.com/b"));
+    StoredEvent::Flow(flow)
+}
+
+fn metric_event(name: &'static str, value: f64) -> StoredEvent {
+    StoredEvent::Metric(MetricSample {
+        ts: now(),
+        module: name.split('.').next().unwrap().into(),
+        name: name.into(),
+        labels: [("iface".to_owned(), "eth0".to_owned())].into(),
+        value,
+    })
+}
+
+fn module_event(kind: &'static str, url: &str) -> StoredEvent {
+    StoredEvent::Module(ModuleRecord {
+        ts: now(),
+        module: kind.split('.').next().unwrap().into(),
+        kind: kind.into(),
+        schema: 1,
+        host: Some("plain.example.com".into()),
+        payload: json!({ "url": url }),
     })
 }
 

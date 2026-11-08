@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::{
     AlertState, Baseline, BaselineEntry, EventQuery, Health, Host, HostDelta, HostId, HostQuery,
-    Page, Result, SinkCaps, StorageError, StoreCaps, StoredEvent,
+    ModuleState, Page, Result, SinkCaps, StorageError, StoreCaps, StoredEvent,
 };
 
 /// Boxed future so the traits stay object-safe without extra crates.
@@ -36,10 +36,20 @@ pub trait StateStore: Send + Sync {
     fn put_alert_state<'a>(&'a self, state: &'a AlertState) -> BoxFuture<'a, Result<()>>;
     fn get_alert_state<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>>;
 
+    /// Every key a module stored; empty for a module that stored nothing.
+    fn module_state<'a>(&'a self, module: &'a str) -> BoxFuture<'a, Result<ModuleState>>;
+    /// Insert or replace one key of a module's state.
+    fn put_module_state<'a>(
+        &'a self,
+        module: &'a str,
+        key: &'a str,
+        value: &'a serde_json::Value,
+    ) -> BoxFuture<'a, Result<()>>;
+
     fn health(&self) -> BoxFuture<'_, Health>;
 }
 
-/// Append-only destination for flow, alert and audit records.
+/// Append-only destination for flow, alert, audit, metric and module records.
 pub trait EventSink: Send + Sync {
     fn name(&self) -> &str;
     fn capabilities(&self) -> SinkCaps;

@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use scribe_storage_api::{
     not_implemented, required_option, AlertState, BackendOptions, Baseline, BaselineEntry,
-    BoxFuture, EventQuery, EventSink, Health, Host, HostDelta, HostId, HostQuery, Page, Result,
-    SinkCaps, StateStore, StorageFactory, StoreCaps, StoredEvent,
+    BoxFuture, EventQuery, EventSink, Health, Host, HostDelta, HostId, HostQuery, ModuleState,
+    Page, Result, SinkCaps, StateStore, StorageFactory, StoreCaps, StoredEvent,
 };
 
 pub const KIND: &str = "sqlite";
@@ -97,6 +97,19 @@ impl StateStore for SqliteStore {
 
     fn get_alert_state<'a>(&'a self, _key: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>> {
         not_implemented("sqlite: get_alert_state")
+    }
+
+    fn module_state<'a>(&'a self, _module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
+        not_implemented("sqlite: module_state")
+    }
+
+    fn put_module_state<'a>(
+        &'a self,
+        _module: &'a str,
+        _key: &'a str,
+        _value: &'a serde_json::Value,
+    ) -> BoxFuture<'a, Result<()>> {
+        not_implemented("sqlite: put_module_state")
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {

@@ -431,7 +431,7 @@ fn converts_sinks_for_the_storage_manager() {
     assert_eq!(sink.retention, None);
     assert_eq!(sink.batch_max_events, 10);
     assert_eq!(sink.batch_max_wait.as_secs(), 5);
-    assert!(sink.accepts(EventKind::Alert) && !sink.accepts(EventKind::Flow));
+    assert!(sink.accepts(&EventKind::Alert) && !sink.accepts(&EventKind::Flow));
 }
 
 #[test]

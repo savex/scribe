@@ -52,7 +52,7 @@ impl StorageManager {
         for (cfg, sink) in &self.sinks {
             let selected: Vec<StoredEvent> = events
                 .iter()
-                .filter(|e| cfg.accepts(e.kind()))
+                .filter(|e| cfg.accepts(&e.kind()))
                 .cloned()
                 .collect();
             if !selected.is_empty() {
