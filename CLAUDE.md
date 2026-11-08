@@ -10,7 +10,9 @@ commit when a decision changes.
 
 ## Rules
 
-- Minimum Rust is 1.70: no language or std features newer than that; check new dependencies' `rust-version`.
+- Minimum Rust version follows the dependencies (currently 1.89, `rust-version` in `Cargo.toml`). Raise it only
+  when a dependency needs it, in the same commit as that dependency, and record the reason in the conventions skill.
+  Don't pin a crate to an old release just to avoid a raise.
 - Before committing: `cargo fmt --all`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
   `cargo test --workspace --all-features`.
 - `testdata/pcap/` and `fuzz/corpus/` are generated: edit `crates/test-support/src/fixtures.rs` and run

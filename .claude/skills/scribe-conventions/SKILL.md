@@ -68,7 +68,8 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | Item | Value | State |
 |---|---|---|
 | Core language | Rust (edition 2021) | Decided |
-| Minimum Rust version | 1.70 (`rust-version` in `Cargo.toml`; checked by the Tests workflow) | Decided |
+| Minimum Rust version | **1.89** (`rust-version` in `Cargo.toml`; the Tests workflow builds with exactly that version) | Decided |
+| Minimum version policy | *Follow dependencies*: the minimum is what the dependencies need. Raise it only when a dependency requires it, in the same commit, and add a row to the history below. Prefer staying ≥ 2 releases behind stable. No crate is pinned to an old release just to avoid a raise | Decided |
 | Development toolchain | current stable | Decided |
 | macOS capture piece | Swift System Extension (`NEFilterDataProvider`) talking to the daemon over XPC | Decided |
 | Windows capture | ETW from user mode first; WFP driver / WinDivert only for later blocking | Decided |
@@ -81,6 +82,14 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | Formatting / lint | `cargo fmt`; `cargo clippy -- -D warnings` must pass | Decided |
 | Line endings | LF everywhere (`.gitattributes`), binary fixtures marked binary | Decided |
 | Time in production code | Read through the `Clock` interface so tests can control it | Decided |
+
+**Minimum Rust version history**
+
+| Version | Date | Reason |
+|---|---|---|
+| 1.70 | 2026-10 | Initial skeleton, matched the toolchain installed at the time |
+| 1.89 | 2026-11-08 | Policy *follow dependencies* adopted; rusqlite (phase 1) and notify-rust (phase 11) need 1.89, tonic and proptest 1.88, tokio and clap 1.85 |
+| 1.98 (expected) | phase 7 | aya 0.16 for the eBPF sensor |
 
 **Planned libraries** (proposed, add when implementing): `tokio`, `serde`, `toml`, `tracing`,
 `thiserror`, `rusqlite` (bundled), `tokio-postgres` + `deadpool`, `aya`, `windows`, `pcap`,

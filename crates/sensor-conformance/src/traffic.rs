@@ -53,12 +53,9 @@ pub struct Receipt(JoinHandle<io::Result<Vec<u8>>>);
 
 impl Receipt {
     pub fn wait(self) -> io::Result<Vec<u8>> {
-        self.0.join().unwrap_or_else(|_| {
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                "server thread panicked",
-            ))
-        })
+        self.0
+            .join()
+            .unwrap_or_else(|_| Err(io::Error::other("server thread panicked")))
     }
 }
 

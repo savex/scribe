@@ -19,7 +19,7 @@ Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe
 
 | # | Phase | Main work | Prod LOC | Test LOC | Planned (days) | Status | Remaining (days) |
 |---|---|---|---|---|---|---|---|
-| 0 | **Foundations** | Upgrade Rust; add tokio, serde, toml, tracing, thiserror; config loading; logging; CI on Linux, macOS and Windows | 400 | 50 | 2–3 | **~70%** — Rust upgraded (stable for development, 1.70 minimum kept), CI and versioning done. Left: dependencies, config loading, logging | 1–1.5 |
+| 0 | **Foundations** | Upgrade Rust; add tokio, serde, toml, tracing, thiserror; config loading; logging; CI on Linux, macOS and Windows | 400 | 50 | 2–3 | **~70%** — Rust upgraded (stable for development, minimum 1.89 by policy), CI and versioning done. Left: dependencies, config loading, logging | 1–1.5 |
 | 1 | **SQLite backend** | rusqlite (bundled), migration runner, every StateStore and EventSink method, JSON payloads, WAL; must pass conformance | 900 | 250 | 4–5 | **~10%** — v1 schema and snapshot, stubs; conformance tests written and waiting | 3.5–4.5 |
 | 2 | **Storage manager** | Per-sink async writer tasks, batching, LRU cache, spool and replay, retention, health checks | 800 | 400 | 5–6 | **~15%** — registry, config types, simple fan-out; `FaultySink` ready for tests | 4.5–5.5 |
 | 3 | **Enrichment** | DNS answer parser and IP-to-host cache, TLS ClientHello SNI, HTTP request and URL parsing, QUIC Initial decryption for SNI (`ring` 0.17); parser tests on recorded sample traffic | 1,200 | 500 | 7–9 | **~10%** — TLS detection, DNS cache; fixtures and fuzz seeds ready except QUIC | 6–8 |
@@ -64,7 +64,7 @@ In this order, because each one turns existing tests and data into real coverage
 |---|---|
 | Storage backends limited to SQLite and Postgres | ClickHouse, OpenSearch, file sinks and external gRPC storage plugins dropped |
 | `ring` 0.17 for QUIC Initial decryption | Phase 3 adds a C-compiled dependency; fixture checked against RFC 9001 Appendix A |
-| Rust 1.70 kept as the minimum version, development on current stable | New dependencies may need older versions pinned (risk 6) |
+| Minimum Rust version follows the dependencies: 1.89 now, 1.98 expected in phase 7 (aya) | No crates pinned to old releases; each raise lands with the dependency that needs it (was risk 6) |
 | All test workflows manual, only Release and Version tracking automatic | The test approach's "nightly" stage is run by hand |
 | Versions come from `v*` git tags | Release work in phase 13 is down to installers and signing |
 | Default paths: OS defaults on Linux / macOS, logs in `/var/log/scribe/`; on Windows config, data and log file next to the app, logs to the Event Viewer when configured (`log.output`) | Phase 0 config and logging, phase 13 installers create these folders |
@@ -79,7 +79,7 @@ In this order, because each one turns existing tests and data into real coverage
 3. **Windows packet contents:** ETW gives flows but not payloads, so SNI needs Npcap. A WFP driver would remove that dependency but requires EV signing; leave it for a later blocking feature.
 4. **Hostname visibility:** DNS-over-HTTPS and Encrypted Client Hello hide hostnames. Detect and report these flows as "unresolved" rather than dropping them.
 5. **Alert fatigue:** caution mode's scoring will need tuning on real traffic. Plan for a round of adjustments after M1.
-6. **Minimum Rust version 1.70:** the latest versions of several common crates already need newer Rust (e.g. RustCrypto `aes` needs 1.89, `aws-lc-rs` 1.71). Expect to pin older versions or raise the minimum; decide before phase 1 adds the first dependencies.
+6. **Minimum Rust version (resolved):** policy *follow dependencies*, 1.89 now. Remaining risk: a dependency may require a very recent Rust (aya 0.16 needs 1.98); that's accepted, since release binaries are built on current stable.
 
 ## Not included
 - **Tauri UI:** about 4–6k LOC (TypeScript + Rust), 20–30 days. Test folders and mock API data already exist.

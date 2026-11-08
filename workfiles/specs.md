@@ -173,7 +173,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-11 | Robust parsing | Packet parsers never crash or hang on malformed input; fuzzed, crash-free for 7 runs in a row before release | Planned |
 | NFR-12 | Privacy | Store connection metadata only, never payloads; redact URL query values by default (section 12.2); data leaves the host only through sinks the admin configures | Decided (URL redaction), Proposed (rest) |
 | NFR-13 | Portability | Prebuilt binaries for `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Implemented (archives) |
-| NFR-14 | Build | Minimum Rust 1.70 today; raising it is an open decision (plan risk 6) | Open |
+| NFR-14 | Build | Minimum Rust version follows the dependencies: 1.89 now, raised only when a dependency needs it (expected 1.98 with the eBPF sensor); CI builds with exactly that version | Decided |
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
 | NFR-16 | Extensibility | New backends and sensors must pass their conformance suites | Implemented |
 
@@ -576,7 +576,7 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 
 | # | Question | Answer / state |
 |---|---|---|
-| 1 | Minimum Rust version: keep 1.70 with the fallback resolver, or raise to 1.85 (plan risk 6) | **Open** |
+| 1 | Minimum Rust version | **Answered:** policy *follow dependencies*; 1.89 now, 1.98 expected for the eBPF sensor (NFR-14) |
 | 2 | Default config and data paths per OS | **Answered:** OS defaults on Linux and macOS; on Windows config next to the app (`<install dir>\scribe.toml`); data `<install dir>\data\` (section 9.1) |
 | 3 | Scores, threshold, usual ports, threat lists | **Answered:** draft v1 config [config/scribe.toml](../config/scribe.toml) with all defaults (section 8.3) |
 | 4 | Behaviour when the state store is unavailable | **Answered:** in-memory buffer of the latest events, oldest dropped on overflow (FR-25) |

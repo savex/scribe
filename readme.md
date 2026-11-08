@@ -77,7 +77,7 @@ GitHub Release. Pushing a `v*` tag by hand starts **Release** too.
 | Release | push of a `v*` tag (or started by Bump version) | verify tag, test, build 4 targets, publish release |
 | Version tracking | every push to `main` | `Cargo.toml` vs tags, version report |
 | Bump version | manual | next version, commit, tag, start Release |
-| Tests | manual | fmt, clippy, Rust 1.70 check, tests on 3 OSes, fixtures, SQLite / Postgres |
+| Tests | manual | fmt, clippy, minimum-Rust-version check, tests on 3 OSes, fixtures, SQLite / Postgres |
 | Sensor tests | manual | privileged sensor conformance on 3 OSes |
 | Fuzz | manual | cargo-fuzz on the parsers |
 | UI tests | manual | Vitest + Playwright against the mock API (skips until the UI exists) |

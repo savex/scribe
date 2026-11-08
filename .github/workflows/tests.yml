@@ -41,11 +41,20 @@ jobs:
         run: scripts/version.sh check
 
   msrv:
-    name: Minimum Rust version (1.70)
+    name: Minimum Rust version (from Cargo.toml)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.70.0
+      - name: Read rust-version
+        id: msrv
+        run: |
+          version=$(sed -n 's/^rust-version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)
+          [[ -n $version ]] || { echo "::error::rust-version not found in Cargo.toml"; exit 1; }
+          echo "Minimum Rust version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-targets --all-features --locked
 

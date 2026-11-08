@@ -97,7 +97,7 @@ impl StateStore for MemoryStore {
                 .filter(|h| {
                     q.name_contains
                         .as_deref()
-                        .map_or(true, |s| h.name.contains(s))
+                        .is_none_or(|s| h.name.contains(s))
                 })
                 .cloned()
                 .collect();
@@ -206,8 +206,8 @@ impl EventSink for MemorySink {
             let items = events
                 .iter()
                 .filter(|e| q.kinds.is_empty() || q.kinds.contains(&e.kind()))
-                .filter(|e| q.since.map_or(true, |t| e.ts() >= t))
-                .filter(|e| q.until.map_or(true, |t| e.ts() < t))
+                .filter(|e| q.since.is_none_or(|t| e.ts() >= t))
+                .filter(|e| q.until.is_none_or(|t| e.ts() < t))
                 .skip(q.offset)
                 .take(q.limit.unwrap_or(usize::MAX))
                 .cloned()
@@ -283,8 +283,7 @@ impl<S: EventSink> EventSink for FaultySink<S> {
         }
         if self.failing.load(Ordering::SeqCst) {
             return Box::pin(async {
-                Err(StorageError::Backend(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Err(StorageError::Backend(Box::new(std::io::Error::other(
                     "injected failure",
                 ))))
             });
