@@ -22,10 +22,16 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   API transport and server checks in the daemon commands, proposed security config keys (specs 9.1.1),
   security verification and test cases, open questions 11–13; plan spreads the work over phases 5–14
   (+14.5 days; totals 108–135 days, 99.5–125.5 remaining).
+- Proposed module framework (specs 7.4, FR-32 – FR-35, NFR-20, schema v2 in 10.3): features as compiled-in
+  modules with generic outputs (flow notes, module records, metric samples, module state), URL tracking as
+  the first module, kernel metrics as the example of a later one; `privacy.url_query` to move to
+  `[modules.url] query`. Plan adds phase 0b (8–10 days) and 2 days in phase 10; conventions skill section 9b,
+  test approach section 7a, status updated.
 
 ### Fixed
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
-  52 → 51.5); corrected in the new totals.
+  52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;
+  corrected with the module framework totals. The skill's M2 and M3 figures had not been updated; now current.
 - Workspace version in `Cargo.toml` / `Cargo.lock` synced to 0.1.1 to match the `v0.1.1` tag
   (`scripts/version.sh check` failed with 0.1.0).
 

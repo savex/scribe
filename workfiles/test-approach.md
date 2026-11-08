@@ -141,6 +141,19 @@ The test runner loads the scenario, plays the events through the pipeline, and c
 
 **Adding a new storage backend:** it must pass the whole conformance suite before it can be registered in `Registry::with_builtin`.
 
+## 7a. Modules — isolated tests (proposed)
+
+| Test | How | When |
+|---|---|---|
+| **Conformance suite** (`crates/module-conformance`) | Every module: start, stop and start again; pause and resume; config errors with line numbers; reload live vs needs-restart; flow-hook time budget; no panic on fuzzed payloads; versioned record schemas; undeclared API calls refused | every PR |
+| URL module | `http_plain` and other plaintext fixtures through the flow hook; the URL privacy table (specs 12.2) for every `query` value; request parser fuzzed | every PR |
+| Isolation (NFR-20) | A test module that is slow, floods records or panics: capture, storage and other modules keep running, drops are counted, health turns degraded | every PR |
+| Storage | Storage conformance cases for module records, metric samples and module state; schema v2 snapshot migrated from v1 | every PR |
+| Daemon | `hibernate` pauses every module, `wakeup` resumes them; `reset --config` reconfigures them; `daemon status` shows each module | every PR |
+| Kernel probes | Modules that use `ProbeHost` run in the privileged sensor stage (section 5.2) | nightly |
+
+**Adding a new module:** it must pass the whole module conformance suite before it can be registered in `ModuleRegistry`.
+
 ## 8. Integration and end-to-end tests
 
 - **Integration (nightly, per OS):** the real daemon with the real sensor and SQLite, in a VM. A traffic generator makes scripted connections, and the test checks the result through the CLI (`scribe hosts`, `scribe status`).
@@ -190,6 +203,7 @@ crates/
                          RecordingAlertSink, MockApiServer, scenario runner
   storage-conformance/   (exists) storage contract suite
   sensor-conformance/    sensor contract suite + traffic generator
+  module-conformance/    (proposed) module contract suite
   */tests/               isolated component tests per crate
 fuzz/                    cargo-fuzz targets for parsers
 testdata/

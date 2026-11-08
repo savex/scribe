@@ -1,6 +1,6 @@
 # scribe specification
 
-*Version 0.6 (draft), 2026-11-08: security design carried into the daemon commands, API, run states, config keys, verification and open questions. 0.5: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
+*Version 0.7 (draft), 2026-11-08: adds the module framework (section 7.4, all Proposed) with URL tracking as the first module and kernel metrics as the example of a later one. 0.6: security design carried into the daemon commands, API, run states, config keys, verification and open questions. 0.5: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
 Built from [plan.md](plan.md), [diagram.md](diagram.md), [status.md](status.md) and the
 [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md). When they disagree,
 the code and the skill win; update this document in the same commit.
@@ -51,6 +51,8 @@ and whether it used TLS. It learns what normal looks like and reports what doesn
 | SNI | Server Name Indication: the host name a TLS client sends in clear in its first message |
 | ECH | Encrypted Client Hello: hides the real SNI behind a provider's public name |
 | QUIC | UDP-based transport under HTTP/3; its first packets can be decrypted to read the SNI |
+| Module | A compiled-in feature of `scribed` that plugs into the pipeline through `scribe-module-api` (section 7.4): URL tracking now, kernel metrics and others later |
+| Flow note | A module's typed value attached to a flow, e.g. the URL of a plaintext HTTP request |
 
 ## 3. Actors
 
@@ -122,7 +124,7 @@ The fleet operator adds a PostgreSQL event sink to each host's config, subscribe
 The admin installs a package (`.deb` / `.rpm`, notarized `.pkg`, MSI); the service starts and reports healthy. Upgrades keep hosts, counters, baselines and mode. Uninstall removes the service and binaries, and the data only on request. Covered by `tests/e2e/`.
 
 ### UC-11 Extend scribe
-A developer adds a storage backend by implementing `StorageFactory` plus `StateStore` and / or `EventSink`, or a sensor by implementing `Sensor`. It's accepted only after passing `scribe-storage-conformance` or `scribe-sensor-conformance`.
+A developer adds a storage backend by implementing `StorageFactory` plus `StateStore` and / or `EventSink`, a sensor by implementing `Sensor`, or a module (new functionality such as kernel metrics) by implementing `Module`. It's accepted only after passing `scribe-storage-conformance`, `scribe-sensor-conformance` or `scribe-module-conformance`.
 
 ### UC-12 Check and control the running daemon
 1. Monitoring or a service manager runs `scribe daemon health` every minute and acts on exit code `1`.
@@ -143,7 +145,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-5 | For ECH, record the outer public name and flag the flow `ech` | Planned | Fixture `tls_ech` |
 | FR-6 | For QUIC, read the SNI from the Initial packet (using `ring` 0.17) | Planned | Fixture to be checked against RFC 9001 Appendix A |
 | FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Planned | Scenario `hostname-unresolved`; fixture `doh` |
-| FR-8 | Record the full URL for plaintext HTTP requests | Planned | Fixture `http_plain` |
+| FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Planned | Fixture `http_plain`; module conformance |
 | FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Planned | Scenario `counters-exact`; storage conformance |
 | FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Stub | Storage conformance |
 | FR-11 | Support the modes `learn`, `caution` and `alert` with the behaviour in section 8 | Planned | Scenarios |
@@ -161,12 +163,16 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-23 | Report the version from the nearest git tag (`scribe --version`, `scribed --version`) | Implemented | Release workflow smoke check |
 | FR-24 | Export hosts and baselines | Planned | — |
 | FR-25 | While the state store is unavailable, keep the latest events in a bounded in-memory buffer; when full, drop the oldest to add the newest; count drops; replay in order on recovery | Planned | `FaultySink`-style state-store tests (planned) |
-| FR-26 | Store plaintext URLs according to `privacy.url_query`; always remove user info (`user:password@`) | Planned | Unit tests (planned); fixture `http_plain` |
+| FR-26 | Store plaintext URLs according to `[modules.url] query` (formerly `privacy.url_query`); always remove user info (`user:password@`) | Planned | Unit tests (planned); fixture `http_plain` |
 | FR-27 | `scribe daemon status` shows the run state, live counters and critical metrics (section 6.2.1); `scribe status` is its short form | Planned | API tests; CLI output tests with `MockApiServer` |
 | FR-28 | `scribe daemon health` reports healthy / degraded / unhealthy with reasons, exits `0` / `1`, and answers within its timeout; also over `grpc.health.v1` | Planned | Daemon tests with `FaultySink` and a stopped `FakeSensor`; mock `daemon-down` |
 | FR-29 | `scribe daemon reset` clears runtime counters and caches and reloads the config without a restart; never changes stored history; an invalid config is rejected and the running one kept | Planned | Daemon tests; config error table reused for reload |
 | FR-30 | `scribe daemon hibernate [--for]` stops capture and processing while the daemon keeps serving the API; the pause is capped by `daemon.max_hibernate`, raises an alert, and is recorded and visible | Planned | Daemon tests with `FakeSensor` and `FakeClock`; sensor conformance (stop and start again) |
 | FR-31 | `scribe daemon wakeup` (or the end of `--for`) resumes processing with the same mode, baseline and caches | Planned | Same as FR-30 |
+| FR-32 | Load features as compiled-in modules through a registry; enable them with `[modules] enabled`; a module that isn't built or enabled costs nothing at run time | Proposed | Module conformance; daemon tests |
+| FR-33 | Modules produce data only through the generic outputs: flow notes, module records, metric samples and module state (section 7.4.3) | Proposed | Storage and module conformance |
+| FR-34 | Modules may add an API service and CLI subcommands; `scribe modules` lists modules with version, state and health; calls to a module that isn't enabled fail clearly | Proposed | API tests; CLI tests with `MockApiServer` |
+| FR-35 | Modules follow the daemon run states: paused by `hibernate`, resumed by `wakeup`, reconfigured by `reset --config` | Proposed | Module conformance (pause / resume, reload) |
 
 ### 5.2 Non-functional
 
@@ -187,10 +193,11 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-13 | Portability | Prebuilt binaries for `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Implemented (archives) |
 | NFR-14 | Build | Minimum Rust version follows the dependencies: 1.89 now, raised only when a dependency needs it (expected 1.98 with the eBPF sensor); CI builds with exactly that version | Decided |
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
-| NFR-16 | Extensibility | New backends and sensors must pass their conformance suites | Implemented |
+| NFR-16 | Extensibility | New backends, sensors and modules must pass their conformance suites | Implemented (backends, sensors); Proposed (modules) |
 | NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Proposed |
 | NFR-18 | Tamper evidence | Audit and alert records are hash-chained; hosts send heartbeats to the remote sink, so stopped daemons and deleted rows are visible | Proposed |
 | NFR-19 | Release integrity | Release checksums signed, build provenance attested, dependencies checked by `cargo deny` / `cargo audit` | Proposed |
+| NFR-20 | Module isolation | A slow, failing or panicking module never blocks capture, storage or other modules: per-flow time budget, bounded queues with counted drops, a panic disables only that module and reports degraded health | Proposed |
 
 ## 6. Entry points
 
@@ -222,6 +229,8 @@ Talks to `scribed` through the local API.
 | `scribe baseline add\|rm <host>` | Edit the active profile's baseline | Planned |
 | `scribe export` | Dump hosts and baseline | Stub |
 | `scribe daemon <command>` | Inspect and control the running daemon (section 6.2.1) | Planned |
+| `scribe modules [--json]` | Modules built into this `scribed`: id, version, enabled, state, health, drops | Proposed |
+| `scribe <module> …` | Subcommands a module adds, e.g. `scribe url list --host api.example.com`, later `scribe metrics show tcp.retrans`; exit `1` with *module url is not enabled* when the daemon lacks it | Proposed |
 
 Exit codes: `0` success, `1` failure (including "not implemented yet"), `2` usage error. `scribed` uses the same codes, with `2` also for configuration errors.
 
@@ -249,7 +258,7 @@ and `wake` as an alias of `wakeup` (Proposed).
 ### 6.3 Local API
 
 gRPC (`tonic`) over a Unix socket (Linux, macOS) or named pipe (Windows); **Planned**. Its calls follow the CLI and the UI mock data in `ui/tests/mocks/api-scenarios/`:
-status, list hosts (paged, filtered), list / stream alerts, acknowledge alert, set mode, get / edit baseline, export, and the daemon controls `Health`, `Reset` (targets: counters, caches, config), `Hibernate` (optional duration) and `Wakeup`. `Health` is also served through the standard gRPC health protocol (`grpc.health.v1`, `tonic-health`) so generic tools can probe it. The API reports `api_version` so the UI can detect a mismatch.
+status, list hosts (paged, filtered), list / stream alerts, acknowledge alert, set mode, get / edit baseline, export, and the daemon controls `Health`, `Reset` (targets: counters, caches, config), `Hibernate` (optional duration) and `Wakeup`. `Health` is also served through the standard gRPC health protocol (`grpc.health.v1`, `tonic-health`) so generic tools can probe it. Module calls (Proposed, section 7.4.5): `ListModules` and `ModuleStatus` in the core service; each module may bring its own service in `proto/scribe/v1/modules/<id>.proto`, served only when the module is enabled. The API reports `api_version` so the UI can detect a mismatch.
 
 Access (Proposed, extends NFR-9): the daemon checks the caller's identity from the socket (`SO_PEERCRED` on Linux, `getpeereid` on macOS, the named-pipe client token on Windows). Read calls (status, health, hosts, alerts, export) are allowed to everyone who may open the socket (root / Administrators and the `scribe` group); control calls (`Reset`, `Hibernate`, `Wakeup`, set mode, acknowledge, baseline edits) only to root / Administrators and the `scribe-admin` group (group names Proposed). Every control call is logged with the caller, the call and the result, and stored as an `audit` event; refused calls too. The identity comes from the OS once per connection and is attached to the request; identity fields inside messages are ignored. Transport hardening (socket in a `root:scribe` `0750` directory, named-pipe access list with `first_pipe_instance` and `reject_remote_clients`, clients checking the server, message size, timeout and stream limits, `export` streamed and written by the CLI as the caller) is in section 12.1.1. There is no TCP listener.
 
@@ -282,7 +291,10 @@ outputs; the CLI and UI read and control everything through the local API.
 | Module | Location | Responsibility | Depends on | Status |
 |---|---|---|---|---|
 | Core | `crates/core` | `FlowEvent`, `Mode`, `Sensor`, `Clock`, `Alert` / `AlertOutput`, `VERSION` | — | Partly (types written, untested); config and logging planned |
-| Enrichment | `crates/enrich` | DNS cache, SNI / HTTP / DNS / QUIC parsing, security classification | core | Partly (TLS detection, DNS cache) |
+| Enrichment | `crates/enrich` | DNS cache, SNI / HTTP `Host` / DNS / QUIC parsing, security classification; full HTTP request and URL parsing moves to the URL module | core | Partly (TLS detection, DNS cache) |
+| Module API | `crates/module-api` (`scribe-module-api`) | `Module`, `FlowHook`, `Source`, `Manifest`, `ModuleContext`, notes, records, metric samples | core | Proposed |
+| URL module | `crates/module-url` (`scribe-module-url`, feature `url`, default on) | Plaintext HTTP request parsing, URL privacy, request counters, `scribe url` commands | module-api | Proposed |
+| Kernel metrics module | `crates/module-kperf` (`scribe-module-kperf`, feature `kperf`) | Example of a later module: TCP retransmits, RTT, run-queue delay from kernel probes | module-api, sensors' `ProbeHost` | Idea (not planned) |
 | Linux sensor | `crates/sensor-linux` | eBPF probes with `aya`, process lookup | core | Stub |
 | Windows sensor | `crates/sensor-windows` | ETW kernel-network and DNS-client events, Npcap for payloads | core | Stub |
 | pcap sensor | `crates/sensor-pcap` | Fallback capture on every OS, no process info | core | Stub |
@@ -318,6 +330,86 @@ outputs; the CLI and UI read and control everything through the local API.
 | Test data | `testdata/` | pcap fixtures, scenarios, raw sensor records, schema snapshots |
 | Fuzzing | `fuzz/` | cargo-fuzz targets and seeds |
 | End-to-end | `tests/e2e/` | Install, mode, upgrade, uninstall scripts per OS |
+| Module conformance | `crates/module-conformance` (Proposed) | Contract tests for every module (section 7.4.7) |
+
+### 7.4 Module framework (Proposed)
+
+Goal: new functionality (kernel performance metrics, and things not planned yet) arrives as a module
+without editing `core`, `storage-api`, the schemas, the config model or the API. URL tracking is the
+first module and the model for later ones. Today it is spread through the core (`FlowEvent.url`,
+`FlowKind::Request`, `Host.req_count`, `enrich/http.rs`, `privacy.url_query`); this section takes it out.
+
+#### 7.4.1 Packaging
+
+- Modules are **compiled in** and chosen by Cargo feature, like the storage backends: `url` (default on), `kperf` later. A `ModuleRegistry` in `scribed` works like the storage `Registry`.
+- No dynamic loading (`dlopen`): Rust has no stable plugin ABI, and loaded libraries would bypass release signing (NFR-19). WebAssembly or out-of-process modules over gRPC can be added later behind the same trait, if third parties ever need it.
+
+#### 7.4.2 Interface (`scribe-module-api`)
+
+```rust
+pub trait Module: Send + Sync {
+    fn manifest(&self) -> &Manifest;  // id, version, config section, record kinds, metrics,
+                                      // API service, access class per call, needs (payload, privileges)
+    fn configure(&mut self, section: Spanned<toml::Value>) -> Result<Reload, ConfigError>;
+    fn start(&mut self, ctx: ModuleContext) -> Result<(), ModuleError>; // Clock, Emitter, metrics
+    fn pause(&mut self);              // hibernate
+    fn resume(&mut self);             // wakeup
+    fn stop(&mut self);
+    fn health(&self) -> ModuleHealth;
+    fn flow_hook(&self) -> Option<&dyn FlowHook> { None }    // sees flows (url)
+    fn source(&mut self) -> Option<&mut dyn Source> { None } // produces its own data (kperf)
+}
+```
+
+- **Flow hook:** called for each flow with its context and first payload bytes; returns flow notes and optional policy signals. It must be fast; slow modules get flows through a bounded queue instead.
+- **Source:** runs on its own schedule or from a kernel feed and emits records or metric samples.
+- Time comes only from `ModuleContext`'s `Clock`.
+
+#### 7.4.3 Outputs: the only ways a module produces data
+
+| Output | Use | Change to core / storage |
+|---|---|---|
+| **Flow notes** | Data attached to a flow (URL, HTTP method) | `FlowEvent.url` and `FlowKind::Request` are replaced by `notes: Notes`, a small map of module id → typed value, stored as JSON; core no longer knows HTTP |
+| **Module records** | A module's own events (`url.request`) | `StoredEvent::Module { module, kind, schema, payload }`; sinks subscribe by name: `events = ["flow", "url.request", "kperf.sample"]` |
+| **Metric samples** | Time series (kernel retransmits, RTT, run-queue delay) | Built-in `MetricSample { name, labels, value, ts }` and a `metrics` table usable by any module |
+| **Module state** | A module's own totals and settings | Per-module key–value area in the state store (`module_state`) |
+
+- Host counters keep only what every flow has (connections, bytes). `req_count` becomes the URL module's request total.
+- **Policy signals:** a hook may return `Signal { reason, detail }` with a namespaced reason (e.g. `url.credentials_in_query`); the score comes from `[policy.scores]`, so the policy engine stays free of I/O and module-agnostic.
+- **Alerts:** an alert carries the flow's notes, so the `plaintext` alert still shows the URL when the URL module is on.
+
+#### 7.4.4 Sensors and enrichment
+
+- Sensors capture; modules parse. Sensors hand the first N payload bytes of each flow to the pipeline. Core enrichment keeps what every flow needs: SNI, the HTTP `Host` header for the host name (FR-3), DNS and security classification.
+- Payload past the ClientHello / `Host` header is copied only when an enabled module declares `needs: payload`. With the URL module off, no HTTP request bytes are kept (privacy gain).
+- **`ProbeHost`:** modules never load eBPF programs or start ETW sessions themselves. The Linux and Windows sensors offer a probe host that loads module-supplied probes inside the privileged part before privileges are dropped (section 12.1.1); the module reads the maps unprivileged. The module manifest declares the privileges it needs (`CAP_BPF`, `CAP_PERFMON`, an ETW provider).
+
+#### 7.4.5 Config, API and CLI
+
+- `[modules] enabled = ["url"]` and one `[modules.<id>]` section per module, checked by the module itself. It receives the section as `Spanned<toml::Value>`, so errors keep their line and column; `configure` reports live or needs-restart for `reset --config` (section 8.5.2).
+- `privacy.url_query` moves to `[modules.url] query` (section 12.2); the old key stays as a deprecated alias for one version.
+- API: `ListModules` and `ModuleStatus` in the core service; per-module services in `proto/scribe/v1/modules/<id>.proto`.
+- CLI: `scribe modules`; each module crate may add a `clap` subcommand behind its `client` feature (`scribe url …`). `scribe daemon status` gets a per-module section with health, counters and drops.
+
+#### 7.4.6 URL module (`crates/module-url`)
+
+- Flow hook on plaintext TCP flows: parses the HTTP/1.x request line and headers, builds the URL, applies `query` (`redact_values` default, section 12.2), always strips user info.
+- Outputs: note `url` on the flow, record `url.request`, request counter per host in module state.
+- CLI `scribe url list [--host] [--since]`; API service `scribe.v1.modules.url`.
+- Tests: fixture `http_plain`, the URL privacy table in section 12.2, fuzzed request parser.
+
+#### 7.4.7 Safety and testing
+
+- Each module API call declares read or control; the daemon enforces the read / control split (section 6.3) and refuses undeclared calls. Control calls are audited.
+- NFR-20: per-flow time budget, bounded queues with counted drops, a panic disables only that module (health degraded). Modules run unprivileged.
+- `scribe-module-conformance` checks: start, stop and start again; pause and resume; config errors with line numbers; reload live vs restart; hook time budget; no panic on fuzzed payloads; versioned record schemas; refusal of undeclared calls.
+
+#### 7.4.8 Example of a later module: kernel metrics (`kperf`)
+
+Not planned yet; shows the framework covers it. A `Source` module emitting metric samples:
+Linux via eBPF through `ProbeHost` (`tcp_retransmit_skb`, RTT from sockops, run-queue latency),
+Windows via ETW and performance counters, macOS a smaller set via `sysctl` / `nstat`.
+`scribe metrics show <name>`; samples go to sinks subscribed to `kperf.sample`. Rough size 8–12 days.
 
 ## 8. Behaviour
 
@@ -383,7 +475,7 @@ any ──(SIGTERM, Ctrl-C, service stop)──▶ stopping ──▶ stopped
 - **hibernating:** the sensor is detached (eBPF programs and ETW sessions closed, pcap stopped), so it
   costs no CPU and sees nothing. Pending batches are written, the spool keeps replaying to sinks that
   return, the API answers, retention keeps running. Flows during hibernation are **not recorded** and
-  raise no alerts.
+  raise no alerts. Every module is paused, sources included (FR-35).
 - **Visible gap:** entering and leaving hibernation writes a log entry and an `audit` event
   (`hibernate` / `wakeup` with the caller and the planned end) to the event sinks subscribed to it, so stored history shows
   the gap. `status` and `health` show `hibernating since … until …`.
@@ -485,9 +577,9 @@ Precedence: `--config` flag, then `SCRIBE_CONFIG`, then the OS default; with no 
 - Alternative if that proves awkward: `%ProgramData%\scribe\`, Windows' standard location for machine-wide config, data and logs.
 - On macOS, Apple's own convention for system-wide app logs is `/Library/Logs/scribe/`; `/var/log/scribe/` works equally and matches Linux.
 
-#### 9.1.1 Config keys proposed by the security design (not in config v1 yet)
+#### 9.1.1 Proposed config keys (security design and modules; not in config v1 yet)
 
-These keys come from section 12.1.1. They are **Proposed** and are **not** accepted by the v1 config yet
+These keys come from sections 12.1.1 and 7.4. They are **Proposed** and are **not** accepted by the v1 config yet
 (unknown keys are rejected); each lands with the phase that implements it, together with
 `config/scribe.toml`, the skill and the config tests.
 
@@ -501,6 +593,9 @@ These keys come from section 12.1.1. They are **Proposed** and are **not** accep
 | `[[policy.threat_lists]]` `sha256` / `minisign_key` | optional integrity check of a downloaded list | 11 |
 | `[[policy.threat_lists]]` `max_entries` | entry cap per list | 11 |
 | `storage.encrypt` | `false` (default); `true` = SQLCipher database and AES-256-GCM spool, key in the OS secret store | 13 |
+| `[modules] enabled` | list of module ids; default `["url"]` (module framework, section 7.4) | modules |
+| `[modules.url] query` | replaces `privacy.url_query` (same values, default `redact_values`); the old key is a deprecated alias for one version | modules |
+| `[[storage.sinks]] events` | also accepts module record kinds (`url.request`, `kperf.sample`) and `metric` | modules |
 
 ### 9.2 Environment variables
 
@@ -530,10 +625,10 @@ These keys come from section 12.1.1. They are **Proposed** and are **not** accep
 | `proto` | `tcp`, `udp` or `quic` |
 | `src`, `dst_ip`, `dst_port` | Endpoints |
 | `hostname` | From SNI, HTTP Host or DNS correlation |
-| `url` | Plaintext HTTP only |
+| `url` | Plaintext HTTP only. **Proposed:** replaced by `notes` (flow notes from modules; the URL module writes `notes.url`), section 7.4.3 |
 | `security` | `tls`, `quic`, `plaintext` or `unknown` |
 | `bytes_out` | Bytes sent |
-| `kind` | `new_flow`, `request` or `close` |
+| `kind` | `new_flow`, `request` or `close`. **Proposed:** `request` moves to the URL module's `url.request` record |
 
 ### 10.2 Stored data (schema v1)
 
@@ -547,6 +642,17 @@ These keys come from section 12.1.1. They are **Proposed** and are **not** accep
 | `schema_migrations` | applied migration versions |
 
 SQLite stores timestamps as epoch milliseconds; PostgreSQL uses `TIMESTAMPTZ`, `INET` and `JSONB`.
+
+### 10.3 Schema v2 for modules (Proposed)
+
+Released snapshots are never edited, so module support is a new schema version, built with `testdata/db/build.sh`. Done before phase 1, SQLite is built against v2 directly.
+
+| Change | Content |
+|---|---|
+| `events` | adds `module` (null for core kinds) and `kind` as text (`flow`, `alert`, `audit`, `url.request`, …) |
+| `metrics` (new) | name, labels (JSON), value, timestamp; retention per sink like events |
+| `module_state` (new) | module id, key, JSON value, updated at |
+| `hosts.req_count` | kept for v1 compatibility, written from the URL module's state; dropped in a later version |
 
 ## 11. Platform support
 
@@ -648,7 +754,7 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 
 ### 12.2 URL privacy (`privacy.url_query`)
 
-**Decision:** default `redact_values` (FR-26).
+**Decision:** default `redact_values` (FR-26). **Proposed:** the key moves to `[modules.url] query` with the module framework (section 7.4.5); the values and behaviour below don't change.
 
 **Why it matters.** For plaintext HTTP, scribe sees the full URL. Query strings often carry tokens,
 session ids, user ids or personal search terms. Stored as-is, they would sit in the local database
@@ -770,6 +876,7 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 | Capture (FR-1, FR-2) | Sensor conformance suite and traffic generator, draft raw records | Yes |
 | API and UI (FR-20) | Mock API scenarios | Partly |
 | Daemon controls (FR-27 – FR-31) | Daemon tests with `FakeSensor`, `FakeClock`, `FaultySink`; CLI tests against `MockApiServer`; mocks `daemon-down`, `daemon-restart`; sensor conformance case *stop, then start again* | Planned |
+| Modules (FR-32 – FR-35, NFR-20) | `scribe-module-conformance`; storage conformance cases for module records, metric samples and module state; URL module against `http_plain` and the 12.2 table; panic and slow-hook tests; schema v2 snapshot | Proposed |
 | Install and upgrade (UC-10) | End-to-end scripts | Yes (need installers) |
 | Non-functional (NFR-1 – NFR-5) | Performance and soak runs | Planned |
 | Security (NFR-8 – NFR-10, NFR-17 – NFR-19) | API tests calling every control endpoint as a read-only and an admin peer; fake-server test for the CLI's server check; oversized messages and too many streams; StrictModes file-mode table; `hibernate` cap and alert with `FakeClock`; Postgres `sslmode` config errors and a TLS-only Postgres in CI; signed webhook test vectors; threat-list checksum mismatch; audit chain with a deleted and an edited row; XPC decoder and API requests fuzzed; `cargo deny` / `cargo audit`; release signature and attestation checked in the Release smoke test | Planned |
@@ -791,6 +898,9 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 | 11 | Default for `daemon.max_hibernate`, and whether admins may set it to unlimited | **Proposed:** `4h`; `0` (unlimited) allowed but logged as a warning at every start (section 12.1.1) |
 | 12 | Group names `scribe` (read) and `scribe-admin` (control); who creates them | **Proposed:** these names, created by the installers in phase 13 |
 | 13 | Release signing: Sigstore cosign keyless or minisign | **Open** (section 12.1.1, NFR-19) |
+| 14 | When to build the module framework | **Proposed:** a short phase 0b before phase 1, so schema v2 precedes the SQLite backend and phase 3 writes the URL parser as a module (plan.md) |
+| 15 | How long `privacy.url_query` stays as a deprecated alias | **Proposed:** one minor version, with a warning at start |
+| 16 | Out-of-process or WebAssembly modules for third parties | **Open**, not needed for v1 (section 7.4.1) |
 
 ## 16. References
 

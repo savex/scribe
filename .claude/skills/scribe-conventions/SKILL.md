@@ -103,7 +103,7 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | Name | Kind | Purpose |
 |---|---|---|
 | `scribe-core` | lib | Flow events, modes, alerts, clock, sensor interface, `VERSION` |
-| `scribe-enrich` | lib | DNS cache, TLS SNI, HTTP Host, TLS detection |
+| `scribe-enrich` | lib | DNS cache, TLS SNI, HTTP Host, TLS detection (full HTTP request / URL parsing moves to `scribe-module-url`) |
 | `scribe-sensor-linux` / `-windows` / `-pcap` | lib | Capture sensors |
 | `scribe-storage-api` | lib | `StateStore`, `EventSink`, `StorageFactory` |
 | `scribe-storage-manager` | lib | Registry, fan-out to sinks (later: cache, batching, spool, retention) |
@@ -113,6 +113,9 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | `scribe-test-support` | lib + bin | Test doubles, packet builders, `gen-fixtures` |
 | `scribe-policy` | lib (planned) | Modes, scoring rules, dedupe, learn time limit; no I/O |
 | `scribe-alerts` | lib (planned) | OS notifications, log, webhook |
+| `scribe-module-api` | lib (proposed) | `Module`, `FlowHook`, `Source`, manifest, context, notes, records, metric samples (section 9b) |
+| `scribe-module-url` | lib (proposed) | URL tracking module, feature `url`, on by default |
+| `scribe-module-conformance` | lib (proposed) | Suite every module must pass |
 | `scribe-api` | lib (planned) | gRPC server and client (features `server` / `client`), protocol in `proto/scribe/v1/` |
 | `scribe-daemon` / `scribed` | lib + bin | The service: `config`, `logging`, `app` modules in the library; `main.rs` is a thin wrapper |
 | `scribe-cli` / `scribe` | lib + bin | The command line client (`clap`) |
@@ -169,7 +172,7 @@ Full option table: `workfiles/specs.md` section 9.1.
 | Log options | `level = "info"` (`SCRIBE_LOG` overrides), `format = "text"`, `rotate = "daily"`, `max_size = "50MiB"`, `keep = 14`, `output = "file"` (`file` \| `system` \| `both`) | Draft default |
 | Postgres `url` | connection string **without** password | Decided |
 | Postgres `credentials` | secret reference: `keychain:`, `dpapi:`, `secret-service:`, `file:` | Proposed |
-| URL privacy | `privacy.url_query`: `full`, `redact_values` (**default**), `strip`, `path_only`, `hash` (`?<hash:xxxxxx>`, HMAC-SHA256 with a per-install key via `ring`); scheme and host always kept, user info always removed; applies to new data only. Rules and examples: `workfiles/specs.md` 12.2 | Decided |
+| URL privacy | `privacy.url_query` (proposed to move to `[modules.url] query`, old key a deprecated alias for one version): `full`, `redact_values` (**default**), `strip`, `path_only`, `hash` (`?<hash:xxxxxx>`, HMAC-SHA256 with a per-install key via `ring`); scheme and host always kept, user info always removed; applies to new data only. Rules and examples: `workfiles/specs.md` 12.2 | Decided |
 
 ## 7. Enrichment
 
@@ -242,6 +245,25 @@ Full design: `workfiles/specs.md` 12.1.1. Locally, who is calling matters more t
 | Security work per phase | 5: StrictModes, hibernate cap, audit chain; 7–9: privilege split, service SID, XPC signing; 10: API access and limits; 11: HTTPS, signed webhooks, threat-list checks; 12: Postgres TLS, roles, heartbeats; 13: service hardening, release signing, optional encryption at rest; 14: `cargo deny` / `audit`, pinned Actions, review | Proposed (plan.md) |
 | Release integrity | Signed `SHA256SUMS`, build provenance attestation, `cargo deny` / `cargo audit`, Actions pinned by SHA, minimal `permissions:` | Proposed |
 
+## 9b. Modules (proposed)
+
+Full design: `workfiles/specs.md` 7.4. New functionality is added as a module, without editing `core`, `storage-api`, the schemas, the config model or the API.
+
+| Item | Value | State |
+|---|---|---|
+| Packaging | Compiled in, chosen by Cargo feature (`url` default on, `kperf` later); `ModuleRegistry` like the storage `Registry`; no `dlopen` | Proposed |
+| Interface | `Module` trait: `manifest`, `configure(Spanned<toml::Value>) -> Reload`, `start(ModuleContext)`, `pause`, `resume`, `stop`, `health`, optional `flow_hook` / `source` | Proposed |
+| Outputs | Flow notes (replace `FlowEvent.url` / `FlowKind::Request`), module records (`StoredEvent::Module`, kinds like `url.request`), metric samples (`MetricSample`, `metrics` table), module state (`module_state` key–value) | Proposed |
+| Policy signals | Namespaced reasons (`url.…`) scored from `[policy.scores]`; policy stays I/O-free | Proposed |
+| Payload | Sensors pass the first N bytes; bytes past the ClientHello / `Host` header kept only when an enabled module declares `needs: payload` | Proposed |
+| Kernel probes | Only through the sensors' `ProbeHost`, loaded in the privileged part; modules run unprivileged | Proposed |
+| Config | `[modules] enabled = ["url"]`, `[modules.<id>]` checked by the module with line numbers | Proposed |
+| API / CLI | `ListModules`, `ModuleStatus`; per-module `proto/scribe/v1/modules/<id>.proto`; `scribe modules`, module subcommands behind each crate's `client` feature | Proposed |
+| Isolation | Per-flow time budget, bounded queues with counted drops, panic disables only that module (NFR-20); each module call declares read / control | Proposed |
+| Schema | Schema v2: `events.module` + text `kind`, `metrics`, `module_state`; done before phase 1 | Proposed |
+| Conformance | New modules must pass `scribe-module-conformance` (start / stop / start, pause / resume, config errors with lines, reload, time budget, fuzzed payloads, schema versions, undeclared calls refused) | Proposed |
+| Phase | 0b, before phase 1 (8–10 days); phase 10 +2 days for API / CLI plumbing | Proposed |
+
 ## 10. Versioning and releases
 
 | Item | Value | State |
@@ -310,9 +332,9 @@ Notes:
 | Item | Value |
 |---|---|
 | Estimates assume | one experienced Rust developer; LOC without blanks and comments; tests counted separately |
-| Total size | ~16,150 production LOC + ~4,600 test LOC |
-| Total effort | 108–135 person-days; 99.5–125.5 remaining after phase 0, 119–151 with a 20% buffer (includes the security design, +14.5 days) |
-| Milestones | M1 MVP (pcap, SQLite, modes, CLI with `scribe daemon`, API access control) 51.5–63.5 days; M2 native sensors 32–42 days; M3 production 15–20 days |
+| Total size | ~17,500 production LOC + ~5,200 test LOC |
+| Total effort | 118–147 person-days; 109.5–137.5 remaining after phase 0, 131–165 with a 20% buffer (includes the security design, +14.5 days, and the module framework, +10–12 days) |
+| Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 61.5–75.5 days; M2 native sensors 35.5–45.5 days; M3 production 21–26 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning |
 
 ## 15. Development environment

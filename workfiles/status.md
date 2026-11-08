@@ -73,12 +73,13 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 
 ## What this means
 
-- **Phase 0 is done.** Remaining effort: 99.5–125.5 days (119–151 with buffer); milestone M1: 45.5–57 days. This includes the `scribe daemon` subcommands (phases 5 and 10) and the proposed security design (specs 12.1.1, +14.5 days over phases 5–14).
+- **Phase 0 is done.** Remaining effort: 109.5–137.5 days (131–165 with buffer); milestone M1: 55.5–68.5 days. This includes the `scribe daemon` subcommands (phases 5 and 10), the proposed security design (specs 12.1.1, +14.5 days over phases 5–14) and the proposed module framework (specs 7.4, new phase 0b plus 2 days in phase 10).
 - **The daemon has a skeleton to grow into:** each next phase plugs into `serve()` (storage in phase 1, the
   pipeline in phase 5) and reads its settings from the already-checked config.
 - **Next steps** (plan milestone M1):
-  1. Phase 1: the SQLite backend, against its waiting conformance tests.
-  2. Phase 3: SNI, HTTP (with URL redaction) and DNS parsers against the 13 pcap fixtures, then QUIC with `ring`.
-  3. Phase 4: the policy engine in `crates/policy`, against the 11 scenarios, using the config values.
-  4. Apply for Apple's Network Extension entitlement (plan risk 1).
+  1. Phase 0b: the module framework (module API, registry, schema v2, module conformance suite).
+  2. Phase 1: the SQLite backend, against its waiting conformance tests and schema v2.
+  3. Phase 3: SNI, `Host` and DNS parsers against the 13 pcap fixtures, the URL module's HTTP parser (with URL redaction), then QUIC with `ring`.
+  4. Phase 4: the policy engine in `crates/policy`, against the 11 scenarios, using the config values.
+  5. Apply for Apple's Network Extension entitlement (plan risk 1).
 - **Not verified here:** the Linux and Windows code paths at run time, and the GitHub workflows themselves.
