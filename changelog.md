@@ -24,6 +24,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `scribe-conventions` skill and `CLAUDE.md`.
 - Config format v1 draft `config/scribe.toml` with every option and its default.
 - This changelog.
+- `scribe_core::units`: config durations (`45s`, `10m`, `1h`, `7d`), sizes (`512KiB`…`2TiB`) and percentages (`5%`),
+  with clear errors (e.g. `32MB` suggests `MiB`), TOML support and property tests.
 
 ### Changed
 - Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,
