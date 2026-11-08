@@ -39,11 +39,16 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - `scribe` CLI parses all commands with `clap` (`status`, `hosts`, `mode`, `alerts [ack <id>]`,
   `baseline add|rm`, `export`, `version`); everything except `version` reports "not implemented yet" (exit 1).
 - Tests for the storage manager: registry kinds and roles, routing by event kind, error propagation.
+- Release workflow smoke test also checks `scribed --version` and `scribed --check-config` on the shipped config.
+- readme section *Running scribed*; spec v0.3, conventions skill, plan and status updated for the end of phase 0.
 
 ### Changed
 - Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,
   libc, windows-sys, proptest, tempfile); `StorageError` and `SensorError` now use `thiserror` (messages unchanged).
 - Minimum Rust version policy *follow dependencies*; minimum raised from 1.70 to 1.89.
+
+### Fixed
+- `workfiles/specs.md` sections 9.2 *Environment variables* and 9.3 *Build options*, lost in an earlier edit, restored.
 
 ### Removed
 - `config/scribe.example.toml`, replaced by `config/scribe.toml`.

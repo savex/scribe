@@ -78,7 +78,7 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | UI technology | Tauri | Proposed |
 | Crypto library | `ring` 0.17 — HKDF, AES-128-GCM and QUIC header protection (`ring::aead::quic`) for QUIC Initial decryption; most downloaded option (839M total, 197M in 90 days on crates.io, 2026-10-26) and needs Rust 1.66 | Decided |
 | Async in interfaces | Boxed futures (`BoxFuture`), no `async-trait` crate | Decided |
-| External dependencies | None yet; skeleton builds offline | Decided (until implementation starts) |
+| External dependencies | Added as each phase needs them; see the lists below | Decided |
 | Formatting / lint | `cargo fmt`; `cargo clippy -- -D warnings` must pass | Decided |
 | Line endings | LF everywhere (`.gitattributes`), binary fixtures marked binary | Decided |
 | Time in production code | Read through the `Clock` interface so tests can control it | Decided |
@@ -91,9 +91,12 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | 1.89 | 2026-11-08 | Policy *follow dependencies* adopted; rusqlite (phase 1) and notify-rust (phase 11) need 1.89, tonic and proptest 1.88, tokio and clap 1.85 |
 | 1.98 (expected) | phase 7 | aya 0.16 for the eBPF sensor |
 
-**Planned libraries** (proposed, add when implementing): `tokio`, `serde`, `toml`, `tracing`,
-`thiserror`, `rusqlite` (bundled), `tokio-postgres` + `deadpool`, `aya`, `windows`, `pcap`,
-`tonic` (gRPC), `proptest`, `libfuzzer-sys`, `ring` 0.17 (decided, see table above).
+**Libraries in use** (since phase 0): `tokio`, `serde`, `toml`, `thiserror`, `anyhow`, `clap`, `tracing`,
+`tracing-subscriber`, `tracing-appender`, `tracing-journald` (Linux), `tracing-oslog` (macOS), `fs4`,
+`libc` (macOS), `windows-sys` (Windows); tests: `proptest`, `tempfile`.
+
+**Planned libraries** (add when implementing): `rusqlite` (bundled), `tokio-postgres` + `deadpool`, `aya`,
+`windows`, `pcap`, `tonic` (gRPC), `libfuzzer-sys`, `ring` 0.17 (decided, see table above).
 
 ## 4. Crates and binaries
 
@@ -111,8 +114,8 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | `scribe-policy` | lib (planned) | Modes, scoring rules, dedupe, learn time limit; no I/O |
 | `scribe-alerts` | lib (planned) | OS notifications, log, webhook |
 | `scribe-api` | lib (planned) | gRPC server and client (features `server` / `client`), protocol in `proto/scribe/v1/` |
-| `scribed` | bin (crate `scribe-daemon`) | The service |
-| `scribe` | bin (crate `scribe-cli`) | The command line client |
+| `scribe-daemon` / `scribed` | lib + bin | The service: `config`, `logging`, `app` modules in the library; `main.rs` is a thin wrapper |
+| `scribe-cli` / `scribe` | lib + bin | The command line client (`clap`) |
 
 Only SQLite and Postgres storage backends are in scope. ClickHouse, OpenSearch, file sinks and
 external gRPC storage plugins were discussed and **deliberately left out**.

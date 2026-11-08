@@ -97,6 +97,10 @@ jobs:
           if [[ "${{ matrix.smoke }}" == "true" ]]; then
             got=$("dist/$name/scribe$exe" --version)
             [[ "$got" == "scribe $VERSION" ]] || { echo "::error::binary reports '$got', expected 'scribe $VERSION'"; exit 1; }
+            got=$("dist/$name/scribed$exe" --version)
+            [[ "$got" == "scribed $VERSION" ]] || { echo "::error::daemon reports '$got', expected 'scribed $VERSION'"; exit 1; }
+            "dist/$name/scribed$exe" --check-config --config "dist/$name/scribe.toml" > /dev/null \
+              || { echo "::error::scribed rejects the shipped config"; exit 1; }
           fi
           cd dist
           if [[ -n "$exe" ]]; then 7z a -tzip "$name.zip" "$name" >/dev/null; else tar czf "$name.tar.gz" "$name"; fi

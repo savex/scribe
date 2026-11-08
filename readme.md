@@ -54,6 +54,30 @@ cargo run -p scribe-test-support --bin gen-fixtures   # regenerate testdata/pcap
 
 See [workfiles/test-approach.md](workfiles/test-approach.md) for how testing is organised.
 
+## Running scribed
+
+```sh
+cargo run --bin scribed -- --check-config                      # print the effective config and exit
+cargo run --bin scribed -- --config config/scribe.toml         # run until Ctrl-C / SIGTERM
+SCRIBE_LOG=debug cargo run --bin scribed -- --config my.toml   # more logging (RUST_LOG syntax)
+```
+
+The config is found via `--config`, then `SCRIBE_CONFIG`, then the OS default
+(`/etc/scribe/scribe.toml`, `/Library/Application Support/scribe/scribe.toml`, or `scribe.toml`
+next to `scribed.exe`); with none, built-in defaults apply. The defaults keep data under
+`/var/lib/scribe` (or the macOS / Windows equivalent) and log to `/var/log/scribe`, which needs
+admin rights. For a local run, point `data_dir` at a folder you own and set `log.file = ""` to log
+to the terminal:
+
+```toml
+data_dir = "/tmp/scribe"
+[log]
+file = ""
+```
+
+Exit codes: `0` success, `1` runtime failure, `2` usage or configuration error. Capture and
+storage aren't wired up yet; scribed starts, logs its settings and waits.
+
 ## Versioning
 
 Git tags are the source of truth: `vMAJOR.MINOR.PATCH`, optionally with a pre-release

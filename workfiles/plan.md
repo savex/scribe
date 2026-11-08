@@ -1,6 +1,6 @@
 # Implementation plan for scribe
 
-*Last updated 2026-11-08, at commit `fd170fb`. Progress details: [status.md](status.md).
+*Last updated 2026-11-08, after phase 0 (commit `dcb99ea` plus the docs commit). Progress details: [status.md](status.md).
 Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md).*
 
 **Assumptions**
@@ -11,38 +11,39 @@ Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe
 
 ## Progress so far
 
-- **Product code:** skeleton only. Interfaces, schemas, stubs and the version plumbing exist; nothing captures, stores or alerts yet. Automated tests cover 5% of product code.
+- **Product code:** phase 0 done. `scribed` loads and checks the full v1 config, logs, opens storage and runs until stopped; the CLI parses every command. Nothing captures, stores or alerts yet. Automated tests cover 86% of product code (95% of `core`, 96% of the daemon).
 - **Test infrastructure (done):** test doubles, packet builders and fixture generator, storage and sensor conformance suites, 13 pcap fixtures with expected results, 11 daemon scenarios, draft raw sensor records, v1 schema snapshots, fuzz targets, UI mock data, end-to-end scripts. This was not a separate phase in the original plan; it front-loads most of the test work of phases 1–6.
+- **Design (done):** [specs.md](specs.md) with use cases and requirements, the v1 config draft [config/scribe.toml](../config/scribe.toml) holding every default, and answers to all open questions (paths, scoring, buffers and limits, URL privacy, crate layout, logging, minimum Rust version). Nothing blocks implementation.
 - **CI, versioning and tooling (done):** tag-based versioning, 8 GitHub workflows (Release and Version tracking automatic, the rest manual), VSCodium launch and task configs, conventions skill and `CLAUDE.md`.
 
 ## Phases
 
 | # | Phase | Main work | Prod LOC | Test LOC | Planned (days) | Status | Remaining (days) |
 |---|---|---|---|---|---|---|---|
-| 0 | **Foundations** | Upgrade Rust; add tokio, serde, toml, tracing, thiserror; config loading; logging; CI on Linux, macOS and Windows | 400 | 50 | 2–3 | **~70%** — Rust upgraded (stable for development, minimum 1.89 by policy), CI and versioning done. Left: dependencies, config loading, logging | 1–1.5 |
+| 0 | **Foundations** | Upgrade Rust; add tokio, serde, toml, tracing, thiserror, clap; config loading; logging; daemon startup and shutdown; first tests for untested crates; CI on Linux, macOS and Windows | 400 | 50 | 2–3 | **Done** — dependencies, units, platform defaults, config loading and checks, logging, daemon startup and shutdown, CLI on `clap`, first tests for `core`, daemon, CLI and storage manager | 0 |
 | 1 | **SQLite backend** | rusqlite (bundled), migration runner, every StateStore and EventSink method, JSON payloads, WAL; must pass conformance | 900 | 250 | 4–5 | **~10%** — v1 schema and snapshot, stubs; conformance tests written and waiting | 3.5–4.5 |
-| 2 | **Storage manager** | Per-sink async writer tasks, batching, LRU cache, spool and replay, retention, health checks | 800 | 400 | 5–6 | **~15%** — registry, config types, simple fan-out; `FaultySink` ready for tests | 4.5–5.5 |
-| 3 | **Enrichment** | DNS answer parser and IP-to-host cache, TLS ClientHello SNI, HTTP request and URL parsing, QUIC Initial decryption for SNI (`ring` 0.17); parser tests on recorded sample traffic | 1,200 | 500 | 7–9 | **~10%** — TLS detection, DNS cache; fixtures and fuzz seeds ready except QUIC | 6–8 |
-| 4 | **Policy engine** | Learn / caution / alert modes, scoring rules (raw IP, unusual port, high-entropy names, new top-level domain, new process, rare host, threat list), alert dedupe and rate limits, automatic switch out of learn mode | 900 | 500 | 6–8 | **0%** — 11 scenarios ready | 5.5–7.5 |
-| 5 | **Daemon pipeline** | Wire sensor → enrichment → policy → storage; per-host and per-process counters; run as a systemd, launchd or Windows service; drop privileges | 900 | 200 | 6–8 | **~5%** — binary prints version and setup | 6–8 |
+| 2 | **Storage manager** | Per-sink async writer tasks, batching, LRU cache, in-memory buffer for state-store outages, spool and replay, retention, health checks | 800 | 400 | 5–6 | **~15%** — registry, config types, simple fan-out; `FaultySink` ready for tests; cache, buffer and spool limits specified | 4.5–5.5 |
+| 3 | **Enrichment** | DNS answer parser and IP-to-host cache, TLS ClientHello SNI, HTTP request and URL parsing with redaction (`privacy.url_query`), QUIC Initial decryption for SNI (`ring` 0.17); parser tests on recorded sample traffic | 1,200 | 500 | 7–9 | **~10%** — TLS detection, DNS cache; fixtures and fuzz seeds ready except QUIC | 6–8 |
+| 4 | **Policy engine** | Learn / caution / alert modes, scoring rules (raw IP, unusual port, high-entropy names, new top-level domain, new process, rare host, threat list), alert dedupe and rate limits, automatic switch out of learn mode | 900 | 500 | 6–8 | **0%** code, design done — in `crates/policy`; scores, threshold, usual ports and entropy rule in the v1 config, checked against the 11 scenarios | 5–7 |
+| 5 | **Daemon pipeline** | Wire sensor → enrichment → policy → storage; per-host and per-process counters; run as a systemd, launchd or Windows service; drop privileges | 900 | 200 | 6–8 | **~5%** — binary prints version and setup; Windows layout next to the app decided | 6–8 |
 | 6 | **pcap sensor** (fallback) | libpcap / Npcap capture of SYN, UDP, DNS and ClientHello packets; reassemble the first bytes of each flow | 700 | 200 | 4–5 | **~2%** — stub; sensor conformance suite ready | 3.5–4.5 |
 | 7 | **Linux eBPF sensor** | aya probes on `tcp_connect` / `udp_sendmsg` and cgroup sockets, a socket filter for packet contents, ring-buffer reader, process lookup via `/proc` | 1,500 (Rust + eBPF) | 300 | 10–14 | **~2%** — stub, draft raw records | 10–14 |
 | 8 | **Windows ETW sensor** | Kernel-Network and DNS-Client providers, process path lookup, Npcap for packet contents | 1,200 | 200 | 10–12 | **~2%** — stub, draft raw records | 10–12 |
 | 9 | **macOS Network Extension** | Swift `NEFilterDataProvider` (~1,000 Swift), XPC bridge in Rust (~500), container app and installer | 1,500 (Swift + Rust) | 150 | 12–16 | **0%** — draft XPC message format only | 12–16 |
-| 10 | **Local API and CLI** | gRPC (tonic) over a Unix socket or named pipe, access control by socket permissions; CLI commands `status`, `hosts`, `mode`, `alerts`, `baseline add/rm`, `alerts ack`, `export` | 1,100 | 300 | 6–7 | **~10%** — CLI argument parsing, `--version`; UI mock API data defines the shapes | 5.5–6.5 |
-| 11 | **Alert outputs** | OS notifications on each platform, structured log, webhook | 500 | 100 | 3–4 | **~5%** — `AlertOutput` interface, `RecordingAlertSink` | 3–4 |
+| 10 | **Local API and CLI** | gRPC (tonic) over a Unix socket or named pipe, access control by socket permissions; CLI commands `status`, `hosts`, `mode`, `alerts`, `baseline add/rm`, `alerts ack`, `export` | 1,100 | 300 | 6–7 | **~10%** — CLI argument parsing, `--version`; UI mock API data defines the shapes; in `crates/api` + `proto/scribe/v1/` | 5.5–6.5 |
+| 11 | **Alert outputs** | OS notifications on each platform, structured log, webhook | 500 | 100 | 3–4 | **~5%** — `AlertOutput` interface, `RecordingAlertSink`; in `crates/alerts`, log output via `log.output` | 3–4 |
 | 12 | **Postgres backend** | tokio-postgres with a deadpool connection pool, migrations, conformance tests against a Postgres container in CI | 800 | 150 | 4–5 | **~10%** — v1 schema and seed, stubs, CI job with Postgres 16 | 3.5–4.5 |
 | 13 | **Packaging and release** | `.deb` / `.rpm`, MSI (WiX, keeps config / data / logs next to the app across upgrades), macOS `.pkg` with notarization, signing, install and uninstall scripts | 600 (scripts/config) | — | 6–8 | **~15%** — Release workflow builds archives for 4 targets with checksums; installers left | 5–7 |
 | 14 | **Hardening** | Fuzz the packet parsers, performance and memory tests under load, security review, user docs | 500 | 300 | 5–7 | **~10%** — fuzz targets and workflow; never run | 4–6 |
-| | **Total** | | **~13,500** | **~3,600** | **90–117** | **~4% of product LOC** | **83–109.5** |
+| | **Total** | | **~13,500** | **~3,600** | **90–117** | **phase 0 done** | **81.5–107.5** |
 
-With a 20% buffer for unknowns, plan on **100–131 person-days remaining**. That's about 5–6½ months for one developer, or about 2–3 months for two or three working in parallel.
+With a 20% buffer for unknowns, plan on **98–129 person-days remaining**. That's about 5–6½ months for one developer, or about 2–3 months for two or three working in parallel.
 
 ## Milestones
 
 | Milestone | Phases | Result | Planned | Remaining |
 |---|---|---|---|---|
-| **M1: MVP** | 0–6, 10, 11 | Runs on all three OSes using pcap (no process attribution), SQLite storage, all three modes, CLI, notifications | 43–55 days | 38.5–50 days |
+| **M1: MVP** | 0–6, 10, 11 | Runs on all three OSes using pcap (no process attribution), SQLite storage, all three modes, CLI, notifications | 43–55 days | 37–48 days |
 | **M2: Native sensors** | 7, 8, 9 | Process attribution and better hostname coverage on each OS | 32–42 days | 32–42 days |
 | **M3: Production** | 12, 13, 14 | Postgres, signed installers, fuzzed parsers | 15–20 days | 12.5–17.5 days |
 
@@ -52,11 +53,10 @@ With a 20% buffer for unknowns, plan on **100–131 person-days remaining**. Tha
 
 In this order, because each one turns existing tests and data into real coverage:
 
-1. **Finish phase 0:** add tokio, serde, toml, tracing and thiserror (check each one's minimum Rust version), config loading from the v1 draft `config/scribe.toml`, logging. Add the first unit tests for `core`, `storage-manager` and `cli`, which have none.
-2. **Phase 1, SQLite backend:** make the skipped `sqlite_conformance` tests pass.
-3. **Phase 3, enrichment:** SNI, HTTP and DNS parsers against the 13 pcap fixtures; then QUIC with `ring` and a fixture checked against the RFC 9001 Appendix A sample packet.
-4. **Phase 4, policy engine:** the scenario runner plus the rules, against the 11 scenarios.
-5. **Apply for Apple's Network Extension entitlement now**, so the wait overlaps M1 (risk 1).
+1. **Phase 1, SQLite backend:** make the skipped `sqlite_conformance` tests pass.
+2. **Phase 3, enrichment:** SNI, HTTP (with URL redaction) and DNS parsers against the 13 pcap fixtures; then QUIC with `ring` and a fixture checked against the RFC 9001 Appendix A sample packet.
+3. **Phase 4, policy engine:** create `crates/policy`, the scenario runner and the rules with the v1 config values, against the 11 scenarios.
+4. **Apply for Apple's Network Extension entitlement now**, so the wait overlaps M1 (risk 1).
 
 ## Decisions since the first version
 

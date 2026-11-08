@@ -1,6 +1,6 @@
 # scribe specification
 
-*Version 0.2 (draft), 2026-11-08, describing the project at commit `18b993f`, with the answers to open questions 2–8.*
+*Version 0.3 (draft), 2026-11-08: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
 Built from [plan.md](plan.md), [diagram.md](diagram.md), [status.md](status.md) and the
 [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md). When they disagree,
 the code and the skill win; update this document in the same commit.
@@ -149,8 +149,8 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-18 | Provide SQLite (default) and PostgreSQL (feature `postgres`) backends | Stub | Storage conformance; Tests workflow |
 | FR-19 | Spool events when a sink fails and replay them in order; enforce per-sink retention | Planned | `FaultySink` tests (planned) |
 | FR-20 | Expose a local API for the CLI and UI, including runtime mode changes | Planned | API tests with `MockApiServer` (planned) |
-| FR-21 | Provide the CLI commands in section 6.2 | Partly (`version`, mode checking) | CLI tests (planned) |
-| FR-22 | Load and validate a TOML config file; report errors with line numbers | Planned (phase 0) | Config tests (planned) |
+| FR-21 | Provide the CLI commands in section 6.2 | Partly (all commands parsed; only `version` works until the API exists) | `scribe-cli` unit and binary tests |
+| FR-22 | Load and validate a TOML config file; report errors with line numbers | Implemented | `scribe-daemon` config tests; shipped file equals built-in defaults |
 | FR-23 | Report the version from the nearest git tag (`scribe --version`, `scribed --version`) | Implemented | Release workflow smoke check |
 | FR-24 | Export hosts and baselines | Planned | — |
 | FR-25 | While the state store is unavailable, keep the latest events in a bounded in-memory buffer; when full, drop the oldest to add the newest; count drops; replay in order on recovery | Planned | `FaultySink`-style state-store tests (planned) |
@@ -185,11 +185,11 @@ Started by the service manager as root / SYSTEM: systemd unit `scribed` (Linux),
 
 | Invocation | Effect | Status |
 |---|---|---|
-| `scribed` | Run the service. Today: prints version, mode, sensor and storage backends, then exits | Stub |
+| `scribed` | Run the service: load config, start logging, open storage, wait for a stop signal. Capture and storage writing arrive in phases 1–5 | Implemented (no capture yet) |
 | `scribed --version`, `-V` | Print `scribed <version>` | Implemented |
-| `scribed --config <path>` | Use this config file | Proposed (phase 0) |
-| `scribed --check-config` | Print the effective config and exit | Proposed (phase 0) |
-| SIGTERM / Ctrl-C / service stop | Flush sinks and shut down cleanly | Planned (phase 0) |
+| `scribed --config <path>` | Use this config file | Implemented |
+| `scribed --check-config` | Print the effective config (absolute paths, resolved percentages) and exit | Implemented |
+| SIGTERM / Ctrl-C / service stop | Flush sinks and shut down cleanly | Implemented for Ctrl-C and SIGTERM; service-manager stop in phase 5 |
 
 ### 6.2 `scribe` (CLI)
 
@@ -206,7 +206,7 @@ Talks to `scribed` through the local API.
 | `scribe baseline add\|rm <host>` | Edit the active profile's baseline | Planned |
 | `scribe export` | Dump hosts and baseline | Stub |
 
-Exit codes: `0` success, `1` failure, `2` usage error (current behaviour).
+Exit codes: `0` success, `1` failure (including "not implemented yet"), `2` usage error. `scribed` uses the same codes, with `2` also for configuration errors.
 
 ### 6.3 Local API
 
@@ -330,8 +330,9 @@ The default mode is `learn`. Hosts added to the baseline in learn mode stay list
 
 ### 9.1 Config file (`scribed`)
 
-TOML, config format version 1 (draft): [config/scribe.toml](../config/scribe.toml). The file lists every
-option with its built-in default, so an empty file or no file behaves the same. Loading is planned for phase 0.
+TOML, config format version 1: [config/scribe.toml](../config/scribe.toml). The file lists every
+option with its built-in default, so an empty file or no file behaves the same; a test enforces it.
+Loaded and checked by `crates/daemon/src/config/` (phase 0).
 
 **Value formats**
 - **Duration:** `45s`, `10m`, `1h`, `7d`.
@@ -387,13 +388,30 @@ When a cache, buffer or spool limit is hit, the oldest entries are dropped and t
 | macOS | `/Library/Application Support/scribe/scribe.toml` | same folder | `/var/log/scribe/scribed.log` | unified logging | Decided |
 | Windows | `<install dir>\scribe.toml` (next to `scribed.exe`) | `<install dir>\data\` | `<install dir>\logs\scribed.log` | Event Viewer (Applications and Services Logs\scribe) | Decided |
 
-Precedence: `--config` flag, then `SCRIBE_CONFIG`, then the OS default; with no file, built-in defaults (proposed).
+Precedence: `--config` flag, then `SCRIBE_CONFIG`, then the OS default; with no file, built-in defaults. A file named by the flag or the variable must exist (implemented).
 
 **Notes on the Windows choices**
 - Config, data and the log file all live next to the app; logs go to the Event Viewer instead when `log.output = "system"` (decided).
 - Consequence for packaging (phase 13): the MSI must never overwrite or delete `scribe.toml`, `data\` and `logs\` on upgrade or uninstall (mark them permanent / never-overwrite), and must give the service account write access to `data\` and `logs\`, since `Program Files` is read-only for everyone else.
 - Alternative if that proves awkward: `%ProgramData%\scribe\`, Windows' standard location for machine-wide config, data and logs.
 - On macOS, Apple's own convention for system-wide app logs is `/Library/Logs/scribe/`; `/var/log/scribe/` works equally and matches Linux.
+
+### 9.2 Environment variables
+
+| Variable | Used by | Purpose | Status |
+|---|---|---|---|
+| `SCRIBE_CONFIG` | `scribed` | Config file path (after `--config`, before the OS default) | Implemented |
+| `SCRIBE_LOG` | `scribed` | Log filter, `RUST_LOG` syntax; overrides `[log] level`; an invalid filter exits with 2 | Implemented |
+| `SCRIBE_VERSION` | build | Overrides the version baked into the binaries (release builds) | Implemented |
+| `SCRIBE_TEST_POSTGRES_URL` | tests | Disposable Postgres database for conformance tests | Implemented |
+
+### 9.3 Build options
+
+| Option | Effect | Status |
+|---|---|---|
+| Cargo feature `sqlite` (default) | Build the SQLite backend | Implemented |
+| Cargo feature `postgres` | Build the PostgreSQL backend | Implemented |
+| `--all-features` | Both backends | Implemented |
 
 ## 10. Data
 
