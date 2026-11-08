@@ -73,7 +73,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 
 ## What this means
 
-- **Phase 0 is done.** Remaining effort: 81.5–107.5 days (98–129 with buffer); milestone M1: 37–48 days.
+- **Phase 0 is done.** Remaining effort: 85–111.5 days (102–134 with buffer); milestone M1: 40.5–52 days, including the `scribe daemon` subcommands added to phases 5 and 10.
 - **The daemon has a skeleton to grow into:** each next phase plugs into `serve()` (storage in phase 1, the
   pipeline in phase 5) and reads its settings from the already-checked config.
 - **Next steps** (plan milestone M1):

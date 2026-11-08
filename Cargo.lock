@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "scribe-core",
@@ -567,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fs4",
  "libc",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-daemon"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -605,14 +605,14 @@ dependencies = [
 
 [[package]]
 name = "scribe-enrich"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-core",
 ]
 
 [[package]]
 name = "scribe-sensor-conformance"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-core",
  "scribe-sensor-pcap",
@@ -621,28 +621,28 @@ dependencies = [
 
 [[package]]
 name = "scribe-sensor-linux"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-core",
 ]
 
 [[package]]
 name = "scribe-sensor-pcap"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-core",
 ]
 
 [[package]]
 name = "scribe-sensor-windows"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-core",
 ]
 
 [[package]]
 name = "scribe-storage-api"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-core",
  "thiserror",
@@ -650,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-conformance"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-core",
  "scribe-storage-api",
@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-manager"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-storage-api",
  "scribe-storage-conformance",
@@ -670,7 +670,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-postgres"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-storage-api",
  "scribe-storage-conformance",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-sqlite"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-storage-api",
  "scribe-storage-conformance",
@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-test-support"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "scribe-core",
  "scribe-storage-api",

@@ -12,6 +12,20 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- Planned `scribe daemon` subcommands in the spec and plan: `status` (live counters and critical metrics),
+  `health`, `reset` (counters, caches, config reload), `hibernate [--for]` and `wakeup`; daemon run states,
+  config reload rules, read vs control API access; phases 5 and 10 re-estimated (+3.5 days).
+
+### Fixed
+- Workspace version in `Cargo.toml` / `Cargo.lock` synced to 0.1.1 to match the `v0.1.1` tag
+  (`scripts/version.sh check` failed with 0.1.0).
+
+## [0.1.1] - 2026-11-08
+
+First tagged version (`v0.1.1` on `5ff4049`; there is no `v0.1.0` tag). Scaffold, test infrastructure,
+design documents and phase 0 (foundations).
+
+### Added
 - Rust workspace skeleton: `scribed` daemon, `scribe` CLI, core types, enrichment, sensor stubs for Linux (eBPF),
   Windows (ETW) and pcap, storage plugin interfaces with SQLite and PostgreSQL backend stubs and v1 schemas.
 - Test infrastructure: `scribe-test-support` (test doubles, packet builders, pcap writer, `gen-fixtures`),
@@ -52,3 +66,6 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ### Removed
 - `config/scribe.example.toml`, replaced by `config/scribe.toml`.
+
+[Unreleased]: https://github.com/savex/scribe/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/savex/scribe/releases/tag/v0.1.1

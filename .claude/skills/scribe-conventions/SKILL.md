@@ -198,8 +198,11 @@ Three counters per host and per process + host, plus time buckets (hourly propos
 |---|---|---|
 | Local API | gRPC (`tonic`) over a Unix socket (Linux, macOS) or named pipe (Windows) | Proposed |
 | New crates | `crates/policy` (`scribe-policy`, no I/O), `crates/alerts` (`scribe-alerts`), `crates/api` (`scribe-api`, features `server` / `client`) + `proto/scribe/v1/api.proto` | Decided (option A, `workfiles/specs.md` 7.2) |
-| API access | Socket readable only by the owner and the admin group | Proposed |
+| API access | Socket readable only by the owner and the admin group; caller identity from the socket (`SO_PEERCRED`, `getpeereid`, pipe client token): read calls for the `scribe` group, control calls (reset, hibernate, wakeup, mode, ack, baseline) for root / Administrators and `scribe-admin`; control calls logged and stored as `audit` events | Proposed |
 | CLI commands | `status`, `hosts`, `mode <learn\|caution\|alert>`, `alerts`, `alerts ack <id>`, `baseline add\|rm <host>` (`remove` alias), `export`, `version` / `--version`; exit codes 0 / 1 / 2 | Decided (parsing implemented with `clap`; commands answer "not implemented" until phase 10) |
+| `scribe daemon` commands | `status [--json] [--watch <interval>]` (run state, live counters, critical metrics first; `scribe status` is its short form), `health [--json] [--timeout 2s]` (exit 0 healthy or degraded, 1 unhealthy or unreachable; also `grpc.health.v1`), `reset [--counters] [--caches] [--config]` (none = all; never touches stored history), `hibernate [--for <duration>]`, `wakeup`; aliases `hybernate`, `sleep`, `wake` | Decided (commands), Proposed (flags, aliases); planned for phases 5 and 10, specs 6.2.1 |
+| Run states | `running`, `degraded` (health result), `hibernating` (sensor detached, nothing recorded or alerted, API and spool replay keep running, `learn_for` paused, `audit` event at start and end, not kept across a restart), `stopping` | Proposed (specs 8.5; restart behaviour is open question 9) |
+| Config reload | `scribe daemon reset --config` or SIGHUP: same file, same checks, all-or-nothing; live: mode, profile, `[policy]`, `privacy`, log level and format, alert outputs, retention, batching, limits; restart needed: `data_dir`, state store, adding / removing sinks, sensor, log file / output / rotate, API socket | Proposed (specs 8.5.2) |
 | Linux service | systemd unit `scribed` | Proposed (used by e2e script) |
 | macOS service | launchd `com.scribe.daemon`; uninstaller `/Library/Application Support/scribe/uninstall.sh` | Proposed (used by e2e script) |
 | Windows service | `scribed` | Proposed (used by e2e script) |
@@ -276,9 +279,9 @@ Notes:
 | Item | Value |
 |---|---|
 | Estimates assume | one experienced Rust developer; LOC without blanks and comments; tests counted separately |
-| Total size | ~13,500 production LOC + ~3,600 test LOC |
-| Total effort | 90–117 person-days, 110–140 with a 20% buffer |
-| Milestones | M1 MVP (pcap, SQLite, modes, CLI) 43–55 days; M2 native sensors 32–42 days; M3 production 15–20 days |
+| Total size | ~14,150 production LOC + ~3,900 test LOC |
+| Total effort | 93.5–121 person-days; 85–111.5 remaining after phase 0, 102–134 with a 20% buffer |
+| Milestones | M1 MVP (pcap, SQLite, modes, CLI with `scribe daemon`) 46.5–59 days; M2 native sensors 32–42 days; M3 production 15–20 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning |
 
 ## 15. Development environment
