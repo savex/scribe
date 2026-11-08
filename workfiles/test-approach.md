@@ -158,7 +158,7 @@ The test runner loads the scenario, plays the events through the pipeline, and c
 | Performance | 1,000 new connections/s: < 2% CPU on one core and < 100 MB memory for the daemon; event-to-database latency p99 < 1 s |
 | Soak | 24 h of mixed traffic: memory stays flat, no file handle leaks, spool stays empty |
 | Fuzzing | All parsers fuzzed for 30 min nightly; any crash found becomes a fixture |
-| Security | Daemon drops privileges after the sensor starts; API socket is accessible only to the owner and the admin group; malformed packets and API requests are rejected safely |
+| Security | Daemon drops privileges after the sensor starts; every control call is refused (and audited) for a read-only peer and accepted for `scribe-admin`; the CLI refuses a fake server (socket not owned by root, pipe server not SYSTEM); oversized messages, slow calls and too many streams are cut off; startup refused for group / other-writable config, `data_dir` or `file:` credentials; `hibernate` is capped and alerts (`FakeClock`); Postgres `sslmode=disable` / `prefer` rejected off loopback, sink works against a TLS-only Postgres; webhook signatures match test vectors; a threat list with a wrong checksum is rejected and the last good one kept; the audit chain detects a deleted and an edited row; XPC messages and API requests are fuzzed with the parsers; malformed packets and API requests are rejected safely (specs 12.1.1) |
 | Compatibility | Oldest and newest supported version of each OS; Linux kernel matrix as in section 5.2 |
 
 ## 10. Test data rules
@@ -171,9 +171,9 @@ The test runner loads the scenario, plays the events through the pipeline, and c
 
 | Stage | Contents | Time budget |
 |---|---|---|
-| **Every PR** | `cargo fmt`, `clippy`, unit tests, isolated component tests (UI, decoding, daemon, storage manager), storage conformance on SQLite and Postgres, migration and property tests | < 15 min |
+| **Every PR** | `cargo fmt`, `clippy`, `cargo deny` / `cargo audit` (planned), unit tests, isolated component tests (UI, decoding, daemon, storage manager), storage conformance on SQLite and Postgres, migration and property tests | < 15 min |
 | **Nightly** | Privileged sensor conformance on each OS and the Linux kernel matrix, integration tests, fuzzing, storage volume test | < 2 h |
-| **Before release** | End-to-end on installed packages, performance, 24 h soak, manual macOS checklist (extension approval, notarized install, UI smoke) | 1–2 days |
+| **Before release** | End-to-end on installed packages (including file modes, groups and the hardened service unit), release signature and provenance check, performance, 24 h soak, manual macOS checklist (extension approval, notarized install, UI smoke) | 1–2 days |
 
 ## 12. Coverage and exit criteria
 

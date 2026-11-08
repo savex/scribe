@@ -224,7 +224,7 @@ Full design: `workfiles/specs.md` 12.1.1. Locally, who is calling matters more t
 | Server check by clients | Socket owned by root / pipe server runs as SYSTEM, checked before sending | Proposed |
 | API limits | Message size, per-call timeout, concurrent stream cap | Proposed |
 | `export` | Daemon streams; CLI writes the file as the caller; daemon never writes client-supplied paths | Proposed |
-| Silencing controls | `hibernate`, mode, `reset`: admin only, audited; `hibernate` has a maximum `--for` and raises an alert | Proposed |
+| Silencing controls | `hibernate`, mode, `reset`: admin only, audited (refusals too); `hibernate` capped by `daemon.max_hibernate` (default `4h`, also applies without `--for`) and raises a `hibernated` alert in every mode | Proposed |
 | UI control calls | Elevation via polkit / Authorization Services / UAC; strict CSP, no remote content | Proposed |
 | XPC | Code-signing requirement both ways (Team ID + bundle ID); schema, size limits, fuzzed decoder | Proposed |
 | Privilege split | Privileged part only loads / attaches sensors; parsers run unprivileged | Proposed |
@@ -238,6 +238,8 @@ Full design: `workfiles/specs.md` 12.1.1. Locally, who is calling matters more t
 | URL hash key | Kept in the OS secret store | Proposed |
 | Tamper evidence | Sequence number + `prev_hmac` on audit and alert records; heartbeats to the remote sink | Proposed |
 | Remote API | None; Postgres sink for fleet view, SSH forwarding for remote control; if ever added: off by default, client certificates only | Proposed |
+| Proposed config keys | `daemon.max_hibernate`; Postgres `sslmode`, `ca`, `client_cert`, `client_key`; `[[alerts.webhooks]]` `secret`, `pin_sha256`; `[[policy.threat_lists]]` `sha256` / `minisign_key`, `max_entries`; `storage.encrypt`. Not in config v1 yet; each lands with its phase (specs 9.1.1) | Proposed |
+| Security work per phase | 5: StrictModes, hibernate cap, audit chain; 7–9: privilege split, service SID, XPC signing; 10: API access and limits; 11: HTTPS, signed webhooks, threat-list checks; 12: Postgres TLS, roles, heartbeats; 13: service hardening, release signing, optional encryption at rest; 14: `cargo deny` / `audit`, pinned Actions, review | Proposed (plan.md) |
 | Release integrity | Signed `SHA256SUMS`, build provenance attestation, `cargo deny` / `cargo audit`, Actions pinned by SHA, minimal `permissions:` | Proposed |
 
 ## 10. Versioning and releases
@@ -308,9 +310,9 @@ Notes:
 | Item | Value |
 |---|---|
 | Estimates assume | one experienced Rust developer; LOC without blanks and comments; tests counted separately |
-| Total size | ~14,150 production LOC + ~3,900 test LOC |
-| Total effort | 93.5–121 person-days; 85–111.5 remaining after phase 0, 102–134 with a 20% buffer |
-| Milestones | M1 MVP (pcap, SQLite, modes, CLI with `scribe daemon`) 46.5–59 days; M2 native sensors 32–42 days; M3 production 15–20 days |
+| Total size | ~16,150 production LOC + ~4,600 test LOC |
+| Total effort | 108–135 person-days; 99.5–125.5 remaining after phase 0, 119–151 with a 20% buffer (includes the security design, +14.5 days) |
+| Milestones | M1 MVP (pcap, SQLite, modes, CLI with `scribe daemon`, API access control) 51.5–63.5 days; M2 native sensors 32–42 days; M3 production 15–20 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning |
 
 ## 15. Development environment

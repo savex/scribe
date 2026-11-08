@@ -1,6 +1,6 @@
 # scribe specification
 
-*Version 0.5 (draft), 2026-11-08: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
+*Version 0.6 (draft), 2026-11-08: security design carried into the daemon commands, API, run states, config keys, verification and open questions. 0.5: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
 Built from [plan.md](plan.md), [diagram.md](diagram.md), [status.md](status.md) and the
 [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md). When they disagree,
 the code and the skill win; update this document in the same commit.
@@ -165,7 +165,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-27 | `scribe daemon status` shows the run state, live counters and critical metrics (section 6.2.1); `scribe status` is its short form | Planned | API tests; CLI output tests with `MockApiServer` |
 | FR-28 | `scribe daemon health` reports healthy / degraded / unhealthy with reasons, exits `0` / `1`, and answers within its timeout; also over `grpc.health.v1` | Planned | Daemon tests with `FaultySink` and a stopped `FakeSensor`; mock `daemon-down` |
 | FR-29 | `scribe daemon reset` clears runtime counters and caches and reloads the config without a restart; never changes stored history; an invalid config is rejected and the running one kept | Planned | Daemon tests; config error table reused for reload |
-| FR-30 | `scribe daemon hibernate [--for]` stops capture and processing while the daemon keeps serving the API; the pause is recorded and visible | Planned | Daemon tests with `FakeSensor` and `FakeClock`; sensor conformance (stop and start again) |
+| FR-30 | `scribe daemon hibernate [--for]` stops capture and processing while the daemon keeps serving the API; the pause is capped by `daemon.max_hibernate`, raises an alert, and is recorded and visible | Planned | Daemon tests with `FakeSensor` and `FakeClock`; sensor conformance (stop and start again) |
 | FR-31 | `scribe daemon wakeup` (or the end of `--for`) resumes processing with the same mode, baseline and caches | Planned | Same as FR-30 |
 
 ### 5.2 Non-functional
@@ -180,8 +180,8 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-6 | Durability | Restart keeps hosts, counters, baselines and mode; sink outages lose no events within the spool cap | Planned |
 | NFR-7 | Isolation | A slow or failing sink never blocks capture or other sinks | Planned |
 | NFR-8 | Privileges | Runs as root / SYSTEM only as long as the sensor needs; drops privileges after start | Proposed |
-| NFR-9 | API access | Local socket / named pipe readable only by the owner and the admin group | Proposed |
-| NFR-10 | Secrets | Database credentials from the OS keychain, DPAPI, Secret Service or a root-only file; never in plain config | Proposed |
+| NFR-9 | API access | Local socket / named pipe only; caller identity from the OS; read calls for the `scribe` group, control calls for root / Administrators and `scribe-admin`, all control calls audited; clients verify the server (sections 6.3, 12.1.1) | Proposed |
+| NFR-10 | Secrets | Database credentials, TLS client keys, the webhook secret, the URL hash key and the optional storage key from the OS keychain, DPAPI, Secret Service or a root-only file; never in plain config; startup refused when config, `data_dir` or a `file:` credential is group / other-writable | Proposed |
 | NFR-11 | Robust parsing | Packet parsers never crash or hang on malformed input; fuzzed, crash-free for 7 runs in a row before release | Planned |
 | NFR-12 | Privacy | Store connection metadata only, never payloads; redact URL query values by default (section 12.2); data leaves the host only through sinks the admin configures | Decided (URL redaction), Proposed (rest) |
 | NFR-13 | Portability | Prebuilt binaries for `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Implemented (archives) |
@@ -237,8 +237,10 @@ can't be reached. `status` and `health` take `--json` for scripts.
 | `scribe daemon status [--json] [--watch <interval>]` | Current state and live counters: run state (`running`, `degraded`, `hibernating` with since / until), version, uptime, config path and load time, mode and profile (learn time left), sensor kind and process attribution, flows/s and events/s over the last minute, flows, hosts, new hosts and alerts since start or last reset, pipeline queue depth. Per sink: healthy, last write, lag, spool size and drops. Host cache entries / limit and hit rate; state-store buffer use and drops; daemon memory and CPU. **Critical metrics** are listed first and highlighted: any drops, an unhealthy sink, spool or buffer over 80% of its limit, a fallback sensor, hibernation. `--watch` redraws every interval (e.g. `2s`) | Read (`scribe` group) |
 | `scribe daemon health [--json] [--timeout <duration>]` | Basic health check for scripts, monitoring and service managers. Prints `healthy`, `degraded: <reasons>` or `unhealthy: <reasons>`. Exit `0` for healthy or degraded, `1` for unhealthy or unreachable. Default timeout `2s`. Checks: the API answers, the pipeline is moving, the sensor is attached (or the daemon is hibernating on purpose), the state store is writable | Read (`scribe` group) |
 | `scribe daemon reset [--counters] [--caches] [--config]` | Runtime reset. With no flag it does all three. `--counters`: zero the runtime counters shown by `status` (rates, drop counts, totals since reset); **stored host counters and history are never touched**. `--caches`: write pending batches to storage first, then clear the host cache and the DNS (IP → name) cache; both refill from the state store and new DNS answers. `--config`: re-read the config file and apply it (section 8.5.2); an invalid file is rejected with its line and column, the running config stays and the command exits `1`. Prints what was reset and any settings that need a restart | Control (`scribe-admin` group) |
-| `scribe daemon hibernate [--for <duration>]` | Stop processing: detach the sensor, write pending batches, stop scoring and alerting. The daemon keeps running and answers the API. With `--for` (e.g. `30m`) it wakes up on its own. Already hibernating: reports since when, exit `0` (with `--for`, sets the new wake-up time) | Control (`scribe-admin` group) |
+| `scribe daemon hibernate [--for <duration>]` | Stop processing: detach the sensor, write pending batches, stop scoring and alerting. The daemon keeps running and answers the API. It always wakes up on its own: `--for` (e.g. `30m`) may not exceed `daemon.max_hibernate` (Proposed default `4h`), and without `--for` the maximum applies; there is no open-ended hibernation by default (section 12.1.1). Starting hibernation raises an alert (reason `hibernated`, with the caller and the planned end) through every alert output, whatever the mode. Already hibernating: reports since when, exit `0` (with `--for`, sets the new wake-up time, still capped) | Control (`scribe-admin` group) |
 | `scribe daemon wakeup` | Resume processing: reattach the sensor and continue with the same mode, baseline and caches. Already running: says so, exit `0` | Control (`scribe-admin` group) |
+
+The CLI refuses to talk to a server that isn't the real `scribed` (socket not owned by root, pipe server not running as SYSTEM) and exits `1` (section 12.1.1). Control commands run by a user outside `scribe-admin` exit `1` with *permission denied*, and the refusal is audited.
 
 `scribe status` stays as a short form of `scribe daemon status` (same output) because it's the command
 people type first. The CLI spells the command `hibernate`; `hybernate` and `sleep` are accepted as aliases,
@@ -249,7 +251,7 @@ and `wake` as an alias of `wakeup` (Proposed).
 gRPC (`tonic`) over a Unix socket (Linux, macOS) or named pipe (Windows); **Planned**. Its calls follow the CLI and the UI mock data in `ui/tests/mocks/api-scenarios/`:
 status, list hosts (paged, filtered), list / stream alerts, acknowledge alert, set mode, get / edit baseline, export, and the daemon controls `Health`, `Reset` (targets: counters, caches, config), `Hibernate` (optional duration) and `Wakeup`. `Health` is also served through the standard gRPC health protocol (`grpc.health.v1`, `tonic-health`) so generic tools can probe it. The API reports `api_version` so the UI can detect a mismatch.
 
-Access (Proposed, extends NFR-9): the daemon checks the caller's identity from the socket (`SO_PEERCRED` on Linux, `getpeereid` on macOS, the named-pipe client token on Windows). Read calls (status, health, hosts, alerts, export) are allowed to everyone who may open the socket (root / Administrators and the `scribe` group); control calls (`Reset`, `Hibernate`, `Wakeup`, set mode, acknowledge, baseline edits) only to root / Administrators and the `scribe-admin` group (group names Proposed). Every control call is logged with the caller, the call and the result, and stored as an `audit` event.
+Access (Proposed, extends NFR-9): the daemon checks the caller's identity from the socket (`SO_PEERCRED` on Linux, `getpeereid` on macOS, the named-pipe client token on Windows). Read calls (status, health, hosts, alerts, export) are allowed to everyone who may open the socket (root / Administrators and the `scribe` group); control calls (`Reset`, `Hibernate`, `Wakeup`, set mode, acknowledge, baseline edits) only to root / Administrators and the `scribe-admin` group (group names Proposed). Every control call is logged with the caller, the call and the result, and stored as an `audit` event; refused calls too. The identity comes from the OS once per connection and is attached to the request; identity fields inside messages are ignored. Transport hardening (socket in a `root:scribe` `0750` directory, named-pipe access list with `first_pipe_instance` and `reject_remote_clients`, clients checking the server, message size, timeout and stream limits, `export` streamed and written by the CLI as the caller) is in section 12.1.1. There is no TCP listener.
 
 ### 6.4 Desktop UI
 
@@ -388,8 +390,12 @@ any ──(SIGTERM, Ctrl-C, service stop)──▶ stopping ──▶ stopped
 - **Timers:** the `learn_for` countdown pauses while hibernating, so learn mode isn't cut short by a pause.
   The alert dedupe window keeps running on the clock.
 - **Mode changes and baseline edits** are accepted while hibernating and apply after wakeup.
+- **Limits and alerting:** hibernation always has an end (`--for`, capped by `daemon.max_hibernate`),
+  and starting it raises a `hibernated` alert, so silencing scribe is never quiet (section 12.1.1).
 - **Restart:** hibernation doesn't survive a restart; `scribed` always starts in `running` (Proposed;
   the alternative of persisting it in the state store is open question 9).
+- **Stops and crashes:** a daemon stop, a crash found at the next start, and gaps in the audit sequence are
+  stored as `audit` events; the remote sink sees missing heartbeats (NFR-18).
 
 #### 8.5.1 Counter reset
 
@@ -478,6 +484,23 @@ Precedence: `--config` flag, then `SCRIBE_CONFIG`, then the OS default; with no 
 - Consequence for packaging (phase 13): the MSI must never overwrite or delete `scribe.toml`, `data\` and `logs\` on upgrade or uninstall (mark them permanent / never-overwrite), and must give the service account write access to `data\` and `logs\`, since `Program Files` is read-only for everyone else.
 - Alternative if that proves awkward: `%ProgramData%\scribe\`, Windows' standard location for machine-wide config, data and logs.
 - On macOS, Apple's own convention for system-wide app logs is `/Library/Logs/scribe/`; `/var/log/scribe/` works equally and matches Linux.
+
+#### 9.1.1 Config keys proposed by the security design (not in config v1 yet)
+
+These keys come from section 12.1.1. They are **Proposed** and are **not** accepted by the v1 config yet
+(unknown keys are rejected); each lands with the phase that implements it, together with
+`config/scribe.toml`, the skill and the config tests.
+
+| Key | Values / default | Phase |
+|---|---|---|
+| `daemon.max_hibernate` | duration, default `4h`; the cap for `scribe daemon hibernate` | 5 |
+| `sslmode` in `[storage.state]` and `[[storage.sinks]]` (Postgres) | `verify-full` (default), `verify-ca`, `require`; `disable` and `prefer` only for loopback hosts | 12 |
+| `ca`, `client_cert`, `client_key` in the same tables | CA file path; TLS client certificate and key, the key as a credential reference (`keychain:` …) | 12 |
+| `[[alerts.webhooks]]` `secret` (the `[alerts]` section itself arrives in phase 11) | credential reference for the `X-Scribe-Signature` HMAC key | 11 |
+| `[[alerts.webhooks]]` `pin_sha256` | optional certificate pin | 11 |
+| `[[policy.threat_lists]]` `sha256` / `minisign_key` | optional integrity check of a downloaded list | 11 |
+| `[[policy.threat_lists]]` `max_entries` | entry cap per list | 11 |
+| `storage.encrypt` | `false` (default); `true` = SQLCipher database and AES-256-GCM spool, key in the OS secret store | 13 |
 
 ### 9.2 Environment variables
 
@@ -749,6 +772,7 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 | Daemon controls (FR-27 – FR-31) | Daemon tests with `FakeSensor`, `FakeClock`, `FaultySink`; CLI tests against `MockApiServer`; mocks `daemon-down`, `daemon-restart`; sensor conformance case *stop, then start again* | Planned |
 | Install and upgrade (UC-10) | End-to-end scripts | Yes (need installers) |
 | Non-functional (NFR-1 – NFR-5) | Performance and soak runs | Planned |
+| Security (NFR-8 – NFR-10, NFR-17 – NFR-19) | API tests calling every control endpoint as a read-only and an admin peer; fake-server test for the CLI's server check; oversized messages and too many streams; StrictModes file-mode table; `hibernate` cap and alert with `FakeClock`; Postgres `sslmode` config errors and a TLS-only Postgres in CI; signed webhook test vectors; threat-list checksum mismatch; audit chain with a deleted and an edited row; XPC decoder and API requests fuzzed; `cargo deny` / `cargo audit`; release signature and attestation checked in the Release smoke test | Planned |
 
 ## 15. Open questions
 
@@ -762,8 +786,11 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 | 6 | Whether to strip query strings from stored URLs | **Answered:** `privacy.url_query`, default `redact_values` (section 12.2) |
 | 7 | Names and locations of the policy engine, alert outputs and local API crates | **Answered:** option A — `crates/policy`, `crates/alerts`, `crates/api` + `proto/scribe/v1/api.proto` (section 7.2) |
 | 8 | Log locations | **Answered:** `/var/log/scribe/` on Linux and macOS (system log optional); on Windows a file next to the app, or the Event Viewer when configured (`log.output`, section 9.1) |
-| 9 | Should hibernation survive a restart of `scribed`? | **Open.** Proposed: no, a restart always resumes processing, so a forgotten pause can't silence monitoring for good; `--for` covers planned windows (section 8.5) |
+| 9 | Should hibernation survive a restart of `scribed`? | **Open.** Proposed: no, a restart always resumes processing, so a forgotten pause can't silence monitoring for good; `--for` covers planned windows (section 8.5). Since hibernation is now always capped by `daemon.max_hibernate` and alerts at start, keeping it across a restart (until its planned end) is less risky than before |
 | 10 | Names: `hibernate` / `wakeup` with aliases `hybernate`, `sleep`, `wake`; `scribe status` kept as short form of `scribe daemon status` | **Proposed** (section 6.2.1) |
+| 11 | Default for `daemon.max_hibernate`, and whether admins may set it to unlimited | **Proposed:** `4h`; `0` (unlimited) allowed but logged as a warning at every start (section 12.1.1) |
+| 12 | Group names `scribe` (read) and `scribe-admin` (control); who creates them | **Proposed:** these names, created by the installers in phase 13 |
+| 13 | Release signing: Sigstore cosign keyless or minisign | **Open** (section 12.1.1, NFR-19) |
 
 ## 16. References
 

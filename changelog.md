@@ -18,8 +18,14 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Proposed security design for every interaction in the spec (section 12.1.1, NFR-17 to NFR-19) and the
   conventions skill: local API access checks, XPC code signing, privilege split, TLS for Postgres / webhook /
   threat lists, encryption at rest, tamper evidence, release signing.
+- Security design carried through the documents: capped and alerting `hibernate` (`daemon.max_hibernate`),
+  API transport and server checks in the daemon commands, proposed security config keys (specs 9.1.1),
+  security verification and test cases, open questions 11–13; plan spreads the work over phases 5–14
+  (+14.5 days; totals 108–135 days, 99.5–125.5 remaining).
 
 ### Fixed
+- Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
+  52 → 51.5); corrected in the new totals.
 - Workspace version in `Cargo.toml` / `Cargo.lock` synced to 0.1.1 to match the `v0.1.1` tag
   (`scripts/version.sh check` failed with 0.1.0).
 
