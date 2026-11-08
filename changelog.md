@@ -28,6 +28,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   with clear errors (e.g. `32MB` suggests `MiB`), TOML support and property tests.
 - `scribe_core::platform`: default config, data and log paths per OS (Windows: next to `scribed.exe`), total RAM
   (`/proc/meminfo`, `sysctl`, `GlobalMemoryStatusEx`) and volume size / free space for percentage limits.
+- Config loading in `scribe-daemon` (now a library plus the `scribed` binary): lookup order `--config`,
+  `SCRIBE_CONFIG`, OS default, built-in defaults; full v1 model with errors that name file, line and column;
+  cross-field checks; paths and percentages resolved for the host; effective config printable as TOML.
+- `SinkConfig` carries retention and batching settings.
 
 ### Changed
 - Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,

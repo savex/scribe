@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use scribe_storage_api::{BackendOptions, EventKind};
 
 /// One backend instance: `kind = "sqlite"` plus its options.
@@ -13,6 +15,26 @@ pub struct SinkConfig {
     pub backend: BackendConfig,
     /// Empty means all event kinds.
     pub events: Vec<EventKind>,
+    /// `None` keeps events forever.
+    pub retention: Option<Duration>,
+    /// Write a batch when this many events are waiting...
+    pub batch_max_events: u32,
+    /// ...or when the oldest has waited this long.
+    pub batch_max_wait: Duration,
+}
+
+impl SinkConfig {
+    /// A sink with the default retention (30 days) and batching (500 events or 1 s).
+    pub fn new(name: impl Into<String>, backend: BackendConfig) -> Self {
+        Self {
+            name: name.into(),
+            backend,
+            events: vec![],
+            retention: Some(Duration::from_secs(30 * 86_400)),
+            batch_max_events: 500,
+            batch_max_wait: Duration::from_secs(1),
+        }
+    }
 }
 
 impl SinkConfig {
@@ -36,11 +58,7 @@ impl StorageConfig {
         };
         Self {
             state: backend.clone(),
-            sinks: vec![SinkConfig {
-                name: "local-history".into(),
-                backend,
-                events: vec![],
-            }],
+            sinks: vec![SinkConfig::new("local-history", backend)],
         }
     }
 }

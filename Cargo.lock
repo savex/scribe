@@ -346,6 +346,9 @@ dependencies = [
  "scribe-sensor-windows",
  "scribe-storage-api",
  "scribe-storage-manager",
+ "serde",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

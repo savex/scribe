@@ -18,7 +18,7 @@
 #             memory limits: percent of total physical RAM
 #             disk limits:   percent of the size of the volume holding the path
 #             percentages are resolved once at startup and logged
-#   path      relative paths are resolved against data_dir
+#   path      relative paths are resolved against data_dir (which itself must be absolute)
 
 version = 1
 
@@ -142,8 +142,9 @@ format = "text"           # text | json
 
 # Where logs go:
 #   "file"    the log file below (default)
-#   "system"  the OS system log instead of the file: journald/syslog (Linux),
-#             unified logging (macOS), Event Viewer under Applications and Services Logs\scribe (Windows)
+#   "system"  the OS system log instead of the file: journald (Linux), unified logging (macOS),
+#             Event Viewer under Applications and Services Logs\scribe (Windows; available once the
+#             installer registers the event source, plan phase 13)
 #   "both"    file and system log
 output = "file"
 
@@ -151,6 +152,7 @@ output = "file"
 #   Linux    /var/log/scribe/scribed.log
 #   macOS    /var/log/scribe/scribed.log
 #   Windows  <install dir>\logs\scribed.log   (next to scribed.exe)
+# "" writes to stderr instead, e.g. when running scribed in a terminal.
 # file = "/var/log/scribe/scribed.log"
 rotate = "daily"          # daily | size
 max_size = "50MiB"        # used when rotate = "size"

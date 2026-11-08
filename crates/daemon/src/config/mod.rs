@@ -1,0 +1,42 @@
+//! scribed configuration: find, parse, check and resolve `scribe.toml` (config format version 1).
+//!
+//! Order of lookup: `--config`, then `SCRIBE_CONFIG`, then the OS default path; with no file,
+//! the built-in defaults, which equal `config/scribe.toml`.
+
+mod load;
+mod model;
+mod resolve;
+
+#[cfg(test)]
+mod tests;
+
+use std::ffi::OsString;
+use std::path::Path;
+
+use scribe_core::platform::{DefaultPaths, Os};
+use scribe_storage_manager::Registry;
+
+pub use load::{discover, load, parse, validate, ConfigError, Context, Source};
+pub use model::*;
+pub use resolve::{resolve, HostFacts, Limits, LogSettings, Settings, SystemFacts};
+
+/// Checks for this binary on this OS.
+pub fn context() -> Context {
+    Context {
+        os: Os::current(),
+        storage_kinds: Registry::with_builtin().kinds().collect(),
+    }
+}
+
+/// Finds, reads, checks and resolves the config for this host.
+pub fn load_settings(flag: Option<&Path>, env: Option<OsString>) -> Result<Settings, ConfigError> {
+    let defaults = DefaultPaths::current().map_err(|e| {
+        ConfigError::new(
+            &Source::BuiltIn,
+            format!("cannot locate scribed's default paths: {e}"),
+        )
+    })?;
+    let source = discover(flag, env, &defaults.config_file)?;
+    let (config, _) = load(&source, &context())?;
+    resolve(config, source, &defaults, &HostFacts)
+}

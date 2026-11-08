@@ -1,8 +1,11 @@
 use std::fmt;
 use std::str::FromStr;
 
-/// Policy mode of the daemon.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+use serde::{Deserialize, Serialize};
+
+/// Policy mode of the daemon. Written in lower case in config and on the command line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Mode {
     /// Record everything and add new hosts to the list; never alert.
     #[default]

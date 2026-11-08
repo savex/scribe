@@ -148,8 +148,12 @@ Full option table: `workfiles/specs.md` section 9.1.
 
 | Item | Value | State |
 |---|---|---|
-| Lookup order | `--config`, then `SCRIBE_CONFIG`, then the OS default; no file = built-in defaults | Proposed |
-| Relative paths | Resolve against `data_dir` | Draft default |
+| Lookup order | `--config`, then `SCRIBE_CONFIG`, then the OS default; no file = built-in defaults; a file named by flag or variable must exist | Decided (implemented) |
+| Relative paths | Resolve against `data_dir`, which must be absolute | Decided (implemented) |
+| Config code | `crates/daemon/src/config/` (model, load, resolve); built-in defaults equal `config/scribe.toml`, enforced by a test | Decided (implemented) |
+| Config checks | Unknown keys and bad values rejected with line and column; sqlite needs `path`, postgres needs `url` without a password; sink names unique; threat list has exactly one of `path` / `url`, `refresh` only with `url`; storage kind must be built in | Decided (implemented) |
+| Empty `log.file` | `""` writes to stderr | Decided (implemented) |
+| Windows system log | `log.output = "system"` / `"both"` rejected on Windows until the installer registers the Event Log source (phase 13) | Decided (implemented) |
 | Durations | `45s`, `10m`, `1h`, `7d` | Draft default |
 | Linux | config `/etc/scribe/scribe.toml`, data `/var/lib/scribe/`, log `/var/log/scribe/scribed.log`, system log journald / syslog | Decided |
 | macOS | config and data `/Library/Application Support/scribe/`, log `/var/log/scribe/scribed.log`, system log unified logging (optional, `log.output`) | Decided |
