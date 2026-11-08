@@ -573,6 +573,7 @@ dependencies = [
  "libc",
  "proptest",
  "serde",
+ "serde_json",
  "thiserror",
  "toml",
  "windows-sys",
@@ -608,6 +609,17 @@ name = "scribe-enrich"
 version = "0.1.1"
 dependencies = [
  "scribe-core",
+]
+
+[[package]]
+name = "scribe-module-api"
+version = "0.1.1"
+dependencies = [
+ "scribe-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]

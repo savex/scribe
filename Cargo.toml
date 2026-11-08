@@ -20,10 +20,12 @@ scribe-test-support = { path = "crates/test-support" }
 scribe-sensor-linux = { path = "crates/sensor-linux" }
 scribe-sensor-windows = { path = "crates/sensor-windows" }
 scribe-sensor-pcap = { path = "crates/sensor-pcap" }
+scribe-module-api = { path = "crates/module-api" }
 
 # Third-party. Keep versions compatible with `rust-version` (policy: follow dependencies).
 tokio = { version = "1.54", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 toml = "1.2"
 thiserror = "2.0"
 anyhow = "1.0"

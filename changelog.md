@@ -28,6 +28,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `[modules.url] query`. Plan adds phase 0b (8–10 days) and 2 days in phase 10; conventions skill section 9b,
   test approach section 7a, status updated.
 
+- Phase 0b step 1: `scribe_core::module` (flow `Notes`, `ModuleRecord`, `MetricSample`) and the new
+  `scribe-module-api` crate: `Module`, `Manifest` with naming checks, `FlowHook`, `Source`, `Emitter`,
+  `ModuleContext`, `Signal`, `Reload`, and `ConfigDoc`, which reads `[modules.<id>]` with exact line numbers.
+
 ### Fixed
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
   52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;

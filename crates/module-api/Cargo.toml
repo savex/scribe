@@ -1,0 +1,13 @@
+[package]
+name = "scribe-module-api"
+description = "Interface for scribed modules: manifest, lifecycle, flow hooks, sources and outputs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+toml.workspace = true
