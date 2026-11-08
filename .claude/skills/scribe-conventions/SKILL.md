@@ -10,6 +10,7 @@ Use it as the reference when implementing a module, writing tests or changing CI
 
 - **Decided** values are already in the code, config or workflows; change them there and here together.
 - **Proposed** values come from the design discussion but no code uses them yet.
+- **Draft default** values are the defaults in the v1 config draft [config/scribe.toml](../../../config/scribe.toml); tunable after testing.
 - **Open** items still need a decision.
 
 Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workfiles/diagram.md),
@@ -39,25 +40,28 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | Setting | Value | State |
 |---|---|---|
 | Default mode | `learn` | Decided (`Mode::default()`) |
-| Time-limited learn mode | `learn_for` (example `7d`), then switch to `then` (example `caution`) | Proposed (scenario format) |
+| Time-limited learn mode | `policy.learn_for` (default `""` = no limit), then switch to `policy.then` (default `caution`) | Draft default |
 | Alert dedupe key | host + process path | Decided (`AlertState.key`) |
-| Alert dedupe window | `10m` | Proposed (scenario default) |
+| Alert dedupe window | `policy.dedupe_window = "10m"` | Draft default |
 | Hosts with no hostname | Tracked by IP, flagged "unresolved", never dropped | Decided (scenarios) |
 
-**"Non-ordinary" signals for caution mode** (proposed; each rule returns a score and a reason):
+**"Non-ordinary" signals for caution mode** (draft defaults, `[policy.scores]`):
 
-| Reason id | Signal |
-|---|---|
-| `raw_ip` | Connection to an IP with no preceding DNS lookup |
-| `unusual_port` | Port outside the usual set (e.g. 80/443/53) |
-| `high_entropy` | Random-looking / DGA-style domain labels |
-| `new_tld` | Top-level domain not seen before |
-| `new_process` | Process that never made network connections before |
-| `threat_list` | Host on a threat list |
-| `unlisted_host` | Host not on the baseline (used by `alert` mode) |
-| `plaintext` | Non-TLS flow (used by `caution` and `alert`) |
+| Reason id | Signal | Score |
+|---|---|---|
+| `raw_ip` | Connection to an IP with no preceding DNS lookup | 60 |
+| `unusual_port` | Port not in `policy.usual_ports` | 30 |
+| `high_entropy` | Longest label ≥ 10 chars with Shannon entropy ≥ 3.5 bits/char | 50 |
+| `new_tld` | Top-level domain not seen before | 20 |
+| `new_process` | Process that never made network connections before | 25 |
+| `threat_list` | Host or IP in a configured threat list | 100 |
+| `unlisted_host` | Host not on the baseline (used by `alert` mode) | — |
+| `plaintext` | Non-TLS flow (used by `caution` and `alert`) | — |
 
-Open: exact scores, the alert threshold, the "usual ports" list and where threat lists come from.
+- Scores of matching signals are added and capped at 100; caution alerts at `policy.threshold = 50`; the alert names the highest-scoring signal; 0 disables a signal.
+- Usual ports: TCP 22, 53, 80, 443, 465, 587, 853, 993, 995; UDP 53, 123, 443, 853, 5353.
+- Threat lists: none by default (fetching is outgoing traffic); local file or URL + `refresh`, formats `domains`, `hosts`, `ips`.
+- These values reproduce the four caution scenarios in `testdata/scenarios/`; keep them in sync.
 
 ## 3. Language, toolchain and code conventions
 
@@ -95,6 +99,9 @@ Open: exact scores, the alert threshold, the "usual ports" list and where threat
 | `scribe-storage-postgres` | lib | Optional backend (feature `postgres`) |
 | `scribe-storage-conformance` / `scribe-sensor-conformance` | lib | Shared test suites |
 | `scribe-test-support` | lib + bin | Test doubles, packet builders, `gen-fixtures` |
+| `scribe-policy` | lib (planned) | Modes, scoring rules, dedupe, learn time limit; no I/O |
+| `scribe-alerts` | lib (planned) | OS notifications, log, webhook |
+| `scribe-api` | lib (planned) | gRPC server and client (features `server` / `client`), protocol in `proto/scribe/v1/` |
 | `scribed` | bin (crate `scribe-daemon`) | The service |
 | `scribe` | bin (crate `scribe-cli`) | The command line client |
 
@@ -115,31 +122,35 @@ external gRPC storage plugins were discussed and **deliberately left out**.
 | Event payloads | JSON text (SQLite) / JSONB (Postgres) | Decided |
 | SQLite `max_batch` | 1000 | Decided |
 | Postgres `max_batch` | 5000 | Decided |
-| Sink write batching | Flush at 500 events or 1 s, per sink, in its own task | Proposed |
-| Host cache | In-memory LRU in front of the state store | Proposed (size open) |
-| Spool | Local append-only file, replayed in order when a sink recovers; oldest dropped at the size cap, drops counted | Proposed (size cap open) |
+| Sink write batching | Per sink, own task: `batch_max_events = 500`, `batch_max_wait = "1s"` | Draft default |
+| Host cache | In-memory LRU in front of the state store: `storage.cache.max_hosts = 50000`, `max_memory = "32MiB"` | Draft default |
+| State store outage | In-memory buffer of the latest events (`storage.buffer`: `max_events = 50000`, `max_memory = "32MiB"`); on overflow drop the oldest to add the newest; drops counted; replayed in order | Decided (sizes draft default) |
+| Spool | On-disk, per sink outage, replayed in order (`storage.spool`: `dir = "spool"`, `max_size = "512MiB"`, `min_free_disk = "5%"`); oldest dropped at a limit, drops counted | Draft default |
+| Size values | Absolute (`32MiB`, 1024-based) or percentage: memory = % of RAM, disk = % of the volume; resolved at startup and logged; absolute by default for predictable memory (NFR: < 100 MB) | Draft default |
 | Retention | Per sink, e.g. `30d`; enforced by the manager when the backend can't | Proposed |
 | Credentials | OS keychain (macOS), DPAPI (Windows), Secret Service (Linux) or a root-only file; never plain config | Proposed |
 | Migrations | Files in `crates/storage-*/migrations/`, idempotent (`IF NOT EXISTS`); a snapshot per released schema in `testdata/db/`, never edited afterwards | Decided |
 
 ## 6. Configuration (`scribed`)
 
-Example in [config/scribe.example.toml](../../../config/scribe.example.toml). Config loading is not implemented yet.
+Draft v1 config with every option and its default: [config/scribe.toml](../../../config/scribe.toml)
+(`version = 1`; an empty file behaves the same). It replaced `config/scribe.example.toml`. Loading is planned for phase 0.
+Full option table: `workfiles/specs.md` section 9.1.
 
-| Key | Default / example | State |
+| Item | Value | State |
 |---|---|---|
-| `mode` | `"learn"` | Decided |
-| `profile` | `"default"` | Decided |
-| `[storage.state] kind` | `"sqlite"` | Decided |
-| `[storage.state] path` | `/var/lib/scribe/state.db` | Proposed |
-| `[[storage.sinks]] name` | `"local-history"` | Proposed |
-| `[[storage.sinks]] path` | `/var/lib/scribe/events.db` | Proposed |
-| `[[storage.sinks]] retention` | `"30d"` | Proposed |
-| `[[storage.sinks]] events` | all kinds when empty; else any of `flow`, `alert`, `audit` | Decided (`SinkConfig.accepts`) |
+| Lookup order | `--config`, then `SCRIBE_CONFIG`, then the OS default; no file = built-in defaults | Proposed |
+| Relative paths | Resolve against `data_dir` | Draft default |
+| Durations | `45s`, `10m`, `1h`, `7d` | Draft default |
+| Linux | config `/etc/scribe/scribe.toml`, data `/var/lib/scribe/`, log `/var/log/scribe/scribed.log`, system log journald / syslog | Decided |
+| macOS | config and data `/Library/Application Support/scribe/`, log `/var/log/scribe/scribed.log`, system log unified logging (optional, `log.output`) | Decided |
+| Windows | config `<install dir>\scribe.toml` (next to `scribed.exe`); data `<install dir>\data\` | Decided |
+| Windows logs | file `<install dir>\logs\scribed.log` by default, or the Event Viewer when `log.output = "system"` | Decided |
+| Windows installer | MSI never overwrites or deletes `scribe.toml`, `data\`, `logs\`; grants the service write access to them | Proposed (phase 13) |
+| Log options | `level = "info"` (`SCRIBE_LOG` overrides), `format = "text"`, `rotate = "daily"`, `max_size = "50MiB"`, `keep = 14`, `output = "file"` (`file` \| `system` \| `both`) | Draft default |
 | Postgres `url` | connection string **without** password | Decided |
-| Postgres `credentials` | secret reference, e.g. `keychain:scribe-postgres` | Proposed |
-
-Open: Windows and macOS data paths, config file location per OS, log location and level.
+| Postgres `credentials` | secret reference: `keychain:`, `dpapi:`, `secret-service:`, `file:` | Proposed |
+| URL privacy | `privacy.url_query`: `full`, `redact_values` (**default**), `strip`, `path_only`, `hash` (`?<hash:xxxxxx>`, HMAC-SHA256 with a per-install key via `ring`); scheme and host always kept, user info always removed; applies to new data only. Rules and examples: `workfiles/specs.md` 12.2 | Decided |
 
 ## 7. Enrichment
 
@@ -167,6 +178,7 @@ Three counters per host and per process + host, plus time buckets (hourly propos
 | Item | Value | State |
 |---|---|---|
 | Local API | gRPC (`tonic`) over a Unix socket (Linux, macOS) or named pipe (Windows) | Proposed |
+| New crates | `crates/policy` (`scribe-policy`, no I/O), `crates/alerts` (`scribe-alerts`), `crates/api` (`scribe-api`, features `server` / `client`) + `proto/scribe/v1/api.proto` | Decided (option A, `workfiles/specs.md` 7.2) |
 | API access | Socket readable only by the owner and the admin group | Proposed |
 | CLI commands | `status`, `hosts`, `mode <learn\|caution\|alert>`, `alerts`, `alerts ack`, `baseline add/rm`, `export`, `version` / `--version` | Partly decided (`version`, mode parsing exist) |
 | Linux service | systemd unit `scribed` | Proposed (used by e2e script) |

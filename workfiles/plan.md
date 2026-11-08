@@ -32,7 +32,7 @@ Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe
 | 10 | **Local API and CLI** | gRPC (tonic) over a Unix socket or named pipe, access control by socket permissions; CLI commands `status`, `hosts`, `mode`, `alerts`, `baseline add/rm`, `alerts ack`, `export` | 1,100 | 300 | 6–7 | **~10%** — CLI argument parsing, `--version`; UI mock API data defines the shapes | 5.5–6.5 |
 | 11 | **Alert outputs** | OS notifications on each platform, structured log, webhook | 500 | 100 | 3–4 | **~5%** — `AlertOutput` interface, `RecordingAlertSink` | 3–4 |
 | 12 | **Postgres backend** | tokio-postgres with a deadpool connection pool, migrations, conformance tests against a Postgres container in CI | 800 | 150 | 4–5 | **~10%** — v1 schema and seed, stubs, CI job with Postgres 16 | 3.5–4.5 |
-| 13 | **Packaging and release** | `.deb` / `.rpm`, MSI (WiX), macOS `.pkg` with notarization, signing, install and uninstall scripts | 600 (scripts/config) | — | 6–8 | **~15%** — Release workflow builds archives for 4 targets with checksums; installers left | 5–7 |
+| 13 | **Packaging and release** | `.deb` / `.rpm`, MSI (WiX, keeps config / data / logs next to the app across upgrades), macOS `.pkg` with notarization, signing, install and uninstall scripts | 600 (scripts/config) | — | 6–8 | **~15%** — Release workflow builds archives for 4 targets with checksums; installers left | 5–7 |
 | 14 | **Hardening** | Fuzz the packet parsers, performance and memory tests under load, security review, user docs | 500 | 300 | 5–7 | **~10%** — fuzz targets and workflow; never run | 4–6 |
 | | **Total** | | **~13,500** | **~3,600** | **90–117** | **~4% of product LOC** | **83–109.5** |
 
@@ -52,7 +52,7 @@ With a 20% buffer for unknowns, plan on **100–131 person-days remaining**. Tha
 
 In this order, because each one turns existing tests and data into real coverage:
 
-1. **Finish phase 0:** add tokio, serde, toml, tracing and thiserror (check each one's minimum Rust version), config loading from `config/scribe.example.toml`, logging. Add the first unit tests for `core`, `storage-manager` and `cli`, which have none.
+1. **Finish phase 0:** add tokio, serde, toml, tracing and thiserror (check each one's minimum Rust version), config loading from the v1 draft `config/scribe.toml`, logging. Add the first unit tests for `core`, `storage-manager` and `cli`, which have none.
 2. **Phase 1, SQLite backend:** make the skipped `sqlite_conformance` tests pass.
 3. **Phase 3, enrichment:** SNI, HTTP and DNS parsers against the 13 pcap fixtures; then QUIC with `ring` and a fixture checked against the RFC 9001 Appendix A sample packet.
 4. **Phase 4, policy engine:** the scenario runner plus the rules, against the 11 scenarios.
@@ -67,6 +67,10 @@ In this order, because each one turns existing tests and data into real coverage
 | Rust 1.70 kept as the minimum version, development on current stable | New dependencies may need older versions pinned (risk 6) |
 | All test workflows manual, only Release and Version tracking automatic | The test approach's "nightly" stage is run by hand |
 | Versions come from `v*` git tags | Release work in phase 13 is down to installers and signing |
+| Default paths: OS defaults on Linux / macOS, logs in `/var/log/scribe/`; on Windows config, data and log file next to the app, logs to the Event Viewer when configured (`log.output`) | Phase 0 config and logging, phase 13 installers create these folders |
+| Draft v1 config `config/scribe.toml` holds every default (policy scores, cache, buffer, spool, logging) | Phase 0 loads it; phases 2 and 4 implement the limits and scores it defines |
+| State store outage: in-memory buffer, oldest dropped on overflow | Phase 2 adds the buffer next to the on-disk sink spool |
+| New crates (option A): `crates/policy`, `crates/alerts`, `crates/api` + `proto/scribe/v1/api.proto` | Phases 4, 11 and 10 each start by creating their crate; the CLI uses only the API client |
 
 ## Risks
 

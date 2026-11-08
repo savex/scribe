@@ -30,7 +30,7 @@ crates/
   cli/                  `scribe` command line client
 macos/ScribeExtension/  Network Extension (Swift), planned
 ui/                     optional Tauri UI, planned (mock API scenarios in ui/tests)
-config/                 example configuration
+config/                 default configuration (scribe.toml, format v1 draft)
 testdata/               pcap fixtures, daemon scenarios, raw sensor records, schema snapshots
 fuzz/                   cargo-fuzz targets and seed corpus
 tests/e2e/              install / upgrade / uninstall tests per OS

@@ -1,6 +1,6 @@
 # scribe specification
 
-*Version 0.1 (draft), 2026-11-08, describing the project at commit `fd170fb`.*
+*Version 0.2 (draft), 2026-11-08, describing the project at commit `18b993f`, with the answers to open questions 2–8.*
 Built from [plan.md](plan.md), [diagram.md](diagram.md), [status.md](status.md) and the
 [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md). When they disagree,
 the code and the skill win; update this document in the same commit.
@@ -12,6 +12,7 @@ the code and the skill win; update this document in the same commit.
 | **Implemented** | Works today and has tests or a verified check |
 | **Stub** | Code and interface exist, behaviour doesn't (returns "not implemented" or does nothing) |
 | **Planned** | Agreed and scheduled in the plan; no code yet |
+| **Draft default** | Default value in the v1 config draft ([config/scribe.toml](../config/scribe.toml)); accepted as the starting point, tunable after testing |
 | **Proposed** | Suggested value or design, not yet confirmed |
 | **Open** | Needs a decision |
 
@@ -152,6 +153,8 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-22 | Load and validate a TOML config file; report errors with line numbers | Planned (phase 0) | Config tests (planned) |
 | FR-23 | Report the version from the nearest git tag (`scribe --version`, `scribed --version`) | Implemented | Release workflow smoke check |
 | FR-24 | Export hosts and baselines | Planned | — |
+| FR-25 | While the state store is unavailable, keep the latest events in a bounded in-memory buffer; when full, drop the oldest to add the newest; count drops; replay in order on recovery | Planned | `FaultySink`-style state-store tests (planned) |
+| FR-26 | Store plaintext URLs according to `privacy.url_query`; always remove user info (`user:password@`) | Planned | Unit tests (planned); fixture `http_plain` |
 
 ### 5.2 Non-functional
 
@@ -159,7 +162,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 |---|---|---|---|
 | NFR-1 | Throughput | 1,000 new connections/s | Proposed |
 | NFR-2 | CPU overhead | < 2% of one core at NFR-1 | Proposed |
-| NFR-3 | Memory | Daemon < 100 MB | Proposed |
+| NFR-3 | Memory | Daemon < 100 MB; the default cache (32 MiB) and buffer (32 MiB) budgets fit inside it | Proposed |
 | NFR-4 | Latency | Flow to database p99 < 1 s; sensor reports each flow within 1 s | Proposed (1 s sensor deadline is decided) |
 | NFR-5 | Stability | 24 h soak with flat memory, no handle leaks, empty spool | Proposed |
 | NFR-6 | Durability | Restart keeps hosts, counters, baselines and mode; sink outages lose no events within the spool cap | Planned |
@@ -168,7 +171,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-9 | API access | Local socket / named pipe readable only by the owner and the admin group | Proposed |
 | NFR-10 | Secrets | Database credentials from the OS keychain, DPAPI, Secret Service or a root-only file; never in plain config | Proposed |
 | NFR-11 | Robust parsing | Packet parsers never crash or hang on malformed input; fuzzed, crash-free for 7 runs in a row before release | Planned |
-| NFR-12 | Privacy | Store connection metadata only, never payloads; data leaves the host only through sinks the admin configures | Proposed |
+| NFR-12 | Privacy | Store connection metadata only, never payloads; redact URL query values by default (section 12.2); data leaves the host only through sinks the admin configures | Decided (URL redaction), Proposed (rest) |
 | NFR-13 | Portability | Prebuilt binaries for `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Implemented (archives) |
 | NFR-14 | Build | Minimum Rust 1.70 today; raising it is an open decision (plan risk 6) | Open |
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
@@ -248,13 +251,24 @@ outputs; the CLI and UI read and control everything through the local API.
 | Storage manager | `crates/storage-manager` | Backend registry, routing to sinks; later host cache, batching, spool, retention | storage-api, backends | Partly (registry, routing) |
 | SQLite backend | `crates/storage-sqlite` | Default state store and event sink | storage-api | Stub (schema v1 done) |
 | PostgreSQL backend | `crates/storage-postgres` | Optional state store and event sink | storage-api | Stub (schema v1 done) |
-| Policy engine | new crate, name open (e.g. `crates/policy`) | Modes, scoring rules, dedupe, learn time limit | core, storage-api | Planned |
-| Alert outputs | new module, location open | OS notifications, log, webhook | core | Planned (interface exists) |
-| Local API | new crate + `proto/`, name open | gRPC service and client | core, storage-api | Planned |
+| Policy engine | `crates/policy` (`scribe-policy`), no I/O | Modes, scoring rules, dedupe, learn time limit | core, storage-api | Planned |
+| Alert outputs | `crates/alerts` (`scribe-alerts`) | OS notifications, log, webhook | core | Planned (interface exists) |
+| Local API | `crates/api` (`scribe-api`, features `server` / `client`) + `proto/scribe/v1/api.proto` | gRPC service and client | core, storage-api | Planned |
 | Daemon | `crates/daemon` (`scribed`) | Wires everything; config, logging, service lifecycle | all of the above | Stub |
 | CLI | `crates/cli` (`scribe`) | Command line client | core, API client | Partly |
 
-### 7.2 Test and support modules (implemented)
+### 7.2 Planned crates — layout (decided: option A)
+
+| Option | Layout | For | Against |
+|---|---|---|---|
+| **A (chosen)** | `crates/policy` (`scribe-policy`), `crates/alerts` (`scribe-alerts`), `crates/api` (`scribe-api`, features `server` / `client`), protocol in `proto/scribe/v1/api.proto` | Matches the current one-crate-per-module layout; the CLI depends only on the `client` feature; each crate testable alone | Three more crates |
+| B | Alert outputs inside `scribe-policy` (`policy::outputs`) | One crate fewer; the engine that decides also delivers | OS notification code (per-OS dependencies) mixed into otherwise pure decision logic, harder to test |
+| C | API split: `scribe-api-proto` (generated types), server inside `scribed`, client crate for CLI and UI | Smallest client; server code lives with the daemon it serves | Generated code in its own crate; more crates than A |
+| D | Everything inside `crates/daemon` as modules | No new crates | Daemon grows large; scenario tests can't run the policy engine without the whole daemon |
+
+**Decision:** option A. It keeps the policy engine free of I/O, so the 11 scenarios can drive it directly with the test doubles, and the CLI and UI link only the API client. Options B–D are kept for the record.
+
+### 7.3 Test and support modules (implemented)
 
 | Module | Location | Responsibility |
 |---|---|---|
@@ -288,24 +302,27 @@ The default mode is `learn`. Hosts added to the baseline in learn mode stay list
 
 ### 8.3 Non-ordinary signals (caution mode)
 
-| Reason | Signal | Status |
-|---|---|---|
-| `raw_ip` | Connection to an IP with no DNS lookup before it | Proposed |
-| `unusual_port` | Port outside the usual set | Proposed (port list open) |
-| `high_entropy` | Random-looking (DGA-style) domain labels | Proposed |
-| `new_tld` | Top-level domain not seen before | Proposed |
-| `new_process` | Process that never made network connections before | Proposed |
-| `threat_list` | Host on a threat list | Proposed (list sources open) |
+| Reason | Signal | Score | Status |
+|---|---|---|---|
+| `raw_ip` | Connection to an IP with no DNS lookup before it | 60 | Draft default |
+| `unusual_port` | Destination port not in `policy.usual_ports` | 30 | Draft default |
+| `high_entropy` | Longest domain label ≥ 10 characters with Shannon entropy ≥ 3.5 bits/character | 50 | Draft default |
+| `new_tld` | Top-level domain not seen before | 20 | Draft default |
+| `new_process` | Process that never made network connections before | 25 | Draft default |
+| `threat_list` | Host or IP in a configured threat list | 100 | Draft default |
 
-Each rule returns a score and a reason; scores and the alert threshold are **open**.
+- **Scoring:** the scores of all matching signals are added and capped at 100. Caution mode alerts when the total reaches `policy.threshold` (default **50**), and the alert names the highest-scoring signal. A score of 0 disables a signal.
+- **Usual ports:** TCP 22, 53, 80, 443, 465, 587, 853, 993, 995; UDP 53, 123, 443, 853, 5353.
+- **Threat lists:** none by default, because fetching a list is itself outgoing traffic. Lists can be local files or URLs with a refresh interval, in `domains`, `hosts` or `ips` format.
+- **Check against the scenarios:** an ordinary new host scores 25 (`new_process`) and stays quiet; the raw-IP case scores 60 + 30 + 25 and alerts as `raw_ip`; the random-looking domain scores 50 + 20 + 25 and alerts as `high_entropy`. This matches `caution-ordinary-new-host`, `caution-raw-ip`, `caution-high-entropy-domain` and `learn-auto-switch`.
 
 ### 8.4 Degraded operation
 
 | Situation | Behaviour | Status |
 |---|---|---|
 | Native sensor unavailable (old kernel, extension not approved) | Fall back to the pcap sensor; status reports no process info | Planned |
-| Event sink down | Spool locally, replay in order; at the spool cap drop the oldest and count drops | Proposed |
-| State store unavailable | Keep counting in memory, report unhealthy | Open |
+| Event sink down | Spool to disk (`storage.spool`), replay in order; when `max_size` or `min_free_disk` is reached drop the oldest and count drops | Draft default |
+| State store unavailable | Keep the latest events in an in-memory buffer (`storage.buffer`); when full, drop the oldest to add the newest; count drops, report unhealthy, replay in order on recovery (FR-25) | Decided |
 | Hostname hidden (ECH, DoH) | Track by IP or outer name, flag it | Planned |
 | Invalid config | Refuse to start, report the error and line | Planned |
 
@@ -313,55 +330,70 @@ Each rule returns a score and a reason; scores and the alert threshold are **ope
 
 ### 9.1 Config file (`scribed`)
 
-TOML. Example: [config/scribe.example.toml](../config/scribe.example.toml). Loading is planned for phase 0.
+TOML, config format version 1 (draft): [config/scribe.toml](../config/scribe.toml). The file lists every
+option with its built-in default, so an empty file or no file behaves the same. Loading is planned for phase 0.
+
+**Value formats**
+- **Duration:** `45s`, `10m`, `1h`, `7d`.
+- **Size:** absolute (`512KiB`, `32MiB`, `2GiB`, 1024-based) or a percentage (`1%`). For memory limits a percentage means a share of total physical RAM; for disk limits, a share of the size of the volume holding the path. Percentages are resolved once at startup and logged.
+- **Path:** relative paths resolve against `data_dir`.
+
+**Choosing between percentages and absolute sizes:** absolute values are the default because they keep memory use predictable on any machine (NFR-3). Percentages suit fleets of very different machines; for those, keep percentages small (memory 1–2%, spool 2–5% of the volume) and watch the resolved values in the startup log.
 
 | Key | Type | Default | Status |
 |---|---|---|---|
+| `version` | integer | `1` | Draft default |
 | `mode` | `learn` \| `caution` \| `alert` | `learn` | Decided |
 | `profile` | string | `default` | Decided |
+| `data_dir` | path | OS default (below) | Decided |
+| `[policy] learn_for` | duration, `""` = no limit | `""` | Draft default |
+| `[policy] then` | `caution` \| `alert` | `caution` | Draft default |
+| `[policy] dedupe_window` | duration | `10m` | Draft default |
+| `[policy] threshold` | 0–100 | `50` | Draft default |
+| `[policy.scores] raw_ip`, `unusual_port`, `high_entropy`, `new_tld`, `new_process`, `threat_list` | 0–100 | 60, 30, 50, 20, 25, 100 | Draft default |
+| `[policy.usual_ports] tcp`, `udp` | port lists | section 8.3 | Draft default |
+| `[policy.entropy] min_label_length`, `min_bits_per_char` | integer, number | `10`, `3.5` | Draft default |
+| `[[policy.threat_lists]] name`, `path` or `url`, `format`, `refresh` | — | none | Draft default |
+| `[privacy] url_query` | `full` \| `redact_values` \| `strip` \| `path_only` \| `hash` | `redact_values` | Decided (section 12.2) |
 | `[storage.state] kind` | `sqlite` \| `postgres` | `sqlite` | Decided |
-| `[storage.state] path` (SQLite) | path | `<data dir>/state.db` | Proposed |
-| `[storage.state] url` (Postgres) | URL without password | — | Decided |
-| `[storage.state] credentials` (Postgres) | secret reference, e.g. `keychain:scribe-postgres` | — | Proposed |
-| `[[storage.sinks]] name` | string | `local-history` | Proposed |
+| `[storage.state] path` (SQLite) | path | `state.db` | Draft default |
+| `[storage.state] url`, `credentials` (Postgres) | URL without password; secret reference (`keychain:`, `dpapi:`, `secret-service:`, `file:`) | — | Decided / Proposed |
+| `[storage.cache] max_hosts` | integer | `50000` | Draft default |
+| `[storage.cache] max_memory` | size or % of RAM | `32MiB` | Draft default |
+| `[storage.buffer] max_events` | integer | `50000` | Draft default |
+| `[storage.buffer] max_memory` | size or % of RAM | `32MiB` | Draft default |
+| `[storage.spool] dir` | path | `spool` | Draft default |
+| `[storage.spool] max_size` | size or % of volume | `512MiB` | Draft default |
+| `[storage.spool] min_free_disk` | size or % of volume | `5%` | Draft default |
+| `[[storage.sinks]] name` | string | `local-history` | Draft default |
 | `[[storage.sinks]] kind` | `sqlite` \| `postgres` | `sqlite` | Decided |
-| `[[storage.sinks]] path` / `url` / `credentials` | as above | `<data dir>/events.db` | Proposed |
-| `[[storage.sinks]] events` | list of `flow`, `alert`, `audit` | all | Decided |
-| `[[storage.sinks]] retention` | duration (`30d`, `10m`, `1h`, `45s`) | `30d` | Proposed |
-| `[policy] learn_for` | duration | none (learn until changed) | Proposed |
-| `[policy] then` | `caution` \| `alert` | `caution` | Proposed |
-| `[policy] dedupe_window` | duration | `10m` | Proposed |
-| `[policy] usual_ports`, `threshold`, `threat_lists` | — | — | Open |
-| `[log] level` | `error` … `trace` | `info` | Proposed (phase 0) |
-| `[log] format` | `text` \| `json` | `text` | Proposed (phase 0) |
-| `[log] file` | path, rotated daily | none (stderr) | Proposed (phase 0) |
+| `[[storage.sinks]] path` / `url` / `credentials` | as above | `events.db` | Draft default |
+| `[[storage.sinks]] events` | list of `flow`, `alert`, `audit`; `[]` = all | `[]` | Decided |
+| `[[storage.sinks]] retention` | duration, `""` = forever | `30d` | Draft default |
+| `[[storage.sinks]] batch_max_events`, `batch_max_wait` | integer, duration | `500`, `1s` | Draft default |
+| `[log] level` | `error` … `trace` | `info` | Draft default |
+| `[log] format` | `text` \| `json` | `text` | Draft default |
+| `[log] output` | `file` \| `system` \| `both` | `file` | Decided |
+| `[log] file` | path, used when `output` is `file` or `both` | OS default (below) | Decided |
+| `[log] rotate`, `max_size`, `keep` | `daily` \| `size`, size, integer | `daily`, `50MiB`, `14` | Draft default |
 
-**Default locations** (proposed, to confirm in phase 0):
+When a cache, buffer or spool limit is hit, the oldest entries are dropped and the drop counters show in `scribe status`. The cache drops the least-recently-used hosts, which are re-read from the state store on demand.
 
-| OS | Config file | Data directory |
-|---|---|---|
-| Linux | `/etc/scribe/scribe.toml` | `/var/lib/scribe/` |
-| macOS | `/Library/Application Support/scribe/scribe.toml` | same folder |
-| Windows | `%ProgramData%\scribe\scribe.toml` | same folder |
+**Default locations**
+
+| OS | Config file | Data directory | Log file | System log (`log.output = "system"` or `"both"`) | Status |
+|---|---|---|---|---|---|
+| Linux | `/etc/scribe/scribe.toml` | `/var/lib/scribe/` | `/var/log/scribe/scribed.log` | journald / syslog | Decided |
+| macOS | `/Library/Application Support/scribe/scribe.toml` | same folder | `/var/log/scribe/scribed.log` | unified logging | Decided |
+| Windows | `<install dir>\scribe.toml` (next to `scribed.exe`) | `<install dir>\data\` | `<install dir>\logs\scribed.log` | Event Viewer (Applications and Services Logs\scribe) | Decided |
 
 Precedence: `--config` flag, then `SCRIBE_CONFIG`, then the OS default; with no file, built-in defaults (proposed).
 
-### 9.2 Environment variables
-
-| Variable | Used by | Purpose | Status |
-|---|---|---|---|
-| `SCRIBE_CONFIG` | `scribed` | Config file path | Proposed |
-| `SCRIBE_LOG` | `scribed` | Log filter, `RUST_LOG` syntax; overrides `[log] level` | Proposed |
-| `SCRIBE_VERSION` | build | Overrides the version baked into the binaries (release builds) | Implemented |
-| `SCRIBE_TEST_POSTGRES_URL` | tests | Disposable Postgres database for conformance tests | Implemented |
-
-### 9.3 Build options
-
-| Option | Effect | Status |
-|---|---|---|
-| Cargo feature `sqlite` (default) | Build the SQLite backend | Implemented |
-| Cargo feature `postgres` | Build the PostgreSQL backend | Implemented |
-| `--all-features` | Both backends | Implemented |
+**Notes on the Windows choices**
+- Config, data and the log file all live next to the app; logs go to the Event Viewer instead when `log.output = "system"` (decided).
+- Consequence for packaging (phase 13): the MSI must never overwrite or delete `scribe.toml`, `data\` and `logs\` on upgrade or uninstall (mark them permanent / never-overwrite), and must give the service account write access to `data\` and `logs\`, since `Program Files` is read-only for everyone else.
+- Alternative if that proves awkward: `%ProgramData%\scribe\`, Windows' standard location for machine-wide config, data and logs.
+- On macOS, Apple's own convention for system-wide app logs is `/Library/Logs/scribe/`; `/var/log/scribe/` works equally and matches Linux.
 
 ## 10. Data
 
@@ -406,11 +438,119 @@ SQLite stores timestamps as epoch milliseconds; PostgreSQL uses `TIMESTAMPTZ`, `
 
 ## 12. Security and privacy
 
+### 12.1 Security
+
 - Capture needs root / SYSTEM, an approved Network Extension (macOS), or Npcap (Windows). The daemon should drop privileges once the sensor runs (NFR-8).
 - Every parser reads untrusted bytes and is fuzzed (NFR-11).
-- Only metadata is stored. Plaintext URLs can contain sensitive query strings; whether to strip query strings is **open**.
+- Only metadata is stored, never payloads (NFR-12).
 - Data stays on the host unless the admin configures a remote sink; credentials never sit in plain config (NFR-10).
 - Test data never contains real user traffic; only documentation address ranges and `example.com` / `example.net` names.
+
+### 12.2 URL privacy (`privacy.url_query`)
+
+**Decision:** default `redact_values` (FR-26).
+
+**Why it matters.** For plaintext HTTP, scribe sees the full URL. Query strings often carry tokens,
+session ids, user ids or personal search terms. Stored as-is, they would sit in the local database
+and in every event sink, including a central PostgreSQL. `privacy.url_query` decides how much of
+the URL is kept.
+
+**Rules that apply to every option**
+- Only plaintext HTTP URLs are seen; for HTTPS scribe knows only the host name.
+- Scheme and host are always kept.
+- User info (`user:password@`) is always removed, even with `full`.
+- Fragments (`#…`) are never sent by clients, so they never appear.
+- Alerts, events and `scribe hosts` all show the URL in the same stored form.
+- Changing the option applies to new data only; URLs already stored are not rewritten.
+
+**Options**
+
+| Option | Rule | Keeps | Loses |
+|---|---|---|---|
+| `full` | URL as seen, minus user info | everything; best for forensics | privacy: tokens and personal data reach every database and sink |
+| **`redact_values`** (default) | Every query value becomes `<redacted>`; keys, their order and repeats are kept; a key with no value (`safe`) or an empty value (`q=`) stays as is | path and parameter names: enough to recognise what an app does | parameter values; ids inside the **path** remain visible |
+| `strip` | Query removed | full path | which parameters were sent |
+| `path_only` | First path segment kept, rest replaced by `…`; query removed | rough area of the site | most of the path |
+| `hash` | Query replaced by `?<hash:xxxxxx>`, a keyed hash of the whole query (HMAC-SHA256 with a per-install secret key, first 6 hex digits, computed with `ring`) | lets repeated requests be matched without storing values | readability; matching only works on the same install and while the key is unchanged |
+
+The `hash` key is generated on first start and stored in `data_dir` readable only by the service account (proposed: `url_hash.key`). Without it, a hash of a short value such as a user id could be reversed by trying likely values.
+
+**Examples**
+
+1. Simple query
+   ```
+   seen           http://plain.example.com/download?id=42
+   full           http://plain.example.com/download?id=42
+   redact_values  http://plain.example.com/download?id=<redacted>
+   strip          http://plain.example.com/download
+   path_only      http://plain.example.com/download
+   hash           http://plain.example.com/download?<hash:3f9c1e>
+   ```
+2. Token in the query, user id in the path
+   ```
+   seen           http://api.example.com/v1/users/1234/profile?token=eyJhbGciOiJIUzI1NiJ9.e30.Zm9v&lang=en
+   full           http://api.example.com/v1/users/1234/profile?token=eyJhbGciOiJIUzI1NiJ9.e30.Zm9v&lang=en
+   redact_values  http://api.example.com/v1/users/1234/profile?token=<redacted>&lang=<redacted>
+   strip          http://api.example.com/v1/users/1234/profile
+   path_only      http://api.example.com/v1/…
+   hash           http://api.example.com/v1/users/1234/profile?<hash:a41f9c>
+   ```
+   Only `full` keeps the token, a live credential. Only `path_only` also hides the id `1234` in the path.
+3. Login details in the URL
+   ```
+   seen           http://admin:s3cret@intranet.example.com/reports/2026/q3.pdf?print=1
+   full           http://intranet.example.com/reports/2026/q3.pdf?print=1
+   redact_values  http://intranet.example.com/reports/2026/q3.pdf?print=<redacted>
+   strip          http://intranet.example.com/reports/2026/q3.pdf
+   path_only      http://intranet.example.com/reports/…
+   hash           http://intranet.example.com/reports/2026/q3.pdf?<hash:07d2b8>
+   ```
+   `admin:s3cret@` is removed under every option.
+4. No query
+   ```
+   seen           http://cdn.example.net/assets/js/app.js
+   full           http://cdn.example.net/assets/js/app.js
+   redact_values  http://cdn.example.net/assets/js/app.js
+   strip          http://cdn.example.net/assets/js/app.js
+   path_only      http://cdn.example.net/assets/…
+   hash           http://cdn.example.net/assets/js/app.js
+   ```
+5. Personal search terms, a parameter without a value
+   ```
+   seen           http://search.example.com/?q=my+medical+condition&page=2&safe
+   full           http://search.example.com/?q=my+medical+condition&page=2&safe
+   redact_values  http://search.example.com/?q=<redacted>&page=<redacted>&safe
+   strip          http://search.example.com/
+   path_only      http://search.example.com/
+   hash           http://search.example.com/?<hash:c90e44>
+   ```
+6. Tracking pixel: repeated parameter, encoded URL as a value
+   ```
+   seen           http://tracker.example.net/pixel.gif?uid=8f3a2c&uid=8f3a2c&ref=http%3A%2F%2Fshop.example.com%2Fcart
+   full           http://tracker.example.net/pixel.gif?uid=8f3a2c&uid=8f3a2c&ref=http%3A%2F%2Fshop.example.com%2Fcart
+   redact_values  http://tracker.example.net/pixel.gif?uid=<redacted>&uid=<redacted>&ref=<redacted>
+   strip          http://tracker.example.net/pixel.gif
+   path_only      http://tracker.example.net/pixel.gif
+   hash           http://tracker.example.net/pixel.gif?<hash:5b17ad>
+   ```
+   Under `hash`, the same request from the same install always gives `5b17ad`, so repeats can be counted without storing the user id.
+
+(Hash values above are illustrative.)
+
+**What each option still lets you answer**
+
+| Question | `full` | `redact_values` | `strip` | `path_only` | `hash` |
+|---|---|---|---|---|---|
+| Which endpoint was called? | yes | yes | yes | roughly | yes |
+| Which parameters were sent? | yes | yes | no | no | no |
+| What were the values? | yes | no | no | no | no |
+| Is this the same request as before? | yes | partly | no | no | yes |
+| Can secrets reach storage or a central sink? | **yes** | only via the path | only via the path | rarely | no |
+
+**Why `redact_values` is the default:** it shows what an application does (endpoint and parameter
+names) without keeping values, which is where tokens and personal data usually are. Use `full` only on
+machines where forensics outweighs privacy and no remote sink is configured; use `path_only` where
+paths themselves carry ids.
 
 ## 13. Versioning and release
 
@@ -434,14 +574,16 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 
 ## 15. Open questions
 
-1. Minimum Rust version: keep 1.70 with the fallback resolver, or raise to 1.85 (plan risk 6).
-2. Default config and data paths per OS (section 9.1).
-3. Scores, threshold, usual ports and threat-list sources for caution mode.
-4. Behaviour when the state store is unavailable.
-5. Host cache and spool size limits.
-6. Whether to strip query strings from stored URLs.
-7. Names and locations of the policy engine, alert outputs and local API crates.
-8. Log location on Windows and macOS (Event Log, unified logging).
+| # | Question | Answer / state |
+|---|---|---|
+| 1 | Minimum Rust version: keep 1.70 with the fallback resolver, or raise to 1.85 (plan risk 6) | **Open** |
+| 2 | Default config and data paths per OS | **Answered:** OS defaults on Linux and macOS; on Windows config next to the app (`<install dir>\scribe.toml`); data `<install dir>\data\` (section 9.1) |
+| 3 | Scores, threshold, usual ports, threat lists | **Answered:** draft v1 config [config/scribe.toml](../config/scribe.toml) with all defaults (section 8.3) |
+| 4 | Behaviour when the state store is unavailable | **Answered:** in-memory buffer of the latest events, oldest dropped on overflow (FR-25) |
+| 5 | Host cache and spool size limits | **Answered:** `storage.cache`, `storage.buffer`, `storage.spool`, absolute or percentage (section 9.1) |
+| 6 | Whether to strip query strings from stored URLs | **Answered:** `privacy.url_query`, default `redact_values` (section 12.2) |
+| 7 | Names and locations of the policy engine, alert outputs and local API crates | **Answered:** option A — `crates/policy`, `crates/alerts`, `crates/api` + `proto/scribe/v1/api.proto` (section 7.2) |
+| 8 | Log locations | **Answered:** `/var/log/scribe/` on Linux and macOS (system log optional); on Windows a file next to the app, or the Event Viewer when configured (`log.output`, section 9.1) |
 
 ## 16. References
 

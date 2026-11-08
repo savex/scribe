@@ -93,7 +93,7 @@ jobs:
           exe=""; [[ "${{ matrix.target }}" == *windows* ]] && exe=".exe"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/scribed$exe" "target/${{ matrix.target }}/release/scribe$exe" "dist/$name/"
-          cp readme.md config/scribe.example.toml "dist/$name/"
+          cp readme.md config/scribe.toml "dist/$name/"
           if [[ "${{ matrix.smoke }}" == "true" ]]; then
             got=$("dist/$name/scribe$exe" --version)
             [[ "$got" == "scribe $VERSION" ]] || { echo "::error::binary reports '$got', expected 'scribe $VERSION'"; exit 1; }

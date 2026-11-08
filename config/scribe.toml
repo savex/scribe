@@ -1,0 +1,157 @@
+# scribed configuration — config format version 1 (DRAFT).
+#
+# Every value below is the built-in default: an empty file, or no file at all,
+# behaves exactly like this one. Uncomment / change only what you need.
+# Config loading is implemented in phase 0; until then this file documents the format.
+#
+# Where scribed looks for this file (first match wins):
+#   1. --config <path>
+#   2. SCRIBE_CONFIG environment variable
+#   3. OS default:
+#        Linux    /etc/scribe/scribe.toml
+#        macOS    /Library/Application Support/scribe/scribe.toml
+#        Windows  <install dir>\scribe.toml   (next to scribed.exe)
+#
+# Value formats
+#   duration  "45s", "10m", "1h", "7d"
+#   size      "512KiB", "32MiB", "2GiB"  (1024-based)  or a percentage "1%":
+#             memory limits: percent of total physical RAM
+#             disk limits:   percent of the size of the volume holding the path
+#             percentages are resolved once at startup and logged
+#   path      relative paths are resolved against data_dir
+
+version = 1
+
+mode = "learn"            # learn | caution | alert
+profile = "default"       # baseline (known hosts list) in use
+
+# Where databases, spool and other state live. OS default:
+#   Linux    /var/lib/scribe
+#   macOS    /Library/Application Support/scribe
+#   Windows  <install dir>\data
+# data_dir = "/var/lib/scribe"
+
+
+# ─── Policy ──────────────────────────────────────────────────────────────────
+
+[policy]
+learn_for = ""            # "" = stay in learn mode until changed; e.g. "7d"
+then = "caution"          # mode after learn_for ends: caution | alert
+dedupe_window = "10m"     # one alert per host + process within this window
+threshold = 50            # caution mode alerts when the score reaches this (0–100)
+
+# Caution-mode signals. Scores of all matching signals are added and capped at 100;
+# the alert names the highest-scoring signal. 0 disables a signal.
+[policy.scores]
+raw_ip = 60               # IP with no DNS lookup before the connection
+unusual_port = 30         # destination port not in policy.usual_ports
+high_entropy = 50         # random-looking (DGA-style) domain label
+new_tld = 20              # top-level domain never seen before
+new_process = 25          # process that never made a connection before
+threat_list = 100         # host or IP found in a threat list
+
+[policy.usual_ports]
+tcp = [22, 53, 80, 443, 465, 587, 853, 993, 995]
+udp = [53, 123, 443, 853, 5353]
+
+[policy.entropy]
+min_label_length = 10     # shorter labels are never flagged
+min_bits_per_char = 3.5   # Shannon entropy of the longest label
+
+# Threat lists: none by default (fetching lists is itself outgoing traffic).
+# Supported formats: "domains" (one per line), "hosts" (hosts-file), "ips" (one IP or CIDR per line).
+# [[policy.threat_lists]]
+# name = "local-blocklist"
+# path = "/etc/scribe/threats/domains.txt"
+# format = "domains"
+#
+# [[policy.threat_lists]]
+# name = "urlhaus"
+# url = "https://urlhaus.abuse.ch/downloads/hostfile/"
+# format = "hosts"
+# refresh = "24h"
+
+
+# ─── Privacy ─────────────────────────────────────────────────────────────────
+
+[privacy]
+# How plaintext HTTP URLs are stored (alerts, events, `scribe hosts`).
+# Example request: http://api.example.com/v1/users/1234?token=abc&lang=en
+#   "full"          /v1/users/1234?token=abc&lang=en
+#   "redact_values" /v1/users/1234?token=<redacted>&lang=<redacted>      (default)
+#   "strip"         /v1/users/1234
+#   "path_only"     /v1/…
+#   "hash"          /v1/users/1234?<hash:a41f9c>   keyed hash, lets repeats be matched
+# Scheme and host are always kept; user info (user:password@) is always removed.
+# Applies to new data only. Details and more examples: workfiles/specs.md section 12.2.
+url_query = "redact_values"
+
+
+# ─── Storage ─────────────────────────────────────────────────────────────────
+
+[storage.state]
+kind = "sqlite"           # sqlite | postgres
+path = "state.db"
+
+# In-memory cache of hosts and baselines in front of the state store (LRU).
+# Evicts least-recently-used hosts when either limit is reached.
+[storage.cache]
+max_hosts = 50000
+max_memory = "32MiB"      # or a percentage of RAM, e.g. "1%"
+
+# In-memory buffer of the latest events while the state store is unavailable.
+# When full, the oldest event is dropped to make room for the newest; drops are counted
+# and reported in `scribe status`. Replayed in order when the store comes back.
+[storage.buffer]
+max_events = 50000
+max_memory = "32MiB"      # or a percentage of RAM, e.g. "1%"
+
+# On-disk spool for event sinks that are down. Replayed in order on recovery.
+# When a limit is reached the oldest spooled events are dropped (and counted).
+[storage.spool]
+dir = "spool"
+max_size = "512MiB"       # or a percentage of the volume, e.g. "2%"
+min_free_disk = "5%"      # stop growing the spool when free space falls below this
+
+[[storage.sinks]]
+name = "local-history"
+kind = "sqlite"
+path = "events.db"
+events = []               # [] = all kinds; or any of "flow", "alert", "audit"
+retention = "30d"         # "" = keep forever
+batch_max_events = 500    # write a batch when this many events are waiting…
+batch_max_wait = "1s"     # …or when the oldest has waited this long
+
+# Central PostgreSQL history (build with `--features postgres`).
+# The password never goes in this file: credentials name a secret in the OS store
+# (keychain: on macOS, dpapi: on Windows, secret-service: on Linux) or a root-only file (file:).
+# [[storage.sinks]]
+# name = "central"
+# kind = "postgres"
+# url = "postgres://scribe@db.internal:5432/scribe"
+# credentials = "keychain:scribe-postgres"
+# events = ["flow", "alert"]
+# retention = ""
+
+
+# ─── Logging ─────────────────────────────────────────────────────────────────
+
+[log]
+level = "info"            # error | warn | info | debug | trace; SCRIBE_LOG overrides (RUST_LOG syntax)
+format = "text"           # text | json
+
+# Where logs go:
+#   "file"    the log file below (default)
+#   "system"  the OS system log instead of the file: journald/syslog (Linux),
+#             unified logging (macOS), Event Viewer under Applications and Services Logs\scribe (Windows)
+#   "both"    file and system log
+output = "file"
+
+# Log file, used when output is "file" or "both". OS default:
+#   Linux    /var/log/scribe/scribed.log
+#   macOS    /var/log/scribe/scribed.log
+#   Windows  <install dir>\logs\scribed.log   (next to scribed.exe)
+# file = "/var/log/scribe/scribed.log"
+rotate = "daily"          # daily | size
+max_size = "50MiB"        # used when rotate = "size"
+keep = 14                 # rotated files to keep
