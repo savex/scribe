@@ -26,6 +26,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - This changelog.
 
 ### Changed
+- Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,
+  libc, windows-sys, proptest, tempfile); `StorageError` and `SensorError` now use `thiserror` (messages unchanged).
 - Minimum Rust version policy *follow dependencies*; minimum raised from 1.70 to 1.89.
 
 ### Removed

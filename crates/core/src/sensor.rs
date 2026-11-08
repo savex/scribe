@@ -1,4 +1,3 @@
-use std::fmt;
 use std::sync::mpsc::Sender;
 
 use crate::FlowEvent;
@@ -12,27 +11,36 @@ pub trait Sensor: Send {
     fn stop(&mut self);
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum SensorError {
+    #[error("unsupported: {0}")]
     Unsupported(&'static str),
+    #[error("permission denied: {0}")]
     Permission(String),
-    Io(std::io::Error),
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
-impl fmt::Display for SensorError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            SensorError::Unsupported(what) => write!(f, "unsupported: {what}"),
-            SensorError::Permission(msg) => write!(f, "permission denied: {msg}"),
-            SensorError::Io(err) => write!(f, "io error: {err}"),
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn io_errors_convert() {
+        let err: SensorError = std::io::Error::other("no device").into();
+        assert!(matches!(err, SensorError::Io(_)));
+        assert_eq!(err.to_string(), "io error: no device");
     }
-}
 
-impl std::error::Error for SensorError {}
-
-impl From<std::io::Error> for SensorError {
-    fn from(err: std::io::Error) -> Self {
-        SensorError::Io(err)
+    #[test]
+    fn messages_are_stable() {
+        assert_eq!(
+            SensorError::Unsupported("pcap").to_string(),
+            "unsupported: pcap"
+        );
+        assert_eq!(
+            SensorError::Permission("need root".into()).to_string(),
+            "permission denied: need root"
+        );
     }
 }
