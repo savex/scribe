@@ -26,6 +26,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - This changelog.
 - `scribe_core::units`: config durations (`45s`, `10m`, `1h`, `7d`), sizes (`512KiB`…`2TiB`) and percentages (`5%`),
   with clear errors (e.g. `32MB` suggests `MiB`), TOML support and property tests.
+- `scribe_core::platform`: default config, data and log paths per OS (Windows: next to `scribed.exe`), total RAM
+  (`/proc/meminfo`, `sysctl`, `GlobalMemoryStatusEx`) and volume size / free space for percentage limits.
 
 ### Changed
 - Phase 0: workspace dependencies added (tokio, serde, toml, thiserror, anyhow, clap, tracing and friends, fs4,

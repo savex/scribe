@@ -1,10 +1,12 @@
 //! Shared types used by every scribe component: normalized flow events,
-//! policy modes, alerts, the clock, the platform sensor interface and config value units.
+//! policy modes, alerts, the clock, the platform sensor interface, config value units and
+//! OS defaults.
 
 pub mod alert;
 pub mod clock;
 pub mod event;
 pub mod mode;
+pub mod platform;
 pub mod sensor;
 pub mod units;
 
