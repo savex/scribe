@@ -13,6 +13,8 @@ commit when a decision changes.
 - Minimum Rust version follows the dependencies (currently 1.89, `rust-version` in `Cargo.toml`). Raise it only
   when a dependency needs it, in the same commit as that dependency, and record the reason in the conventions skill.
   Don't pin a crate to an old release just to avoid a raise.
+- Every commit that changes behaviour, configuration, interfaces, tooling or documents adds a line to
+  `changelog.md` under **Unreleased**.
 - Before committing: `cargo fmt --all`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
   `cargo test --workspace --all-features`.
 - `testdata/pcap/` and `fuzz/corpus/` are generated: edit `crates/test-support/src/fixtures.rs` and run

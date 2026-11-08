@@ -34,7 +34,8 @@ config/                 default configuration (scribe.toml, format v1 draft)
 testdata/               pcap fixtures, daemon scenarios, raw sensor records, schema snapshots
 fuzz/                   cargo-fuzz targets and seed corpus
 tests/e2e/              install / upgrade / uninstall tests per OS
-workfiles/              plan, diagrams, test approach, status
+workfiles/              plan, diagrams, test approach, status, specification
+changelog.md            change history (Keep a Changelog format)
 .claude/skills/         scribe-conventions: agreed assumptions and config values
 ```
 
