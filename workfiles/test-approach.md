@@ -141,18 +141,18 @@ The test runner loads the scenario, plays the events through the pipeline, and c
 
 **Adding a new storage backend:** it must pass the whole conformance suite before it can be registered in `Registry::with_builtin`.
 
-## 7a. Modules — isolated tests (proposed)
+## 7a. Modules — isolated tests
 
 | Test | How | When |
 |---|---|---|
-| **Conformance suite** (`crates/module-conformance`) | Every module: start, stop and start again; pause and resume; config errors with line numbers; reload live vs needs-restart; flow-hook time budget; no panic on fuzzed payloads; versioned record schemas; undeclared API calls refused | every PR |
-| URL module | `http_plain` and other plaintext fixtures through the flow hook; the URL privacy table (specs 12.2) for every `query` value; request parser fuzzed | every PR |
-| Isolation (NFR-20) | A test module that is slow, floods records or panics: capture, storage and other modules keep running, drops are counted, health turns degraded | every PR |
-| Storage | Storage conformance cases for module records, metric samples and module state; schema v2 snapshot migrated from v1 | every PR |
-| Daemon | `hibernate` pauses every module, `wakeup` resumes them; `reset --config` reconfigures them; `daemon status` shows each module | every PR |
+| **Conformance suite** (`crates/module-conformance`, implemented) | Every module: manifest rules; config errors with line numbers; reload live vs needs-restart; start, stop and start again; nothing emitted while paused; flow-hook time budget; 500 random payloads without panics; only declared record kinds, schemas and metrics. Its own tests prove it catches 7 injected faults (`MisbehavingModule`). Refusing undeclared API calls is checked with the API (phase 10) | every PR |
+| URL module | Implemented: conformance, config (new and deprecated key). Phase 3: `http_plain` and other plaintext fixtures through the flow hook, the URL privacy table (specs 12.2) for every `query` value, request parser fuzzed (`http_request` target) | every PR |
+| Isolation (NFR-20) | Implemented in `crates/daemon/tests/module_host.rs`: a panicking module is switched off while others run, slow calls are counted, a full output queue drops and counts | every PR |
+| Storage | Implemented: storage conformance cases for module records, metric samples, flow notes and module state; migrations and v2 snapshots in step with `SCHEMA_VERSION`. Migrating the v1 snapshot to v2 is tested with the SQLite backend (phase 1) | every PR |
+| Daemon | Implemented: `ModuleHost` pause, resume, reconfigure, stop and source schedules with `FakeClock`; `scribed` logs module start and stop. Phase 5: `hibernate`, `wakeup` and `reset --config` drive them; phase 10: `daemon status` shows each module | every PR |
 | Kernel probes | Modules that use `ProbeHost` run in the privileged sensor stage (section 5.2) | nightly |
 
-**Adding a new module:** it must pass the whole module conformance suite before it can be registered in `ModuleRegistry`.
+**Adding a new module:** it must pass the whole module conformance suite before it is added to `scribe_daemon::modules::builtin()`.
 
 ## 8. Integration and end-to-end tests
 
@@ -203,7 +203,7 @@ crates/
                          RecordingAlertSink, MockApiServer, scenario runner
   storage-conformance/   (exists) storage contract suite
   sensor-conformance/    sensor contract suite + traffic generator
-  module-conformance/    (proposed) module contract suite
+  module-conformance/    module contract suite
   */tests/               isolated component tests per crate
 fuzz/                    cargo-fuzz targets for parsers
 testdata/

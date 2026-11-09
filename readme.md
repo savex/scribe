@@ -25,6 +25,9 @@ crates/
   storage-postgres/     PostgreSQL backend (feature `postgres`)
   storage-conformance/  shared test suite every backend must pass
   sensor-conformance/   shared test suite every sensor must pass + traffic generator
+  module-api/           interface for scribed modules (manifest, hooks, sources, outputs)
+  module-url/           URL tracking module (feature `url`, on by default)
+  module-conformance/   shared test suite every module must pass
   test-support/         test doubles, packet builders, fixture generator
   daemon/               `scribed` service
   cli/                  `scribe` command line client
@@ -76,7 +79,16 @@ file = ""
 ```
 
 Exit codes: `0` success, `1` runtime failure, `2` usage or configuration error. Capture and
-storage aren't wired up yet; scribed starts, logs its settings and waits.
+storage aren't wired up yet; scribed starts, logs its settings, starts its modules and waits.
+
+## Modules
+
+New functionality is added as a compiled-in module (`crates/module-*`, a Cargo feature of
+`scribe-daemon`) that implements `scribe_module_api::Module` and passes
+`scribe-module-conformance`. Modules attach notes to flows and emit their own records, metric
+samples and state; `[modules] enabled` picks which ones run, and each reads its own
+`[modules.<id>]` table. URL tracking (`url`, on by default) is the first; kernel metrics is the
+example of a later one. Design: `workfiles/specs.md` section 7.4.
 
 ## Versioning
 
@@ -110,5 +122,6 @@ GitHub Release. Pushing a `v*` tag by hand starts **Release** too.
 
 ## Status
 
-Skeleton. Interfaces and the storage conformance suite are in place; sensors,
-storage backends, the policy engine and the local API are not implemented yet.
+Phases 0 and 0b are done: config, logging, daemon lifecycle, CLI parsing and the module framework
+with the URL module skeleton. Sensors, storage backends, the policy engine and the local API are
+not implemented yet. Details: `workfiles/status.md`.

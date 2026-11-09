@@ -99,8 +99,10 @@ jobs:
             [[ "$got" == "scribe $VERSION" ]] || { echo "::error::binary reports '$got', expected 'scribe $VERSION'"; exit 1; }
             got=$("dist/$name/scribed$exe" --version)
             [[ "$got" == "scribed $VERSION" ]] || { echo "::error::daemon reports '$got', expected 'scribed $VERSION'"; exit 1; }
-            "dist/$name/scribed$exe" --check-config --config "dist/$name/scribe.toml" > /dev/null \
+            effective=$("dist/$name/scribed$exe" --check-config --config "dist/$name/scribe.toml") \
               || { echo "::error::scribed rejects the shipped config"; exit 1; }
+            grep -q '^\[modules.url\]' <<<"$effective" \
+              || { echo "::error::the URL module is missing from the effective config"; exit 1; }
           fi
           cd dist
           if [[ -n "$exe" ]]; then 7z a -tzip "$name.zip" "$name" >/dev/null; else tar czf "$name.tar.gz" "$name"; fi

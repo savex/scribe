@@ -20,7 +20,9 @@ commit when a decision changes.
 - `testdata/pcap/` and `fuzz/corpus/` are generated: edit `crates/test-support/src/fixtures.rs` and run
   `cargo run -p scribe-test-support --bin gen-fixtures`. Never edit them by hand.
 - Released schema snapshots in `testdata/db/` are never edited; add a new version instead (`testdata/db/build.sh`).
-- New storage backends must pass `scribe-storage-conformance`; new sensors must pass `scribe-sensor-conformance`.
+- New storage backends must pass `scribe-storage-conformance`; new sensors must pass `scribe-sensor-conformance`;
+  new modules must pass `scribe-module-conformance`. New functionality goes into a module (`crates/module-*`)
+  rather than into `core`, `storage-api` or the daemon.
 - Production code reads time through `scribe_core::Clock`.
 - Test data uses documentation address ranges and `example.com` / `example.net` names only; never real user traffic.
 - Versions come from `v*` git tags; don't edit the `Cargo.toml` version by hand, use `scripts/version.sh` or the

@@ -74,6 +74,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Module output goes through a bounded queue (`OutputQueue`, drops counted) to the storage manager once a second;
   module state is read at start. The log shows `module url started` / `stopped`.
 
+- Phase 0b step 9: documents. Spec 0.8 marks the module framework implemented and lists five refinements
+  (7.4.9); conventions skill §9b, `CLAUDE.md` (new modules must pass `scribe-module-conformance`), readme
+  (Modules section), test approach §7a, plan (phase 0b done, 101.5–127.5 days left) and status (89% product
+  coverage). The Release smoke test checks that the shipped config enables the URL module.
+
 ### Changed
 - Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
 

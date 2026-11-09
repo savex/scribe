@@ -103,7 +103,7 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | Name | Kind | Purpose |
 |---|---|---|
 | `scribe-core` | lib | Flow events, modes, alerts, clock, sensor interface, `VERSION` |
-| `scribe-enrich` | lib | DNS cache, TLS SNI, HTTP Host, TLS detection (full HTTP request / URL parsing moves to `scribe-module-url`) |
+| `scribe-enrich` | lib | DNS cache, TLS SNI, HTTP Host, TLS detection (full HTTP request / URL parsing is in `scribe-module-url`) |
 | `scribe-sensor-linux` / `-windows` / `-pcap` | lib | Capture sensors |
 | `scribe-storage-api` | lib | `StateStore`, `EventSink`, `StorageFactory` |
 | `scribe-storage-manager` | lib | Registry, fan-out to sinks (later: cache, batching, spool, retention) |
@@ -113,9 +113,9 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | `scribe-test-support` | lib + bin | Test doubles, packet builders, `gen-fixtures` |
 | `scribe-policy` | lib (planned) | Modes, scoring rules, dedupe, learn time limit; no I/O |
 | `scribe-alerts` | lib (planned) | OS notifications, log, webhook |
-| `scribe-module-api` | lib (proposed) | `Module`, `FlowHook`, `Source`, manifest, context, notes, records, metric samples (section 9b) |
-| `scribe-module-url` | lib (proposed) | URL tracking module, feature `url`, on by default |
-| `scribe-module-conformance` | lib (proposed) | Suite every module must pass |
+| `scribe-module-api` | lib | `Module`, `FlowHook`, `Source`, manifest, context, notes, records, metric samples (section 9b) |
+| `scribe-module-url` | lib | URL tracking module, feature `url` of `scribe-daemon`, on by default |
+| `scribe-module-conformance` | lib | Suite every module must pass |
 | `scribe-api` | lib (planned) | gRPC server and client (features `server` / `client`), protocol in `proto/scribe/v1/` |
 | `scribe-daemon` / `scribed` | lib + bin | The service: `config`, `logging`, `app` modules in the library; `main.rs` is a thin wrapper |
 | `scribe-cli` / `scribe` | lib + bin | The command line client (`clap`) |
@@ -172,7 +172,7 @@ Full option table: `workfiles/specs.md` section 9.1.
 | Log options | `level = "info"` (`SCRIBE_LOG` overrides), `format = "text"`, `rotate = "daily"`, `max_size = "50MiB"`, `keep = 14`, `output = "file"` (`file` \| `system` \| `both`) | Draft default |
 | Postgres `url` | connection string **without** password | Decided |
 | Postgres `credentials` | secret reference: `keychain:`, `dpapi:`, `secret-service:`, `file:` | Proposed |
-| URL privacy | `privacy.url_query` (proposed to move to `[modules.url] query`, old key a deprecated alias for one version): `full`, `redact_values` (**default**), `strip`, `path_only`, `hash` (`?<hash:xxxxxx>`, HMAC-SHA256 with a per-install key via `ring`); scheme and host always kept, user info always removed; applies to new data only. Rules and examples: `workfiles/specs.md` 12.2 | Decided |
+| URL privacy | `[modules.url] query` (`privacy.url_query` is a deprecated alias for one version): `full`, `redact_values` (**default**), `strip`, `path_only`, `hash` (`?<hash:xxxxxx>`, HMAC-SHA256 with a per-install key via `ring`); scheme and host always kept, user info always removed; applies to new data only. Rules and examples: `workfiles/specs.md` 12.2 | Decided |
 
 ## 7. Enrichment
 
@@ -245,24 +245,26 @@ Full design: `workfiles/specs.md` 12.1.1. Locally, who is calling matters more t
 | Security work per phase | 5: StrictModes, hibernate cap, audit chain; 7–9: privilege split, service SID, XPC signing; 10: API access and limits; 11: HTTPS, signed webhooks, threat-list checks; 12: Postgres TLS, roles, heartbeats; 13: service hardening, release signing, optional encryption at rest; 14: `cargo deny` / `audit`, pinned Actions, review | Proposed (plan.md) |
 | Release integrity | Signed `SHA256SUMS`, build provenance attestation, `cargo deny` / `cargo audit`, Actions pinned by SHA, minimal `permissions:` | Proposed |
 
-## 9b. Modules (proposed)
+## 9b. Modules (implemented in phase 0b)
 
-Full design: `workfiles/specs.md` 7.4. New functionality is added as a module, without editing `core`, `storage-api`, the schemas, the config model or the API.
+Full design: `workfiles/specs.md` 7.4 (7.4.9 lists what changed from the draft). New functionality is added as a module, without editing `core`, `storage-api`, the schemas, the config model or the API.
 
 | Item | Value | State |
 |---|---|---|
-| Packaging | Compiled in, chosen by Cargo feature (`url` default on, `kperf` later); `ModuleRegistry` like the storage `Registry`; no `dlopen` | Proposed |
-| Interface | `Module` trait: `manifest`, `configure(Spanned<toml::Value>) -> Reload`, `start(ModuleContext)`, `pause`, `resume`, `stop`, `health`, optional `flow_hook` / `source` | Proposed |
-| Outputs | Flow notes (replace `FlowEvent.url` / `FlowKind::Request`), module records (`StoredEvent::Module`, kinds like `url.request`), metric samples (`MetricSample`, `metrics` table), module state (`module_state` key–value) | Proposed |
-| Policy signals | Namespaced reasons (`url.…`) scored from `[policy.scores]`; policy stays I/O-free | Proposed |
-| Payload | Sensors pass the first N bytes; bytes past the ClientHello / `Host` header kept only when an enabled module declares `needs: payload` | Proposed |
-| Kernel probes | Only through the sensors' `ProbeHost`, loaded in the privileged part; modules run unprivileged | Proposed |
-| Config | `[modules] enabled = ["url"]`, `[modules.<id>]` checked by the module with line numbers | Proposed |
-| API / CLI | `ListModules`, `ModuleStatus`; per-module `proto/scribe/v1/modules/<id>.proto`; `scribe modules`, module subcommands behind each crate's `client` feature | Proposed |
-| Isolation | Per-flow time budget, bounded queues with counted drops, panic disables only that module (NFR-20); each module call declares read / control | Proposed |
-| Schema | Schema v2: `events.module` + text `kind`, `metrics`, `module_state`; done before phase 1 | Proposed |
-| Conformance | New modules must pass `scribe-module-conformance` (start / stop / start, pause / resume, config errors with lines, reload, time budget, fuzzed payloads, schema versions, undeclared calls refused) | Proposed |
-| Phase | 0b, before phase 1 (8–10 days); phase 10 +2 days for API / CLI plumbing | Proposed |
+| Packaging | Compiled in, chosen by Cargo feature on `scribe-daemon` (`url` default on, `kperf` later); `modules::builtin()` lists `ModuleSpec { id, make }`; no `dlopen` | Implemented |
+| Interface | `scribe-module-api`: `Module` (`manifest`, `configure(&ConfigDoc) -> Reload`, `start(ModuleContext)`, `pause`, `resume`, `stop`, `health`, `effective_config`, optional `flow_hook` / `source`), `Manifest::validate` (id `[a-z][a-z0-9_]*`, kinds and metrics `<id>.<name>`) | Implemented |
+| Module config | `ConfigDoc::section::<T>(id)` deserializes `[modules.<id>]` from the spanned file, so errors keep line and column; `ConfigDoc::get` for keys elsewhere; `span_of` for errors found later | Implemented |
+| Outputs | Flow notes (`FlowEvent.notes`, keyed by module id), module records (`StoredEvent::Module`, `EventKind::Module("<id>.<name>")`), metric samples (`StoredEvent::Metric`, `EventKind::Metric`), module state (`StateStore::module_state` / `put_module_state`); types `Notes`, `ModuleRecord`, `MetricSample` live in `scribe-core`; kinds are `Cow<'static, str>` | Implemented |
+| Sensor output | `Observation { event, head }`, `head` at most `HEAD_MAX` = 4 KiB; `FlowKind::Payload` for more client bytes on an existing flow (was `Request`) | Implemented |
+| Host | `ModuleHost`: hook time budget 1 ms (over-budget calls counted), panic switches off only that module (health degraded), sources ticked on their interval, pause / resume / reconfigure / stop; output through `OutputQueue` (10,000 items, drops counted), drained to storage once a second until the pipeline (phase 5) | Implemented |
+| Policy signals | `Signal { reason: "<id>.<reason>", detail }`, scored from `[policy.scores]`; policy stays I/O-free | Decided (used from phase 4) |
+| Payload | Bytes past the ClientHello / `Host` header kept only when an enabled module declares `needs.payload` | Decided (sensors honour it from phase 6) |
+| Kernel probes | Only through the sensors' `ProbeHost`, loaded in the privileged part; modules run unprivileged | Proposed (with the native sensors) |
+| Config | `[modules] enabled = ["url"]`; `[modules.<id>]` checked by the module; unknown, duplicate or not-built ids are errors; sink `events` accept `metric` and enabled modules' kinds | Implemented |
+| API / CLI | `ListModules`, `ModuleStatus`; per-module `proto/scribe/v1/modules/<id>.proto`; `scribe modules`, module subcommands behind each crate's `client` feature | Planned (phase 10) |
+| Schema | v2: migration `0002_modules.sql` (`events.module`, free `kind` with `<module>.%` check, `metrics`, `module_state`); snapshots `sqlite/v2.db`, `postgres/v2_seed.sql`; `build.sh` never rewrites an existing snapshot without `--force <version>` | Implemented |
+| Conformance | New modules must pass `scribe-module-conformance` (`ModuleCase` + `run_module_suite`); test doubles `TagModule`, `TicksModule`, `NoopModule`, `MisbehavingModule` (7 faults), `RecordingEmitter` in `scribe-test-support` | Implemented |
+| URL module | `scribe-module-url`: manifest (`url.request` schema 1, read call `list`, needs payload), `[modules.url] query`, deprecated `privacy.url_query` honoured (error if both disagree), hook notes the URL, records `url.request`, counts `requests.<host>` in module state; parser `parse::request_url` is a stub until phase 3 | Partly |
 
 ## 10. Versioning and releases
 
@@ -333,7 +335,7 @@ Notes:
 |---|---|
 | Estimates assume | one experienced Rust developer; LOC without blanks and comments; tests counted separately |
 | Total size | ~17,500 production LOC + ~5,200 test LOC |
-| Total effort | 118–147 person-days; 109.5–137.5 remaining after phase 0, 131–165 with a 20% buffer (includes the security design, +14.5 days, and the module framework, +10–12 days) |
+| Total effort | 118–147 person-days; 101.5–127.5 remaining after phases 0 and 0b, 122–153 with a 20% buffer (includes the security design, +14.5 days, and the module framework, +10–12 days) |
 | Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 61.5–75.5 days; M2 native sensors 35.5–45.5 days; M3 production 21–26 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning |
 

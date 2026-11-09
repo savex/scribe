@@ -1,19 +1,35 @@
 # scribe readiness by module
 
-As of the end of **phase 0** (2026-11-08, commits `5e521e9`…`dcb99ea` plus the docs commit), scribe is
+As of the end of **phase 0b** (2026-11-08, commits `a030cbb`…`24d948a` plus the docs commit), scribe is
 still not usable for monitoring: it doesn't capture traffic, store anything, or apply the modes.
-What changed: `scribed` is now a real long-running process. It finds, checks and resolves the full v1
-config, logs to a file or the system log, opens storage through the registry, and stops cleanly on
-Ctrl-C or SIGTERM. The `scribe` CLI parses every command. Product code test coverage rose from 5% to 86%.
+What phase 0b added: the **module framework**. New functionality now arrives as a compiled-in module
+with its own config section, flow notes, records, metrics and state, checked by a module conformance
+suite. URL tracking is the first module (skeleton: the parser comes in phase 3). Flows carry module
+notes instead of a URL, sensors hand over the first client bytes, and storage has schema v2 for module
+data. `scribed` starts and stops its modules. Product code test coverage rose from 86.5% to 89%.
 
 **How this was measured**
 - **Completion** is an estimate against each module's scope in [plan.md](plan.md).
 - **Coverage** is line coverage from `cargo test --workspace --all-features` alone, measured with LLVM
-  source-based coverage (rustup `llvm-tools`) on macOS. 100 tests passed and 6 were skipped.
+  source-based coverage (rustup `llvm-tools`) on macOS. 151 tests passed and 6 were skipped.
 - Unit tests written inside source files (`#[cfg(test)]` modules) count as covered lines, which raises
   the percentages of `core`, `daemon` and `cli` somewhat. `crates/daemon/src/config/tests.rs` and
   `tests/` folders are excluded.
 - Linux- and Windows-only code (memory lookup, journald) is compile-checked from macOS but only runs in CI.
+
+## Phase 0b delivered (one commit per step)
+
+| Step | Commit | Result |
+|---|---|---|
+| 1. Module API | `a030cbb` | `scribe-module-api`: `Module`, `Manifest` checks, `FlowHook`, `Source`, `Emitter`, `ConfigDoc` (module config errors keep their line); notes, records and metric samples in `core` |
+| 2. Flow events without URLs | `60026ad` | `FlowEvent.notes` replaces `url`, `FlowKind::Payload` replaces `Request`; sensors send `Observation`s with up to 4 KiB of client bytes; fixtures regenerated |
+| 3. Storage interface | `1b93348` | `EventKind::Metric` / `Module`, `StoredEvent::Metric` / `Module`, module state in `StateStore`; conformance and routing tests |
+| 4. Schema v2 | `3273dbc` | Migration `0002_modules.sql` (SQLite, Postgres), snapshots `v2.db` / `v2_seed.sql`; v1 snapshot unchanged |
+| 5. Module conformance | `99019a5` | `scribe-module-conformance`; test modules for hooks and sources; 7 injected faults caught |
+| 6. URL module | `96ba5d3` | `scribe-module-url`: manifest, `[modules.url] query`, deprecated `privacy.url_query` honoured, hook and counters; parser stub and fuzz target moved here |
+| 7. Config | `d14435b` | `[modules]` with per-module sections checked by the module; sink events accept module kinds; deprecation warning; `--check-config` shows module settings |
+| 8. Daemon | `24d948a` | `ModuleHost`: hook budget, panic isolation, source schedules, pause / resume / reconfigure / stop, bounded output queue to storage |
+| 9. Docs and CI | this commit | Spec 0.8 (7.4.9 lists five refinements), skill §9b, `CLAUDE.md` module rule, readme, test approach, plan, status; release smoke test checks the URL module |
 
 ## Phase 0 delivered (one commit per step)
 
@@ -37,49 +53,52 @@ earlier edit (`111411c`); they are restored.
 
 | Module | Plan phase | Completion | What exists | What's missing | Test coverage |
 |---|---|---|---|---|---|
-| `core` | 0 | **~95%** | Flow event, modes (with serde), sensor interface, clock, alert interface, `VERSION`, units, platform defaults | Grows as later phases need shared types | **95%** (386/405) |
-| `storage-api` | 1–2 | **~85%** | Interfaces, data model, capability flags, errors (`thiserror`) | Payload serialization (serde), schema version on records | **77%** (37/48) |
-| `storage-manager` | 2 | **~20%** | Registry, routing to sinks, per-sink retention and batching settings; fully tested | Host cache, state-store outage buffer, per-sink batching tasks, spool and replay, retention, health | **100%** (110/110) |
-| `storage-sqlite` | 1 | **~10%** | v1 schema, factory, option checks; methods are stubs | All of it (rusqlite, migration runner, queries) | **32%** (32/99), factory paths only. Conformance tests skipped. |
-| `storage-postgres` | 12 | **~10%** | v1 schema, factory, stubs | All of it | **3%** (3/101). Conformance tests skipped. |
-| `enrich` | 3 | **~10%** | TLS / plaintext detection, DNS cache; `ring` chosen for QUIC | SNI, HTTP with URL redaction, DNS answers, QUIC | **38%** (16/42) |
-| Policy engine (`crates/policy`) | 4 | **0% code, design done** | Location, scores, threshold, ports and entropy rule decided; config loads and checks them | All code | n/a |
-| `daemon` (`scribed`) | 0, 5 | **~25%** | Config loading and checks, logging, startup summary, folders, storage setup, signal handling, exit codes | Sensor → enrichment → policy → storage pipeline, service-manager integration, dropping privileges | **96%** (1028/1065) |
-| `sensor-pcap` | 6 | **~2%** | Stub | Capture and flow reassembly | **60%** (6/10), stub only |
+| `core` | 0, 0b | **~95%** | Flow event with module notes, `Observation`, modes, sensor interface, clock, alert interface, module data types, `VERSION`, units, platform defaults | Grows as later phases need shared types | **97%** (455/471) |
+| `module-api` | 0b | **~95%** | `Module`, `Manifest` checks, `FlowHook`, `Source`, `Emitter`, `ModuleContext`, `ConfigDoc`, `Signal`, `Reload` | API service hooks (phase 10), `ProbeHost` (native sensors) | **99%** (303/307) |
+| `module-url` | 0b, 3, 10 | **~35%** | Manifest, `[modules.url] query` with the deprecated alias, flow hook, request counters; passes the module suite | Request parser and URL privacy rules (phase 3), `scribe url` (phase 10) | **86%** (139/161) |
+| `storage-api` | 0b, 1–2 | **~90%** | Interfaces with module records, metric samples and module state, `EventKind` names, schema version 2 | Payload serialization (serde) | **93%** (115/124) |
+| `storage-manager` | 2 | **~20%** | Registry, routing by kind (module kinds too), per-sink retention and batching settings | Host cache, state-store outage buffer, per-sink batching tasks, spool and replay, retention, health | **100%** (110/110) |
+| `storage-sqlite` | 1 | **~15%** | v1 and v2 migrations and snapshots, factory, option checks; methods are stubs | All of it (rusqlite, migration runner, queries) | **32%** (35/110), factory paths only. Conformance tests skipped. |
+| `storage-postgres` | 12 | **~15%** | v1 and v2 migrations and seeds, factory, stubs | All of it | **3%** (3/112). Conformance tests skipped. |
+| `enrich` | 3 | **~10%** | TLS / plaintext detection, DNS cache, `Host` header stub; `ring` chosen for QUIC | SNI, `Host`, DNS answers, QUIC | **38%** (16/42) |
+| Policy engine (`crates/policy`) | 4 | **0% code, design done** | Location, scores, threshold, ports and entropy rule decided; module signals defined | All code | n/a |
+| `daemon` (`scribed`) | 0, 0b, 5 | **~30%** | Config loading and checks (modules included), logging, startup summary, folders, storage setup, `ModuleHost`, module output queue, signal handling, exit codes | Sensor → enrichment → modules → policy → storage pipeline, run states, service-manager integration, dropping privileges | **95%** (1509/1582) |
+| `sensor-pcap` | 6 | **~2%** | Stub (sends `Observation`s) | Capture and flow reassembly | **60%** (6/10), stub only |
 | `sensor-linux` (eBPF) | 7 | **~2%** | Stub, Linux only | eBPF programs, loader, process lookup | n/a (not built on macOS) |
 | `sensor-windows` (ETW) | 8 | **~2%** | Stub, Windows only | ETW session, DNS-client events, Npcap | n/a (not built on macOS) |
 | macOS Network Extension | 9 | **0%** | README only | Swift extension, XPC bridge | n/a |
-| Local API (`crates/api`) and `cli` | 10 | **~20%** | CLI parses every command with `clap`, exit codes; API location decided | gRPC API; commands talk to nothing | **96%** (92/96) |
+| Local API (`crates/api`) and `cli` | 10 | **~20%** | CLI parses every command with `clap`, exit codes; API location decided | gRPC API, `scribe daemon` and `scribe modules`; commands talk to nothing | **96%** (92/96) |
 | Alert outputs (`crates/alerts`) | 11 | **~5%** | Alert output interface | Notifications, log, webhook | n/a |
 | UI (Tauri) | later | **0%** | Test folders and mock API data | Everything | n/a |
-| Packaging | 13 | **~15%** | Release archives with checksums; release smoke test runs both binaries and checks the shipped config | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing | n/a |
+| Packaging | 13 | **~15%** | Release archives with checksums; release smoke test runs both binaries and checks the shipped config and the URL module | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing | n/a |
 
-**Product total:** 1,710 of 1,976 measurable lines covered (**86.5%**), up from 25 of 468 (5.3%).
+**Product total:** 2,783 of 3,125 measurable lines covered (**89%**), up from 86.5% after phase 0.
 The coverage targets in the test approach (≥ 80% for `core` and the daemon config) are met.
 
 ## Test infrastructure, CI and data
 
 | Module | Completion | What exists | Test coverage |
 |---|---|---|---|
-| `test-support` | **100%** | Test doubles, packet builders, pcap writer, fixture generator | **85%** (868/1019) |
-| `storage-conformance` | **100%** | Suite every storage backend must pass | **98%** (215/220) |
-| `sensor-conformance` | **100%** | Suite every sensor must pass, plus the traffic generator | **48%** (89/187); the runner needs a real sensor |
-| Test data | **100%** | 13 pcap fixtures, 11 scenarios, raw sensor samples, v1 database snapshots | Checked by the fixture test |
-| Fuzzing | **~30%** | 2 targets with seeds | Never run (needs Rust nightly) |
+| `test-support` | **100%** | Test doubles (now with module doubles and `RecordingEmitter`), packet builders, pcap writer, fixture generator | **90%** (1223/1359) |
+| `storage-conformance` | **100%** | Suite every storage backend must pass, with module data | **98%** (311/319) |
+| `sensor-conformance` | **100%** | Suite every sensor must pass (checks client bytes), plus the traffic generator | **41%** (86/210); the runner needs a real sensor |
+| `module-conformance` | **100%** | Suite every module must pass | **85%** (236/279) |
+| Test data | **100%** | 13 pcap fixtures (expecting `notes.url`), 11 scenarios, raw sensor samples, v1 and v2 database snapshots | Checked by the fixture and snapshot tests |
+| Fuzzing | **~30%** | 2 targets with seeds (`http_request` now targets the URL module) | Never run (needs Rust nightly) |
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
-| CI and versioning | **~90%** | 8 workflows; minimum-version job from `Cargo.toml`; release smoke test now covers `scribed` | Run locally only, not on GitHub |
+| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Run locally only, not on GitHub |
 
-**Overall:** 2,882 of 3,402 measurable lines covered (**85%**).
+**Overall:** 4,639 of 5,292 measurable lines covered (**88%**).
 
 ## What this means
 
-- **Phase 0 is done.** Remaining effort: 109.5–137.5 days (131–165 with buffer); milestone M1: 55.5–68.5 days. This includes the `scribe daemon` subcommands (phases 5 and 10), the proposed security design (specs 12.1.1, +14.5 days over phases 5–14) and the proposed module framework (specs 7.4, new phase 0b plus 2 days in phase 10).
+- **Phases 0 and 0b are done.** Remaining effort: 101.5–127.5 days (122–153 with buffer); milestone M1: 47.5–58.5 days. This includes the `scribe daemon` subcommands (phases 5 and 10) and the proposed security design (specs 12.1.1, +14.5 days over phases 5–14).
 - **The daemon has a skeleton to grow into:** each next phase plugs into `serve()` (storage in phase 1, the
-  pipeline in phase 5) and reads its settings from the already-checked config.
+  pipeline in phase 5, which feeds `ModuleHost::on_flow`) and reads its settings from the already-checked config.
 - **Next steps** (plan milestone M1):
-  1. Phase 0b: the module framework (module API, registry, schema v2, module conformance suite).
-  2. Phase 1: the SQLite backend, against its waiting conformance tests and schema v2.
-  3. Phase 3: SNI, `Host` and DNS parsers against the 13 pcap fixtures, the URL module's HTTP parser (with URL redaction), then QUIC with `ring`.
-  4. Phase 4: the policy engine in `crates/policy`, against the 11 scenarios, using the config values.
-  5. Apply for Apple's Network Extension entitlement (plan risk 1).
-- **Not verified here:** the Linux and Windows code paths at run time, and the GitHub workflows themselves.
+  1. Phase 1: the SQLite backend, against its waiting conformance tests and schema v2.
+  2. Phase 3: SNI, `Host` and DNS parsers against the 13 pcap fixtures, the URL module's HTTP parser (with URL redaction), then QUIC with `ring`.
+  3. Phase 4: the policy engine in `crates/policy`, against the 11 scenarios, using the config values.
+  4. Apply for Apple's Network Extension entitlement (plan risk 1).
+- **Not verified here:** the Linux and Windows code paths at run time, the GitHub workflows themselves,
+  the Postgres migration 0002 (no local Postgres; the Tests workflow loads it) and the fuzz targets (no nightly).
