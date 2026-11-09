@@ -4,12 +4,12 @@
 //! Types reject what they can on their own (unknown keys, bad enums, out-of-range numbers), so
 //! those errors carry the line from the TOML parser. Cross-field rules live in `validate`.
 
+use std::collections::BTreeMap;
 use std::num::{NonZeroU16, NonZeroU32, NonZeroU64};
 use std::path::PathBuf;
 
 use scribe_core::units::optional_duration;
 use scribe_core::{HumanDuration, Mode, SizeLimit};
-use scribe_storage_api::EventKind;
 use serde::{de, Deserialize, Deserializer, Serialize};
 use toml::Spanned;
 
@@ -24,7 +24,9 @@ pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_dir: Option<Spanned<PathBuf>>,
     pub policy: Policy,
+    #[serde(skip_serializing_if = "Privacy::is_empty")]
     pub privacy: Privacy,
+    pub modules: Modules,
     pub storage: Storage,
     pub log: Log,
 }
@@ -38,6 +40,7 @@ impl Default for Config {
             data_dir: None,
             policy: Policy::default(),
             privacy: Privacy::default(),
+            modules: Modules::default(),
             storage: Storage::default(),
             log: Log::default(),
         }
@@ -199,7 +202,16 @@ pub enum ThreatFormat {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct Privacy {
-    pub url_query: UrlQuery,
+    /// Deprecated: replaced by `[modules.url] query`, still read by the URL module for one minor
+    /// version. Kept here so the value is checked and the deprecation can be reported.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url_query: Option<Spanned<UrlQuery>>,
+}
+
+impl Privacy {
+    pub fn is_empty(&self) -> bool {
+        self.url_query.is_none()
+    }
 }
 
 /// How plaintext HTTP URLs are stored; see `workfiles/specs.md` section 12.2.
@@ -212,6 +224,69 @@ pub enum UrlQuery {
     Strip,
     PathOnly,
     Hash,
+}
+
+// ─── Modules ────────────────────────────────────────────────────────────────
+
+/// `[modules]`: which compiled-in modules run, plus one `[modules.<id>]` table per module. Each
+/// module reads and checks its own table (specs 7.4.5); `validate` checks the ids.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Modules {
+    pub enabled: Spanned<Vec<String>>,
+    /// `[modules.<id>]` tables as written.
+    pub sections: BTreeMap<String, Spanned<toml::Value>>,
+}
+
+fn default_enabled() -> Spanned<Vec<String>> {
+    Spanned::new(0..0, vec!["url".into()])
+}
+
+impl Default for Modules {
+    fn default() -> Self {
+        let mut url = toml::Table::new();
+        url.insert("query".into(), "redact_values".into());
+        Self {
+            enabled: default_enabled(),
+            sections: BTreeMap::from([("url".into(), Spanned::new(0..0, toml::Value::Table(url)))]),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Modules {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let mut map = BTreeMap::<String, Spanned<toml::Value>>::deserialize(d)?;
+        let enabled = match map.remove("enabled") {
+            None => default_enabled(),
+            Some(value) => {
+                let span = value.span();
+                let ids = value.into_inner().try_into::<Vec<String>>().map_err(|_| {
+                    de::Error::custom("`modules.enabled` must be a list of module ids")
+                })?;
+                Spanned::new(span, ids)
+            }
+        };
+        if let Some((id, _)) = map.iter().find(|(_, v)| !v.get_ref().is_table()) {
+            return Err(de::Error::custom(format!(
+                "`modules.{id}` must be a table ([modules.{id}])"
+            )));
+        }
+        Ok(Self {
+            enabled,
+            sections: map,
+        })
+    }
+}
+
+impl Serialize for Modules {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = s.serialize_map(Some(1 + self.sections.len()))?;
+        map.serialize_entry("enabled", self.enabled.get_ref())?;
+        for (id, table) in &self.sections {
+            map.serialize_entry(id, table.get_ref())?;
+        }
+        map.end()
+    }
 }
 
 // ─── Storage ────────────────────────────────────────────────────────────────
@@ -345,8 +420,10 @@ pub struct Sink {
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credentials: Option<String>,
+    /// Event kind names (`flow`, `alert`, `audit`, `metric`, module kinds like `url.request`);
+    /// checked in `validate`. Empty means all kinds.
     #[serde(default)]
-    pub events: Vec<EventName>,
+    pub events: Vec<Spanned<String>>,
     #[serde(default = "default_retention", with = "optional_duration")]
     pub retention: Option<HumanDuration>,
     #[serde(default = "default_batch_events")]
@@ -391,24 +468,6 @@ impl Sink {
             path: self.path.clone(),
             url: self.url.clone(),
             credentials: self.credentials.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum EventName {
-    Flow,
-    Alert,
-    Audit,
-}
-
-impl From<EventName> for EventKind {
-    fn from(e: EventName) -> Self {
-        match e {
-            EventName::Flow => EventKind::Flow,
-            EventName::Alert => EventKind::Alert,
-            EventName::Audit => EventKind::Audit,
         }
     }
 }

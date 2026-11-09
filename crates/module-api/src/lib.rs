@@ -133,6 +133,10 @@ pub trait Module: Send + Sync {
     fn resume(&mut self);
     fn stop(&mut self);
     fn health(&self) -> ModuleHealth;
+    /// The settings in use, as the `[modules.<id>]` table `scribed --check-config` prints.
+    fn effective_config(&self) -> Option<toml::Table> {
+        None
+    }
     fn flow_hook(&self) -> Option<&dyn FlowHook> {
         None
     }

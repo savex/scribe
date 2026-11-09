@@ -196,6 +196,12 @@ impl Module for UrlModule {
         ModuleHealth::Healthy
     }
 
+    fn effective_config(&self) -> Option<toml::Table> {
+        let mut table = toml::Table::new();
+        table.insert("query".into(), self.settings().query.name().into());
+        Some(table)
+    }
+
     fn flow_hook(&self) -> Option<&dyn FlowHook> {
         Some(self.hook.as_ref())
     }
@@ -236,6 +242,16 @@ mod tests {
         assert!(err.message.contains("disagree"), "{err}");
         let span = err.span.unwrap();
         assert_eq!(&text[span], "\"full\"");
+    }
+
+    #[test]
+    fn reports_its_effective_settings() {
+        let mut module = UrlModule::default();
+        module
+            .configure(&ConfigDoc::new("[privacy]\nurl_query = \"strip\"\n"))
+            .unwrap();
+        let table = module.effective_config().unwrap();
+        assert_eq!(table["query"].as_str(), Some("strip"));
     }
 
     #[test]

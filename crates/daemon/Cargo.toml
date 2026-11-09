@@ -13,15 +13,19 @@ name = "scribed"
 path = "src/main.rs"
 
 [features]
-default = ["sqlite"]
+default = ["sqlite", "url"]
 sqlite = ["scribe-storage-manager/sqlite"]
 postgres = ["scribe-storage-manager/postgres"]
+# Modules (specs 7.4); `url` is on by default.
+url = ["dep:scribe-module-url"]
 
 [dependencies]
 scribe-core.workspace = true
 scribe-enrich.workspace = true
 scribe-storage-api.workspace = true
 scribe-storage-manager.workspace = true
+scribe-module-api.workspace = true
+scribe-module-url = { workspace = true, optional = true }
 scribe-sensor-pcap.workspace = true
 serde.workspace = true
 toml.workspace = true
@@ -44,4 +48,5 @@ tracing-oslog.workspace = true
 scribe-sensor-windows.workspace = true
 
 [dev-dependencies]
+scribe-module-url.workspace = true
 tempfile.workspace = true

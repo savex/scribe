@@ -13,6 +13,11 @@ fn ctx() -> Context {
     Context {
         os: Os::Linux,
         storage_kinds: vec!["sqlite", "postgres"],
+        // The URL module is a dev-dependency, so these tests don't depend on the `url` feature.
+        modules: vec![crate::modules::ModuleSpec {
+            id: scribe_module_url::ID,
+            make: || Box::new(scribe_module_url::UrlModule::default()),
+        }],
     }
 }
 
@@ -79,7 +84,12 @@ fn default_values_match_the_spec() {
     assert_eq!(c.mode, Mode::Learn);
     assert_eq!(c.policy.threshold, Score(50));
     assert_eq!(c.policy.dedupe_window, HumanDuration::from_secs(600));
-    assert_eq!(c.privacy.url_query, UrlQuery::RedactValues);
+    assert_eq!(c.privacy.url_query, None);
+    assert_eq!(c.modules.enabled.get_ref(), &["url"]);
+    assert_eq!(
+        c.modules.sections["url"].get_ref()["query"].as_str(),
+        Some("redact_values")
+    );
     assert_eq!(c.storage.cache.max_memory, SizeLimit::mib(32));
     assert_eq!(c.storage.spool.min_free_disk, SizeLimit::Percent(5.0));
     assert_eq!(*c.log.output.get_ref(), LogOutput::File);
@@ -154,13 +164,19 @@ fn accepts_a_full_custom_config() {
     );
     assert_eq!(Mode::from(c.policy.then), Mode::Alert);
     assert_eq!(c.policy.threat_lists.len(), 2);
-    assert_eq!(c.privacy.url_query, UrlQuery::PathOnly);
+    assert_eq!(
+        c.privacy.url_query.as_ref().map(|q| *q.get_ref()),
+        Some(UrlQuery::PathOnly)
+    );
     assert_eq!(c.storage.state.get_ref().kind, StorageKind::Postgres);
     assert_eq!(c.storage.sinks[0].get_ref().retention, None);
-    assert_eq!(
-        c.storage.sinks[1].get_ref().events,
-        vec![EventName::Flow, EventName::Alert]
-    );
+    let events: Vec<_> = c.storage.sinks[1]
+        .get_ref()
+        .events
+        .iter()
+        .map(|e| e.get_ref().as_str())
+        .collect();
+    assert_eq!(events, ["flow", "alert"]);
     assert_eq!(c.log.level, LogLevel::Debug);
 }
 
@@ -223,7 +239,32 @@ const BAD: &[(&str, &str, usize)] = &[
     ),
     ("[[storage.sinks]]\nname = \" \"\npath = \"a.db\"\n", "sink name must not be empty", 1),
     ("[[storage.sinks]]\npath = \"a.db\"\n", "missing field `name`", 1),
-    ("[[storage.sinks]]\nname = \"a\"\nevents = [\"dns\"]\npath = \"a.db\"\n", "unknown variant `dns`", 3),
+    (
+        "[[storage.sinks]]\nname = \"a\"\nevents = [\"dns\"]\npath = \"a.db\"\n",
+        "unknown event kind \"dns\" in sink \"a\": known kinds are flow, alert, audit, metric, url.request",
+        3,
+    ),
+    (
+        "[[storage.sinks]]\nname = \"a\"\npath = \"a.db\"\nevents = [\"flow\", \"url.reqest\"]\n",
+        "unknown event kind \"url.reqest\"",
+        4,
+    ),
+    (
+        "[modules]\nenabled = [\"url\", \"kperf\"]\n",
+        "module \"kperf\" is not built into this scribed (built: url); rebuild with `--features kperf`",
+        2,
+    ),
+    ("[modules]\nenabled = [\"url\", \"url\"]\n", "listed twice", 2),
+    ("[modules]\nenabled = \"url\"\n", "must be a list of module ids", 1),
+    ("[modules]\nurl = 3\n", "`modules.url` must be a table", 1),
+    ("\n[modules.kperf]\nx = 1\n", "[modules.kperf]: no module \"kperf\"", 2),
+    ("[modules.url]\nquery = \"everything\"\n", "module url: unknown variant `everything`", 2),
+    ("[modules.url]\n\nqueries = 1\n", "module url: unknown field `queries`", 3),
+    (
+        "[privacy]\nurl_query = \"full\"\n[modules.url]\nquery = \"strip\"\n",
+        "module url: `modules.url.query` (strip) and the deprecated `privacy.url_query` (full) disagree",
+        2,
+    ),
     ("[log]\nmax_size = \"5%\"\n", "must be an absolute size", 2),
     ("[log]\nlevel = \"loud\"\n", "unknown variant `loud`", 2),
     ("mode = \n", "", 1),
@@ -258,6 +299,7 @@ fn storage_kind_must_be_built_in() {
     let only_sqlite = Context {
         os: Os::Linux,
         storage_kinds: vec!["sqlite"],
+        modules: vec![],
     };
     let text = "[storage.state]\nkind = \"postgres\"\nurl = \"postgres://db/s\"\n";
     let err = parse(text, &file(), &only_sqlite).unwrap_err();
@@ -274,6 +316,7 @@ fn system_log_is_not_offered_on_windows_yet() {
     let windows = Context {
         os: Os::Windows,
         storage_kinds: vec!["sqlite"],
+        modules: vec![],
     };
     for output in ["system", "both"] {
         let text = format!("[log]\noutput = \"{output}\"\n");
@@ -481,4 +524,88 @@ fn context_lists_built_kinds() {
     let c = context();
     assert_eq!(c.os, Os::current());
     assert!(c.storage_kinds.contains(&"sqlite"));
+    assert_eq!(
+        c.modules.iter().any(|m| m.id == "url"),
+        cfg!(feature = "url")
+    );
+}
+
+// ─── Modules ────────────────────────────────────────────────────────────────
+
+#[test]
+fn sinks_may_subscribe_to_module_kinds() {
+    let s = resolve_text(
+        "[[storage.sinks]]\nname = \"urls\"\npath = \"u.db\"\nevents = [\"url.request\", \"metric\"]\n",
+    );
+    assert_eq!(
+        s.storage.sinks[0].events,
+        vec![EventKind::parse("url.request").unwrap(), EventKind::Metric]
+    );
+}
+
+#[test]
+fn modules_can_be_switched_off() {
+    let c = parse_ok("[modules]\nenabled = []\n");
+    assert!(c.modules.enabled.get_ref().is_empty());
+    // With the URL module off, its record kind is unknown to sinks.
+    let err = parse_err("[modules]\nenabled = []\n[[storage.sinks]]\nname = \"a\"\npath = \"a.db\"\nevents = [\"url.request\"]\n");
+    assert!(
+        err.message
+            .contains("known kinds are flow, alert, audit, metric"),
+        "{err}"
+    );
+    // A section for a built module that is switched off is fine.
+    parse_ok("[modules]\nenabled = []\n[modules.url]\nquery = \"strip\"\n");
+}
+
+#[test]
+fn the_default_module_list_tolerates_builds_without_them() {
+    let none = Context {
+        os: Os::Linux,
+        storage_kinds: vec!["sqlite"],
+        modules: vec![],
+    };
+    let shipped_without_url_section = SHIPPED
+        .replace("[modules.url]", "# [modules.url]")
+        .replace("query = \"redact_values\"", "# query");
+    assert!(parse("", &file(), &none).is_ok());
+    let err = parse(&shipped_without_url_section, &file(), &none).unwrap_err();
+    assert!(err.message.contains("built: none"), "{err}");
+}
+
+#[test]
+fn deprecated_url_query_still_works_with_a_warning() {
+    let mut s = resolve_text("[privacy]\nurl_query = \"strip\"\n");
+    assert_eq!(s.warnings.len(), 1);
+    assert!(
+        s.warnings[0].contains("write `[modules.url] query = \"strip\"` instead"),
+        "{:?}",
+        s.warnings
+    );
+    s.modules =
+        super::resolve::module_settings(&s.config, "[privacy]\nurl_query = \"strip\"\n", &ctx());
+    let text = s.effective_toml();
+    assert!(
+        text.contains("# warning: privacy.url_query is deprecated"),
+        "{text}"
+    );
+    assert!(text.contains("[modules.url]\nquery = \"strip\""), "{text}");
+    assert!(!text.contains("[privacy]"), "{text}");
+    assert_eq!(
+        parse_ok(&text).modules.sections["url"].get_ref()["query"].as_str(),
+        Some("strip")
+    );
+}
+
+#[test]
+fn effective_config_shows_module_defaults() {
+    let mut s = resolve_text("[modules]\nenabled = [\"url\"]\n");
+    s.modules =
+        super::resolve::module_settings(&s.config, "[modules]\nenabled = [\"url\"]\n", &ctx());
+    let text = s.effective_toml();
+    assert!(text.contains("[modules]\nenabled = [\"url\"]"), "{text}");
+    assert!(text.contains("query = \"redact_values\""), "{text}");
+    assert!(s.summary().iter().any(|l| l == "modules: url"));
+    let off = resolve_text("[modules]\nenabled = []\n");
+    assert!(off.summary().iter().any(|l| l == "modules: none"));
 }

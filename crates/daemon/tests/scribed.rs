@@ -55,6 +55,8 @@ fn prints_its_version() {
     }
 }
 
+/// The shipped file configures the URL module, so it needs a build with it.
+#[cfg(feature = "url")]
 #[test]
 fn checks_the_shipped_config() {
     let out = scribed(&[
@@ -71,7 +73,44 @@ fn checks_the_shipped_config() {
         "{stdout}"
     );
     assert!(stdout.contains("mode = \"learn\""), "{stdout}");
-    assert!(stdout.contains("url_query = \"redact_values\""), "{stdout}");
+    assert!(
+        stdout.contains("[modules]\nenabled = [\"url\"]"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("[modules.url]\nquery = \"redact_values\""),
+        "{stdout}"
+    );
+}
+
+#[cfg(feature = "url")]
+#[test]
+fn warns_about_the_deprecated_url_query() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write_config(dir.path(), "[privacy]\nurl_query = \"strip\"");
+    let out = scribed(&["--check-config", "--config", path.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_exit(&out, 0);
+    let stdout = text(&out.stdout);
+    assert!(
+        stdout.contains("# warning: privacy.url_query is deprecated"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("query = \"strip\""), "{stdout}");
+}
+
+#[test]
+fn rejects_an_unknown_module() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = write_config(dir.path(), "[modules]\nenabled = [\"kperf\"]");
+    let out = scribed(&["--check-config", "--config", path.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert_exit(&out, 2);
+    let stderr = text(&out.stderr);
+    assert!(stderr.contains("module \"kperf\" is not built"), "{stderr}");
+    assert!(stderr.contains("line 3"), "{stderr}");
 }
 
 #[test]

@@ -7,6 +7,10 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 use scribe_core::platform::Os;
+use scribe_module_api::{ConfigDoc, ModuleError};
+use scribe_storage_api::EventKind;
+
+use crate::modules::ModuleSpec;
 
 use super::model::{Backend, Config, LogOutput, StorageKind, CONFIG_VERSION};
 
@@ -116,6 +120,8 @@ pub struct Context {
     pub os: Os,
     /// Storage kinds built into this binary (Cargo features).
     pub storage_kinds: Vec<&'static str>,
+    /// Modules built into this binary (Cargo features).
+    pub modules: Vec<ModuleSpec>,
 }
 
 /// Reads and checks the config from `source`. Returns the config and its text (empty for built-in).
@@ -232,6 +238,28 @@ pub fn validate(
             .map_err(|m| at(span, m))?;
     }
 
+    let enabled = check_modules(config, text, source, ctx)?;
+    let known: Vec<&str> = EventKind::CORE
+        .iter()
+        .map(EventKind::name)
+        .chain(enabled.iter().flat_map(|m| m.record_kinds()))
+        .collect();
+    for sink in &config.storage.sinks {
+        for name in &sink.get_ref().events {
+            if !known.contains(&name.get_ref().as_str()) {
+                return Err(at(
+                    name.span(),
+                    format!(
+                        "unknown event kind \"{}\" in sink \"{}\": known kinds are {}",
+                        name.get_ref(),
+                        sink.get_ref().name,
+                        known.join(", ")
+                    ),
+                ));
+            }
+        }
+    }
+
     let output = *config.log.output.get_ref();
     if ctx.os == Os::Windows && output.uses_system() {
         return Err(at(
@@ -249,6 +277,76 @@ pub fn validate(
         ));
     }
     Ok(())
+}
+
+/// `[modules]`: enabled ids are built in and listed once, every section names a built-in module,
+/// and each enabled module accepts its section. Returns the enabled modules.
+fn check_modules(
+    config: &Config,
+    text: &str,
+    source: &Source,
+    ctx: &Context,
+) -> Result<Vec<ModuleSpec>, ConfigError> {
+    let at = |span: Range<usize>, message: String| ConfigError::at(source, text, span, message);
+    let built = || {
+        let ids: Vec<_> = ctx.modules.iter().map(|m| m.id).collect();
+        if ids.is_empty() {
+            "none".to_owned()
+        } else {
+            ids.join(", ")
+        }
+    };
+    let find = |id: &str| ctx.modules.iter().find(|m| m.id == id).copied();
+    let enabled_span = config.modules.enabled.span();
+    let written = enabled_span != (0..0);
+    let mut enabled = Vec::new();
+    for id in config.modules.enabled.get_ref() {
+        match find(id) {
+            Some(_) if enabled.iter().any(|m: &ModuleSpec| m.id == id) => {
+                return Err(at(
+                    enabled_span,
+                    format!("module \"{id}\" is listed twice in modules.enabled"),
+                ))
+            }
+            Some(spec) => enabled.push(spec),
+            // The built-in default list may name modules this build leaves out.
+            None if !written => {}
+            None => {
+                return Err(at(
+                    enabled_span,
+                    format!(
+                        "module \"{id}\" is not built into this scribed (built: {}); rebuild with `--features {id}`",
+                        built()
+                    ),
+                ))
+            }
+        }
+    }
+    for (id, section) in &config.modules.sections {
+        // A built-in default section (no span) for a module this build leaves out is fine.
+        if find(id).is_none() && section.span() != (0..0) {
+            return Err(at(
+                section.span(),
+                format!(
+                    "[modules.{id}]: no module \"{id}\" is built into this scribed (built: {})",
+                    built()
+                ),
+            ));
+        }
+    }
+    let doc = ConfigDoc::new(text);
+    for spec in &enabled {
+        let mut module = (spec.make)();
+        match module.configure(&doc) {
+            Ok(_) => {}
+            Err(ModuleError::Config(e)) => {
+                let span = e.span.clone().unwrap_or(0..0);
+                return Err(at(span, format!("module {}: {}", spec.id, e.message)));
+            }
+            Err(e) => return Err(at(0..0, format!("module {}: {e}", spec.id))),
+        }
+    }
+    Ok(enabled)
 }
 
 fn check_backend(backend: &Backend, what: &str, ctx: &Context) -> Result<(), String> {

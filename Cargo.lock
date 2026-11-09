@@ -587,6 +587,8 @@ dependencies = [
  "clap",
  "scribe-core",
  "scribe-enrich",
+ "scribe-module-api",
+ "scribe-module-url",
  "scribe-sensor-linux",
  "scribe-sensor-pcap",
  "scribe-sensor-windows",
@@ -642,6 +644,7 @@ dependencies = [
  "scribe-test-support",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]

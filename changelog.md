@@ -61,6 +61,16 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `parse::request_url` (stub until phase 3) and the `http_request` fuzz target with it; `scribe-enrich` keeps
   only a `host_header` stub. `ConfigDoc::get` reads keys outside a module's section. Passes the module suite.
 
+- Phase 0b step 7: `[modules]` in the config. `enabled = ["url"]` (default) lists the compiled-in modules to
+  run (new `url` Cargo feature, on by default); each `[modules.<id>]` table is checked by its module, with the
+  line in errors. Unknown, duplicate or not-built modules are errors. Sink `events` accept `metric` and module
+  record kinds such as `url.request`, checked against the enabled modules. `privacy.url_query` is deprecated in
+  favour of `[modules.url] query` (warning at start and in `--check-config`). `--check-config` prints each
+  module's effective settings; the startup summary lists the modules; `Module::effective_config` added.
+
+### Changed
+- Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
+
 ### Fixed
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
   52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;

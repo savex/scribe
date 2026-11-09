@@ -66,7 +66,7 @@ pub fn run(args: Args, config_env: Option<OsString>, log_filter: Option<String>)
             return ExitCode::from(EXIT_CONFIG);
         }
     };
-    for warning in &warnings {
+    for warning in warnings.iter().chain(&settings.warnings) {
         warn!("{warning}");
     }
 

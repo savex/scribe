@@ -25,6 +25,7 @@ pub fn context() -> Context {
     Context {
         os: Os::current(),
         storage_kinds: Registry::with_builtin().kinds().collect(),
+        modules: crate::modules::builtin(),
     }
 }
 
@@ -37,6 +38,10 @@ pub fn load_settings(flag: Option<&Path>, env: Option<OsString>) -> Result<Setti
         )
     })?;
     let source = discover(flag, env, &defaults.config_file)?;
-    let (config, _) = load(&source, &context())?;
-    resolve(config, source, &defaults, &HostFacts)
+    let ctx = context();
+    let (config, text) = load(&source, &ctx)?;
+    let mut settings = resolve(config, source, &defaults, &HostFacts)?;
+    settings.modules = resolve::module_settings(&settings.config, &text, &ctx);
+    settings.text = text;
+    Ok(settings)
 }

@@ -1,16 +1,18 @@
 //! Turns a checked config into runtime settings: absolute paths, byte limits, storage config.
 
+use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use scribe_core::platform::{self, DefaultPaths};
 use scribe_core::units::human_bytes;
 use scribe_core::{Mode, SizeLimit};
-use scribe_storage_api::BackendOptions;
+use scribe_module_api::ConfigDoc;
+use scribe_storage_api::{BackendOptions, EventKind};
 use scribe_storage_manager::{BackendConfig, SinkConfig, StorageConfig};
 use toml::Spanned;
 
-use super::load::{ConfigError, Source};
+use super::load::{ConfigError, Context, Source};
 use super::model::{Backend, Config, LogFormat, LogLevel, LogOutput, Rotate, StorageKind};
 
 /// Host facts needed to resolve percentages; a trait so tests can supply fixed numbers.
@@ -70,6 +72,33 @@ pub struct Settings {
     pub log: LogSettings,
     /// How each percentage was resolved, for the startup log.
     pub notes: Vec<String>,
+    /// Problems worth a warning that don't stop scribed (deprecated keys).
+    pub warnings: Vec<String>,
+    /// The config file text (empty for built-in defaults); modules read their sections from it.
+    pub text: String,
+    /// Enabled modules and the settings each reports (`Module::effective_config`).
+    pub modules: BTreeMap<String, toml::Table>,
+}
+
+/// Configure every enabled module from `text` (already checked) and collect what it reports.
+pub fn module_settings(
+    config: &Config,
+    text: &str,
+    ctx: &Context,
+) -> BTreeMap<String, toml::Table> {
+    let doc = ConfigDoc::new(text);
+    ctx.modules
+        .iter()
+        .filter(|m| config.modules.enabled.get_ref().iter().any(|id| id == m.id))
+        .map(|spec| {
+            let mut module = (spec.make)();
+            let _ = module.configure(&doc);
+            (
+                spec.id.to_owned(),
+                module.effective_config().unwrap_or_default(),
+            )
+        })
+        .collect()
 }
 
 pub fn resolve(
@@ -149,7 +178,11 @@ pub fn resolve(
                 SinkConfig {
                     name: s.name.clone(),
                     backend: backend_config(&s.backend(), &abs),
-                    events: s.events.iter().map(|&e| e.into()).collect(),
+                    events: s
+                        .events
+                        .iter()
+                        .filter_map(|e| EventKind::parse(e.get_ref()))
+                        .collect(),
                     retention: s.retention.map(|d| d.get()),
                     batch_max_events: s.batch_max_events.get(),
                     batch_max_wait: s.batch_max_wait.get(),
@@ -173,6 +206,17 @@ pub fn resolve(
         keep: log_cfg.keep.get(),
     };
 
+    let mut warnings = Vec::new();
+    if let Some(q) = &config.privacy.url_query {
+        let value = toml::Value::try_from(q.get_ref())
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        warnings.push(format!(
+            "privacy.url_query is deprecated: write `[modules.url] query = \"{value}\"` instead (the old key is read for one more minor version)"
+        ));
+    }
+
     Ok(Settings {
         limits: Limits {
             cache_hosts: config.storage.cache.max_hosts.get(),
@@ -188,6 +232,9 @@ pub fn resolve(
         storage,
         log,
         notes,
+        warnings,
+        text: String::new(),
+        modules: BTreeMap::new(),
         data_dir,
         config,
         source,
@@ -255,6 +302,20 @@ impl Settings {
                 Spanned::new(0..0, t)
             })
             .collect();
+        if !self.modules.is_empty() {
+            // Each module reports what it uses; the deprecated key has been folded in.
+            c.privacy = Default::default();
+            c.modules.sections = self
+                .modules
+                .iter()
+                .map(|(id, t)| {
+                    (
+                        id.clone(),
+                        Spanned::new(0..0, toml::Value::Table(t.clone())),
+                    )
+                })
+                .collect();
+        }
         c
     }
 
@@ -266,6 +327,9 @@ impl Settings {
         );
         for note in &self.notes {
             out.push_str(&format!("# {note}\n"));
+        }
+        for warning in &self.warnings {
+            out.push_str(&format!("# warning: {warning}\n"));
         }
         out.push('\n');
         out.push_str(
@@ -295,6 +359,12 @@ impl Settings {
                 describe_options(&sink.backend.options)
             ));
         }
+        let enabled = self.config.modules.enabled.get_ref();
+        lines.push(if enabled.is_empty() {
+            "modules: none".to_owned()
+        } else {
+            format!("modules: {}", enabled.join(", "))
+        });
         let l = &self.limits;
         lines.push(format!(
             "cache: {} hosts / {}; buffer: {} events / {}; spool: {} max, {} kept free, in {}",

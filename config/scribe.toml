@@ -72,9 +72,14 @@ min_bits_per_char = 3.5   # Shannon entropy of the longest label
 # refresh = "24h"
 
 
-# ─── Privacy ─────────────────────────────────────────────────────────────────
+# ─── Modules ─────────────────────────────────────────────────────────────────
 
-[privacy]
+# Compiled-in modules to run (Cargo features). Each has a [modules.<id>] table it checks itself.
+[modules]
+enabled = ["url"]
+
+# URL tracking for plaintext HTTP.
+[modules.url]
 # How plaintext HTTP URLs are stored (alerts, events, `scribe hosts`).
 # Example request: http://api.example.com/v1/users/1234?token=abc&lang=en
 #   "full"          /v1/users/1234?token=abc&lang=en
@@ -84,7 +89,8 @@ min_bits_per_char = 3.5   # Shannon entropy of the longest label
 #   "hash"          /v1/users/1234?<hash:a41f9c>   keyed hash, lets repeats be matched
 # Scheme and host are always kept; user info (user:password@) is always removed.
 # Applies to new data only. Details and more examples: workfiles/specs.md section 12.2.
-url_query = "redact_values"
+# Replaces `[privacy] url_query`, which is still read (with a warning) for one minor version.
+query = "redact_values"
 
 
 # ─── Storage ─────────────────────────────────────────────────────────────────
@@ -117,7 +123,8 @@ min_free_disk = "5%"      # stop growing the spool when free space falls below t
 name = "local-history"
 kind = "sqlite"
 path = "events.db"
-events = []               # [] = all kinds; or any of "flow", "alert", "audit"
+events = []               # [] = all kinds; or any of "flow", "alert", "audit", "metric",
+                          # and module record kinds such as "url.request"
 retention = "30d"         # "" = keep forever
 batch_max_events = 500    # write a batch when this many events are waiting…
 batch_max_wait = "1s"     # …or when the oldest has waited this long

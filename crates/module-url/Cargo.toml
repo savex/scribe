@@ -10,6 +10,7 @@ scribe-core.workspace = true
 scribe-module-api.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
 
 [dev-dependencies]
 scribe-module-conformance.workspace = true
