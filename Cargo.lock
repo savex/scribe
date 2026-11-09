@@ -623,6 +623,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "scribe-module-conformance"
+version = "0.1.1"
+dependencies = [
+ "scribe-core",
+ "scribe-module-api",
+ "scribe-test-support",
+ "serde_json",
+]
+
+[[package]]
 name = "scribe-sensor-conformance"
 version = "0.1.1"
 dependencies = [
@@ -707,8 +717,10 @@ name = "scribe-test-support"
 version = "0.1.1"
 dependencies = [
  "scribe-core",
+ "scribe-module-api",
  "scribe-storage-api",
  "scribe-storage-conformance",
+ "serde",
  "serde_json",
 ]
 

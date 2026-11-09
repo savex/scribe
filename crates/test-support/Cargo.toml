@@ -13,6 +13,8 @@ path = "src/bin/gen_fixtures.rs"
 [dependencies]
 scribe-core.workspace = true
 scribe-storage-api.workspace = true
+scribe-module-api.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

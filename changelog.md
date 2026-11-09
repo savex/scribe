@@ -48,6 +48,12 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   snapshots (`--force <version>` to rebuild one); the Tests workflow loads and repeats 0002 on Postgres; both
   backends check one migration per schema version and a snapshot for each.
 
+- Phase 0b step 5: `scribe-module-conformance`, the suite every module must pass: manifest rules, config
+  errors with their line, live vs restart reloads, start / stop / start again, nothing emitted while paused,
+  flow-hook time budget, random payloads without panics, only declared record kinds and metrics.
+  `scribe-test-support` gains `RecordingEmitter`, `module_context`, `TagModule` (flow hook), `TicksModule`
+  (metric source), `NoopModule` and `MisbehavingModule`; the suite's own tests prove it catches 7 faults.
+
 ### Fixed
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
   52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;
