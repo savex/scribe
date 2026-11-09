@@ -1,4 +1,11 @@
-//! The modules built into this scribed (Cargo features), specs 7.4.1.
+//! The modules built into this scribed (Cargo features, specs 7.4.1), the host that runs them and
+//! the queue that carries their output to storage.
+
+mod host;
+mod output;
+
+pub use host::{ModuleHost, ModuleStatus, RunState, HOOK_BUDGET};
+pub use output::{Output, OutputQueue, QueueEmitter, QUEUE};
 
 use std::fmt;
 
@@ -27,6 +34,16 @@ impl ModuleSpec {
             .map(|r| r.name)
             .collect()
     }
+}
+
+/// Fresh instances of the enabled modules, in `enabled` order; unknown ids are skipped (the
+/// config check has rejected them already).
+pub fn instantiate(specs: &[ModuleSpec], enabled: &[String]) -> Vec<Box<dyn Module>> {
+    enabled
+        .iter()
+        .filter_map(|id| specs.iter().find(|s| s.id == id))
+        .map(|s| (s.make)())
+        .collect()
 }
 
 /// Every module compiled into this binary, in a stable order.

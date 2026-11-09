@@ -2,20 +2,25 @@
 //!
 //! Exit codes: 0 success, 1 runtime failure, 2 usage or configuration error.
 
+use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::future::Future;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context as _;
 use clap::Parser;
-use scribe_core::{Sensor, VERSION};
-use scribe_storage_api::StorageError;
+use scribe_core::{Clock, Sensor, SystemClock, VERSION};
+use scribe_module_api::ConfigDoc;
+use scribe_storage_api::{StorageError, StoredEvent};
 use scribe_storage_manager::{Registry, StorageManager};
 use tracing::{error, info, warn};
 
 use crate::config::{self, Settings};
 use crate::logging;
+use crate::modules::{self, ModuleHost, Output, OutputQueue, QUEUE};
 
 pub const EXIT_FAILURE: u8 = 1;
 pub const EXIT_CONFIG: u8 = 2;
@@ -117,9 +122,61 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
         "capture is not wired up yet (plan phase 5)"
     );
 
+    let mut host = ModuleHost::new(
+        modules::instantiate(
+            &modules::builtin(),
+            settings.config.modules.enabled.get_ref(),
+        ),
+        &ConfigDoc::new(&settings.text),
+    )
+    .map_err(anyhow::Error::msg)?;
+    let mut state = BTreeMap::new();
+    for id in host.ids() {
+        match storage.state().module_state(id).await {
+            Ok(s) => {
+                state.insert(id.to_owned(), s);
+            }
+            Err(StorageError::NotImplemented(_)) => {}
+            Err(e) => warn!(module = id, "cannot read module state: {e}"),
+        }
+    }
+    let queue = OutputQueue::new(QUEUE);
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    for (id, started) in host.start(clock, |id| queue.emitter(id), state) {
+        match started {
+            Ok(()) => info!(module = id, "module {id} started"),
+            Err(e) => warn!(module = id, "module {id} did not start: {e}"),
+        }
+    }
+
     info!("scribed started; waiting for a stop signal");
-    shutdown.await;
+    // Until the capture pipeline arrives (plan phase 5), only sources run; their output is
+    // written once a second.
+    let mut drain = Drain::default();
+    let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    tokio::pin!(shutdown);
+    loop {
+        tokio::select! {
+            _ = &mut shutdown => break,
+            _ = ticker.tick() => {
+                host.tick();
+                drain.run(&queue, &storage).await;
+            }
+        }
+    }
     info!("stop signal received; shutting down");
+
+    host.stop();
+    drain.run(&queue, &storage).await;
+    for status in host.status() {
+        info!(module = status.id, "module {} stopped", status.id);
+    }
+    if queue.dropped() > 0 {
+        warn!(
+            dropped = queue.dropped(),
+            "module output dropped because its queue was full"
+        );
+    }
 
     for sink in storage.sinks() {
         match sink.flush().await {
@@ -129,6 +186,40 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
     }
     info!("scribed stopped");
     Ok(())
+}
+
+/// Writes queued module output to storage; warns once per kind of failure.
+#[derive(Default)]
+struct Drain {
+    warned: bool,
+}
+
+impl Drain {
+    async fn run(&mut self, queue: &OutputQueue, storage: &StorageManager) {
+        let mut events: Vec<StoredEvent> = Vec::new();
+        for item in queue.take() {
+            match item {
+                Output::Event(e) => events.push(e),
+                Output::State { module, key, value } => {
+                    if let Err(e) = storage.state().put_module_state(module, &key, &value).await {
+                        self.warn(&e);
+                    }
+                }
+            }
+        }
+        if !events.is_empty() {
+            if let Err(e) = storage.publish(&events).await {
+                self.warn(&e);
+            }
+        }
+    }
+
+    fn warn(&mut self, e: &StorageError) {
+        if !self.warned {
+            self.warned = true;
+            warn!("module output not stored: {e}");
+        }
+    }
 }
 
 /// Completes on Ctrl-C, or on SIGTERM on Unix.

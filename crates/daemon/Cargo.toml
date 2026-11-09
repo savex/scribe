@@ -25,6 +25,7 @@ scribe-enrich.workspace = true
 scribe-storage-api.workspace = true
 scribe-storage-manager.workspace = true
 scribe-module-api.workspace = true
+serde_json.workspace = true
 scribe-module-url = { workspace = true, optional = true }
 scribe-sensor-pcap.workspace = true
 serde.workspace = true
@@ -32,7 +33,7 @@ toml.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 clap.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros", "time"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-appender.workspace = true
@@ -49,4 +50,5 @@ scribe-sensor-windows.workspace = true
 
 [dev-dependencies]
 scribe-module-url.workspace = true
+scribe-test-support.workspace = true
 tempfile.workspace = true

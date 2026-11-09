@@ -206,5 +206,9 @@ fn runs_until_sigterm_and_stops_cleanly() {
     ] {
         assert!(log.contains(expected), "missing {expected:?} in:\n{log}");
     }
+    #[cfg(feature = "url")]
+    for expected in ["modules: url", "module url started", "module url stopped"] {
+        assert!(log.contains(expected), "missing {expected:?} in:\n{log}");
+    }
     assert!(dir.path().join("data").join("spool").is_dir());
 }

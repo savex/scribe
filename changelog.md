@@ -68,6 +68,12 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   favour of `[modules.url] query` (warning at start and in `--check-config`). `--check-config` prints each
   module's effective settings; the startup summary lists the modules; `Module::effective_config` added.
 
+- Phase 0b step 8: `scribed` runs its modules. `ModuleHost` configures and starts the enabled modules, runs
+  flow hooks within a time budget (over-budget calls counted), switches off only a module whose hook or source
+  panics (health degraded), ticks sources on their interval, and pauses, resumes, reconfigures and stops them.
+  Module output goes through a bounded queue (`OutputQueue`, drops counted) to the storage manager once a second;
+  module state is read at start. The log shows `module url started` / `stopped`.
+
 ### Changed
 - Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
 
