@@ -54,6 +54,13 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `scribe-test-support` gains `RecordingEmitter`, `module_context`, `TagModule` (flow hook), `TicksModule`
   (metric source), `NoopModule` and `MisbehavingModule`; the suite's own tests prove it catches 7 faults.
 
+- Phase 0b step 6: `scribe-module-url`, the URL module skeleton. Manifest (`url.request` records, read call
+  `list`, needs payload), `[modules.url] query` (default `redact_values`) with the deprecated
+  `privacy.url_query` still honoured and an error when both disagree; flow hook that notes the URL, records
+  `url.request` and counts requests per host once the parser exists. The request parser moved here as
+  `parse::request_url` (stub until phase 3) and the `http_request` fuzz target with it; `scribe-enrich` keeps
+  only a `host_header` stub. `ConfigDoc::get` reads keys outside a module's section. Passes the module suite.
+
 ### Fixed
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
   52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;

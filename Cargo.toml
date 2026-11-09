@@ -22,6 +22,7 @@ scribe-sensor-windows = { path = "crates/sensor-windows" }
 scribe-sensor-pcap = { path = "crates/sensor-pcap" }
 scribe-module-api = { path = "crates/module-api" }
 scribe-module-conformance = { path = "crates/module-conformance" }
+scribe-module-url = { path = "crates/module-url" }
 
 # Third-party. Keep versions compatible with `rust-version` (policy: follow dependencies).
 tokio = { version = "1.54", default-features = false }

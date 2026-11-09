@@ -7,7 +7,7 @@ locally (commit only minimized crash reproducers, as new fixtures).
 | Target | Function |
 |---|---|
 | `tls_client_hello` | `scribe_enrich::tls::{detect_security, parse_sni}` |
-| `http_request` | `scribe_enrich::http::parse_request_url` |
+| `http_request` | `scribe_module_url::parse::request_url` (URL module) |
 
 Planned: `dns_message` (DNS answer parser), `quic_initial` (QUIC Initial SNI) once those parsers exist.
 

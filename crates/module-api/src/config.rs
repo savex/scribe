@@ -67,6 +67,32 @@ impl<'a> ConfigDoc<'a> {
             .map_err(|e| SectionError::new(e.message().to_owned(), e.span()))
     }
 
+    /// Deserialize the value at a key path outside the module's section (e.g. a deprecated key it
+    /// still honours); `None` when absent.
+    pub fn get<T: DeserializeOwned>(&self, path: &[&str]) -> Result<Option<T>, SectionError> {
+        if self.text.trim().is_empty() {
+            return Ok(None);
+        }
+        let root = DeTable::parse(self.text)
+            .map_err(|e| SectionError::new(e.message().to_owned(), e.span()))?;
+        let Some((last, parents)) = path.split_last() else {
+            return Ok(None);
+        };
+        let mut table = root.get_ref();
+        for key in parents {
+            match table.get(*key).map(|v| v.get_ref()) {
+                Some(DeValue::Table(t)) => table = t,
+                _ => return Ok(None),
+            }
+        }
+        let Some(value) = table.get(*last) else {
+            return Ok(None);
+        };
+        T::deserialize(ValueDeserializer::from(value.clone()))
+            .map(Some)
+            .map_err(|e| SectionError::new(e.message().to_owned(), e.span().or(Some(value.span()))))
+    }
+
     /// The span of a key path like `modules.url.query`, for errors found after deserializing.
     pub fn span_of(&self, path: &[&str]) -> Option<Range<usize>> {
         let root = DeTable::parse(self.text).ok()?;
@@ -162,6 +188,20 @@ mod tests {
             .section::<UrlSection>("url")
             .unwrap_err();
         assert!(err.span.is_some());
+    }
+
+    #[test]
+    fn reads_values_outside_the_section() {
+        let text = "[privacy]\nurl_query = \"strip\"\n[log]\nlevel = 3\n";
+        let doc = ConfigDoc::new(text);
+        let got: Option<String> = doc.get(&["privacy", "url_query"]).unwrap();
+        assert_eq!(got.as_deref(), Some("strip"));
+        assert_eq!(doc.get::<String>(&["privacy", "other"]).unwrap(), None);
+        assert_eq!(doc.get::<String>(&["nope", "url_query"]).unwrap(), None);
+        assert_eq!(doc.get::<String>(&[]).unwrap(), None);
+        assert_eq!(ConfigDoc::new("").get::<String>(&["a"]).unwrap(), None);
+        let err = doc.get::<String>(&["log", "level"]).unwrap_err();
+        assert_eq!(line_of(text, err.span.as_ref().unwrap()), 4);
     }
 
     #[test]

@@ -1,0 +1,16 @@
+[package]
+name = "scribe-module-url"
+description = "URL tracking module: plaintext HTTP requests, URL privacy, request counters"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-core.workspace = true
+scribe-module-api.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+scribe-module-conformance.workspace = true
+scribe-test-support.workspace = true

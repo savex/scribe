@@ -13,6 +13,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 scribe-enrich = { path = "../crates/enrich" }
+scribe-module-url = { path = "../crates/module-url" }
 
 [workspace]
 members = ["."]
