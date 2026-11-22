@@ -91,6 +91,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 3 step 3: DNS response parser (compressed names with a jump limit, A / AAAA / CNAME) and a `DnsCache`
   on `Clock` that maps answer IPs to the queried name through CNAME chains, with the shortest TTL on the chain,
   a one-day cap and an entry limit.
+- Phase 3 step 4: `Enricher` sets security, the ECH flag and the host name (SNI, then `Host`, then the sensor's
+  name, then the DNS cache); it learns from raw DNS responses or OS-decoded answers. Integration test INT-08.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

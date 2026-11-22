@@ -2,5 +2,6 @@
 //! Run with `cargo nextest run -p scribe-enrich -E 'binary(functional)'`.
 
 mod dns;
+mod enricher;
 mod http;
 mod tls;

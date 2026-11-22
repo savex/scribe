@@ -44,6 +44,7 @@ scribe-storage-api.workspace = true
 scribe-storage-sqlite.workspace = true
 
 [dev-dependencies]
+scribe-enrich.workspace = true
 scribe-core.workspace = true
 scribe-storage-manager = { workspace = true, features = ["sqlite"] }
 scribe-storage-postgres.workspace = true
