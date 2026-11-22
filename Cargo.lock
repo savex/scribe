@@ -800,6 +800,7 @@ dependencies = [
  "scribe-core",
  "scribe-storage-api",
  "scribe-storage-conformance",
+ "scribe-test-support",
  "serde_json",
  "tempfile",
 ]

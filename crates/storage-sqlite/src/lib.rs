@@ -5,6 +5,7 @@
 //! in WAL mode.
 
 mod db;
+mod state;
 
 use std::net::IpAddr;
 use std::path::Path;
@@ -90,53 +91,58 @@ impl StateStore for SqliteStore {
         Box::pin(async move { self.db.migrate().map(|_| ()) })
     }
 
-    fn upsert_host<'a>(&'a self, _delta: &'a HostDelta) -> BoxFuture<'a, Result<HostId>> {
-        not_implemented("sqlite: upsert_host")
+    fn upsert_host<'a>(&'a self, delta: &'a HostDelta) -> BoxFuture<'a, Result<HostId>> {
+        Box::pin(async move { self.db.with(|c| state::upsert_host(c, delta)) })
     }
 
-    fn get_host<'a>(&'a self, _name: &'a str) -> BoxFuture<'a, Result<Option<Host>>> {
-        not_implemented("sqlite: get_host")
+    fn get_host<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<Option<Host>>> {
+        Box::pin(async move { self.db.with(|c| state::get_host(c, name)) })
     }
 
-    fn link_ip(&self, _host: HostId, _ip: IpAddr, _ttl: Duration) -> BoxFuture<'_, Result<()>> {
-        not_implemented("sqlite: link_ip")
+    fn link_ip(&self, host: HostId, ip: IpAddr, ttl: Duration) -> BoxFuture<'_, Result<()>> {
+        let now = self.db.now_ms();
+        Box::pin(async move { self.db.with(|c| state::link_ip(c, host, ip, ttl, now)) })
     }
 
-    fn list_hosts<'a>(&'a self, _query: &'a HostQuery) -> BoxFuture<'a, Result<Page<Host>>> {
-        not_implemented("sqlite: list_hosts")
+    fn list_hosts<'a>(&'a self, query: &'a HostQuery) -> BoxFuture<'a, Result<Page<Host>>> {
+        Box::pin(async move { self.db.with(|c| state::list_hosts(c, query)) })
     }
 
-    fn baseline<'a>(&'a self, _profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {
-        not_implemented("sqlite: baseline")
+    fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {
+        Box::pin(async move { self.db.with(|c| state::baseline(c, profile)) })
     }
 
     fn add_to_baseline<'a>(
         &'a self,
-        _profile: &'a str,
-        _entry: &'a BaselineEntry,
+        profile: &'a str,
+        entry: &'a BaselineEntry,
     ) -> BoxFuture<'a, Result<()>> {
-        not_implemented("sqlite: add_to_baseline")
+        Box::pin(async move { self.db.with(|c| state::add_to_baseline(c, profile, entry)) })
     }
 
-    fn put_alert_state<'a>(&'a self, _state: &'a AlertState) -> BoxFuture<'a, Result<()>> {
-        not_implemented("sqlite: put_alert_state")
+    fn put_alert_state<'a>(&'a self, alert: &'a AlertState) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move { self.db.with(|c| state::put_alert_state(c, alert)) })
     }
 
-    fn get_alert_state<'a>(&'a self, _key: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>> {
-        not_implemented("sqlite: get_alert_state")
+    fn get_alert_state<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>> {
+        Box::pin(async move { self.db.with(|c| state::get_alert_state(c, key)) })
     }
 
-    fn module_state<'a>(&'a self, _module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
-        not_implemented("sqlite: module_state")
+    fn module_state<'a>(&'a self, module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
+        Box::pin(async move { self.db.with(|c| state::module_state(c, module)) })
     }
 
     fn put_module_state<'a>(
         &'a self,
-        _module: &'a str,
-        _key: &'a str,
-        _value: &'a serde_json::Value,
+        module: &'a str,
+        key: &'a str,
+        value: &'a serde_json::Value,
     ) -> BoxFuture<'a, Result<()>> {
-        not_implemented("sqlite: put_module_state")
+        let now = self.db.now_ms();
+        Box::pin(async move {
+            self.db
+                .with(|c| state::put_module_state(c, module, key, value, now))
+        })
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {

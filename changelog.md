@@ -88,6 +88,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   them in `schema_migrations` and `user_version`; a database newer than the build is refused. Health reports a
   pending migration or an unopenable file. `scribed` now creates `state.db` and `events.db` and logs `storage ready`.
 
+- Phase 1 step 3: the SQLite state store. Host counters are applied as deltas in one upsert (first / last seen
+  as min / max, flags only turn on), IP links never shorten, baselines keep the first entry, alert and module state
+  are upserted; listing sorts by name and treats `%` / `_` literally. Stored times come from `Clock`. The
+  `sqlite_state_store_conforms` test now runs (on a temporary file).
+
 ### Changed
 - Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
 
