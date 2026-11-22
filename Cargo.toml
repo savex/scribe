@@ -26,6 +26,7 @@ scribe-module-url = { path = "crates/module-url" }
 scribe-daemon = { path = "crates/daemon" }
 scribe-cli = { path = "crates/cli" }
 scribe-secrets = { path = "crates/secrets" }
+scribe-policy = { path = "crates/policy" }
 
 # Third-party. Keep versions compatible with `rust-version` (policy: follow dependencies).
 tokio = { version = "1.54", default-features = false }

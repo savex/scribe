@@ -1,0 +1,13 @@
+[package]
+name = "scribe-policy"
+description = "Policy engine: modes, scoring signals, threat lists, alert dedupe; no I/O"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+scribe-core.workspace = true
+
+[dev-dependencies]
+scribe-test-support.workspace = true
+proptest.workspace = true
