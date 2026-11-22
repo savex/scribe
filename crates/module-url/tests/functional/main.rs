@@ -2,4 +2,6 @@
 //! Run with `cargo nextest run -p scribe-module-url -E 'binary(functional)'`.
 
 mod conformance;
+mod hook;
+mod privacy;
 mod url;

@@ -84,6 +84,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 3 step 1: TLS ClientHello parser in `scribe-enrich` (`parse_client_hello`): SNI (checked, lowercase),
   ECH flag, ALPN, TLS 1.3 offer; reassembles a hello split over several records; never panics. The test
   ClientHello builder can add ALPN.
+- Phase 3 step 2: HTTP request heads in `scribe-enrich` (`parse_request_head`, `host_header`, `split_host_port`);
+  the URL module parses requests (origin and proxy form, user info removed, odd ports kept) and applies
+  `full`, `redact_values`, `strip` and `path_only` exactly as the specs 12.2 examples; `url.request` records
+  carry `method` and `url`.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

@@ -714,6 +714,7 @@ name = "scribe-module-url"
 version = "0.1.1"
 dependencies = [
  "scribe-core",
+ "scribe-enrich",
  "scribe-module-api",
  "scribe-module-conformance",
  "scribe-test-support",

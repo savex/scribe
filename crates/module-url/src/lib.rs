@@ -2,10 +2,11 @@
 //! stores the URL according to `[modules.url] query`, attaches it to the flow as the `url` note,
 //! records `url.request` and counts requests per host in module state.
 //!
-//! The request parser and the URL privacy rules (specs 12.2) arrive in plan phase 3; until then
-//! the hook finds no URLs.
+//! The `hash` query mode arrives with the secrets crate (phase 3, step 5); until then it stores
+//! no query, like `strip`.
 
 pub mod parse;
+pub mod privacy;
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -91,9 +92,11 @@ impl FlowHook for Hook {
         if self.paused.load(Ordering::Relaxed) || flow.event.security != Security::Plaintext {
             return HookOutput::none();
         }
-        let Some(url) = flow.head.and_then(parse::request_url) else {
+        let Some(request) = flow.head.and_then(parse::parse_request) else {
             return HookOutput::none();
         };
+        let query = self.settings.lock().unwrap().query;
+        let url = privacy::apply(&request, query, None);
         let Some(ctx) = self.ctx.lock().unwrap().clone() else {
             return HookOutput::none();
         };
@@ -104,7 +107,7 @@ impl FlowHook for Hook {
             kind: REQUEST.into(),
             schema: 1,
             host: host.clone(),
-            payload: json!({ "url": url, "query": self.settings.lock().unwrap().query.name() }),
+            payload: json!({ "method": request.method, "url": url }),
         });
         if let Some(host) = host {
             let mut requests = self.requests.lock().unwrap();

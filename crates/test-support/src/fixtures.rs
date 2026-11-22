@@ -25,7 +25,7 @@ pub struct ExpectedFlow {
     pub dst: SocketAddr,
     pub hostname: Option<&'static str>,
     pub security: &'static str,
-    /// `notes.url`: what the URL module must attach.
+    /// `notes.url`: what the URL module attaches with `query = "full"` (the default redacts values).
     pub url: Option<&'static str>,
     pub ech: bool,
     /// `new_flow`, or `payload` for a later request on the same connection.
