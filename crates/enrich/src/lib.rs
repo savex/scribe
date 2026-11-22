@@ -5,4 +5,4 @@ pub mod http;
 pub mod tls;
 
 pub use dns::DnsCache;
-pub use tls::detect_security;
+pub use tls::{detect_security, parse_client_hello, ClientHello};

@@ -145,6 +145,7 @@ fn no_sni_hello() -> Vec<u8> {
         sni: None,
         tls13: true,
         ech: false,
+        ..Default::default()
     })
 }
 
@@ -245,6 +246,7 @@ pub fn all() -> Vec<Fixture> {
                     sni: Some("legacy.example.com".into()),
                     tls13: false,
                     ech: false,
+                    ..Default::default()
                 })],
             ),
             expected: vec![ExpectedFlow::tcp("[2001:db8::10]:443", Some("legacy.example.com"), "tls")],
@@ -265,6 +267,7 @@ pub fn all() -> Vec<Fixture> {
                     sni: Some("public.example.com".into()),
                     tls13: true,
                     ech: true,
+                    ..Default::default()
                 })],
             ),
             expected: vec![ExpectedFlow {
@@ -382,6 +385,7 @@ pub fn fuzz_seeds() -> Vec<(&'static str, &'static str, Vec<u8>)> {
                 sni: Some("seed.example.com".into()),
                 tls13: false,
                 ech: false,
+                ..Default::default()
             }),
         ),
         (
@@ -391,6 +395,7 @@ pub fn fuzz_seeds() -> Vec<(&'static str, &'static str, Vec<u8>)> {
                 sni: Some("public.example.com".into()),
                 tls13: true,
                 ech: true,
+                ..Default::default()
             }),
         ),
         ("tls_client_hello", "truncated", hello[..60].to_vec()),

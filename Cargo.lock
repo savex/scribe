@@ -683,7 +683,9 @@ dependencies = [
 name = "scribe-enrich"
 version = "0.1.1"
 dependencies = [
+ "proptest",
  "scribe-core",
+ "scribe-test-support",
 ]
 
 [[package]]

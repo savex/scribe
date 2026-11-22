@@ -81,6 +81,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   sinks (spooling or drops make a sink degraded).
 - Storage tests: SQLite in-memory conformance, a counter property test, four writers on one SQLite file, and an
   integration test of the running storage (writers, spool, buffer, cache) over SQLite.
+- Phase 3 step 1: TLS ClientHello parser in `scribe-enrich` (`parse_client_hello`): SNI (checked, lowercase),
+  ECH flag, ALPN, TLS 1.3 offer; reassembles a hello split over several records; never panics. The test
+  ClientHello builder can add ALPN.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

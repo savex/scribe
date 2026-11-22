@@ -7,3 +7,7 @@ rust-version.workspace = true
 
 [dependencies]
 scribe-core.workspace = true
+
+[dev-dependencies]
+scribe-test-support.workspace = true
+proptest.workspace = true
