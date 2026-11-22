@@ -759,6 +759,7 @@ dependencies = [
  "proptest",
  "scribe-core",
  "scribe-test-support",
+ "serde_json",
 ]
 
 [[package]]

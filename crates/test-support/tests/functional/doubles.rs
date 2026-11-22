@@ -104,6 +104,7 @@ fn recording_alert_sink_keeps_alerts() {
         process_path: None,
         score: 80,
         reason: "raw_ip".into(),
+        notes: Default::default(),
     });
     assert_eq!(sink.count(), 1);
     assert_eq!(sink.alerts()[0].reason, "raw_ip");

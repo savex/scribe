@@ -1,6 +1,8 @@
 use std::net::IpAddr;
 use std::time::SystemTime;
 
+use crate::Notes;
+
 /// An alert raised by the policy engine.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Alert {
@@ -11,6 +13,8 @@ pub struct Alert {
     pub process_path: Option<String>,
     pub score: u32,
     pub reason: String,
+    /// The flow's module notes (e.g. the URL), so an alert shows what was requested.
+    pub notes: Notes,
 }
 
 /// Destination for alerts: OS notification, log, webhook.

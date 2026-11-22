@@ -2,7 +2,10 @@
 //! baseline or alerted on. It does no I/O: the daemon gives it the configuration, the baseline,
 //! threat lists and module signals, and stores what it decides.
 
+pub mod engine;
 pub mod signals;
 pub mod threat;
 
+pub use engine::{alert_key, Decision, Policy, PolicyConfig, Scores};
+pub use signals::UsualPorts;
 pub use threat::{ThreatFormat, ThreatSet};
