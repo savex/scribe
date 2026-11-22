@@ -195,7 +195,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
 | NFR-16 | Extensibility | New backends, sensors and modules must pass their conformance suites | Implemented |
 | NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Proposed |
-| NFR-18 | Tamper evidence | Audit and alert records are hash-chained; hosts send heartbeats to the remote sink, so stopped daemons and deleted rows are visible | Proposed |
+| NFR-18 | Tamper evidence | Audit and alert records are hash-chained; hosts send heartbeats to the remote sink, so stopped daemons and deleted rows are visible | Partly (chain, start / stop / unclean-stop audits since phase 5; heartbeats with the remote sink in phase 12) |
 | NFR-19 | Release integrity | Release checksums signed, build provenance attested, dependencies checked by `cargo deny` / `cargo audit` | Proposed |
 | NFR-20 | Module isolation | A slow, failing or panicking module never blocks capture, storage or other modules: per-flow time budget, bounded queues with counted drops, a panic disables only that module and reports degraded health | Implemented in `ModuleHost` (budget counting, panic isolation, bounded output queue); per-module flow queues for slow hooks arrive with the pipeline (phase 5) |
 
@@ -804,15 +804,15 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 **Data at rest**
 
 - Default: strict file modes plus full-disk encryption. Database, spool, logs and exports are created `0600` or `0640 root:scribe-admin`.
-- Like sshd's StrictModes, scribed refuses to start if the config, `data_dir` or a `file:` credential is writable by group or others.
+- Like sshd's StrictModes, scribed refuses to start if the config, `data_dir` or a `file:` credential is writable by group or others. Implemented in phase 5 for the config file and `data_dir` (`security::strict_modes`, Unix); `file:` credentials are checked by `scribe-secrets`; Windows ACLs by the installer (phase 13).
 - Optional `storage.encrypt = true`: SQLCipher (`rusqlite` feature `bundled-sqlcipher`) and AES-256-GCM spool records (`ring`), key in the keychain / DPAPI / Secret Service (TPM-sealed where available). The daemon must open the key unattended at boot, so this protects stolen disks and backups, not a live root attacker.
 - The per-install HMAC key for `[modules.url] query = "hash"` is a secret reference: by default a root-only `file:` in `data_dir` (`url_hash.key`, `0600`), or `hash_key` pointing at the OS store once its backends land (phase 11).
 
 **Tamper evidence (NFR-18)**
 
-- Audit and alert records carry a sequence number and `prev_hmac`, so deleted or edited rows show up locally and in the sink.
+- Audit and alert records carry a sequence number and `prev_hmac`, so deleted or edited rows show up locally and in the sink. Implemented in phase 5 (`scribe_daemon::chain`): HMAC-SHA256 over the sequence, the previous HMAC and `codec::chain_bytes` (kind, host, time and payload as sorted compact JSON); key `audit.key` in `data_dir` (created on first start, mode 600), state `audit.chain`; `chain::verify` reports gaps, mismatches and unlinked records.
 - Each host writes a heartbeat to the remote sink; the central side alerts on gaps.
-- Daemon stops, crashes and sequence gaps are stored as `audit` events.
+- Daemon stops, crashes and sequence gaps are stored as `audit` events. Implemented in phase 5 for starts, clean stops and unclean stops (a `scribed.running` marker left in `data_dir`); gap checks run in `scribe audit verify` (phase 10).
 
 **Remote / fleet API**
 

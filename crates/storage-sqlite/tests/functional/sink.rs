@@ -26,6 +26,7 @@ fn audit(secs: u64, message: &str) -> StoredEvent {
     StoredEvent::Audit(AuditRecord {
         ts: at(secs),
         message: message.into(),
+        link: None,
     })
 }
 

@@ -116,6 +116,17 @@ pub struct AlertRecord {
     pub reason: String,
     /// The flow's module notes (e.g. the URL); empty in older rows.
     pub notes: scribe_core::Notes,
+    /// Place in the tamper-evident chain (NFR-18); `None` before the daemon sealed it.
+    pub link: Option<ChainLink>,
+}
+
+/// One record's place in the audit / alert chain (NFR-18): a sequence number shared by audit and
+/// alert records, and the HMAC of the record before it. Deleted or edited rows break the chain.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChainLink {
+    pub seq: u64,
+    /// Lowercase hex HMAC-SHA256 of the previous record; empty for the first one.
+    pub prev_hmac: String,
 }
 
 impl From<&scribe_core::Alert> for AlertRecord {
@@ -129,6 +140,7 @@ impl From<&scribe_core::Alert> for AlertRecord {
             score: a.score,
             reason: a.reason.clone(),
             notes: a.notes.clone(),
+            link: None,
         }
     }
 }
@@ -137,6 +149,8 @@ impl From<&scribe_core::Alert> for AlertRecord {
 pub struct AuditRecord {
     pub ts: SystemTime,
     pub message: String,
+    /// Place in the tamper-evident chain (NFR-18); `None` before the daemon sealed it.
+    pub link: Option<ChainLink>,
 }
 
 /// What a stored event is. Sinks subscribe by [`EventKind::name`]: `flow`, `alert`, `audit`,

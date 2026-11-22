@@ -197,11 +197,13 @@ fn commands_drive_the_run_states() {
             _ => None,
         })
         .collect();
+    assert!(audits[0].starts_with("scribed "), "{audits:?}");
     assert!(
-        audits[0].starts_with("hibernate by test until "),
+        audits[1].starts_with("hibernate by test until "),
         "{audits:?}"
     );
-    assert_eq!(audits[1], "wakeup by test");
+    assert_eq!(audits[2], "wakeup by test");
+    assert_eq!(audits.last().map(String::as_str), Some("scribed stopped"));
     assert!(events
         .iter()
         .any(|e| matches!(e, StoredEvent::Alert(a) if a.reason == "hibernated")));
@@ -275,4 +277,50 @@ fn config_reload_applies_live_keys_and_refuses_broken_files() {
         let (result, ()) = tokio::join!(daemon, driver);
         result.unwrap();
     });
+}
+
+/// A run that didn't remove its marker is reported at the next start; the audit chain of both
+/// runs verifies with the install's key.
+#[test]
+fn an_unclean_stop_is_audited_and_the_chain_verifies() {
+    use scribe_daemon::app::{serve, RUNNING_MARKER};
+    use scribe_daemon::chain::{verify, Chain};
+    use scribe_storage_api::{EventQuery, EventSink, StoredEvent};
+
+    let dir = tempfile::tempdir().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(serve(settings_in(dir.path()), std::future::ready(())))
+        .unwrap();
+    assert!(
+        !dir.path().join(RUNNING_MARKER).exists(),
+        "removed at a clean stop"
+    );
+    std::fs::write(
+        dir.path().join(RUNNING_MARKER),
+        "pid 1 started 2026-11-22T10:00:00Z\n",
+    )
+    .unwrap();
+    rt.block_on(serve(settings_in(dir.path()), std::future::ready(())))
+        .unwrap();
+
+    let sink = scribe_tests::sqlite_sink("local-history", &dir.path().join("events.db"));
+    let events = rt
+        .block_on(sink.query(&EventQuery::default()))
+        .unwrap()
+        .items;
+    let audits: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            StoredEvent::Audit(a) => Some(a.message.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(audits.len(), 5, "{audits:?}");
+    assert!(
+        audits[2].starts_with("previous run did not stop cleanly (crash or kill): pid 1"),
+        "{audits:?}"
+    );
+    let chain = Chain::open(dir.path()).unwrap();
+    assert_eq!(chain.seq(), 5);
+    assert!(verify(chain.key(), &events).is_empty());
 }

@@ -134,6 +134,7 @@ fn events(n: usize) -> Vec<StoredEvent> {
             StoredEvent::Audit(AuditRecord {
                 ts: SystemTime::UNIX_EPOCH + Duration::from_secs(i as u64),
                 message: format!("e{i}"),
+                link: None,
             })
         })
         .collect()

@@ -2,6 +2,7 @@
 //! Run with `cargo nextest run -p scribe-daemon -E 'binary(functional)'`.
 
 mod app;
+mod chain;
 mod logging;
 mod module_host;
 mod modules;

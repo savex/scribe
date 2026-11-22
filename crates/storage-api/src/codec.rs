@@ -17,7 +17,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use scribe_core::{FlowEvent, FlowKind, MetricSample, ModuleRecord, Notes, Protocol, Security};
 use serde_json::{json, Value};
 
-use crate::{AlertRecord, AuditRecord, StorageError, StoredEvent, SCHEMA_VERSION};
+use crate::{AlertRecord, AuditRecord, ChainLink, StorageError, StoredEvent, SCHEMA_VERSION};
 
 /// One stored event, as the backends keep it.
 #[derive(Debug, Clone, PartialEq)]
@@ -75,14 +75,17 @@ pub fn encode(event: &StoredEvent) -> Row {
             module: None,
             host: a.host.clone(),
             schema: SCHEMA_VERSION,
-            payload: json!({
-                "dst_ip": a.dst_ip.to_string(),
-                "dst_port": a.dst_port,
-                "process_path": a.process_path,
-                "score": a.score,
-                "reason": a.reason,
-                "notes": a.notes,
-            }),
+            payload: with_link(
+                json!({
+                    "dst_ip": a.dst_ip.to_string(),
+                    "dst_port": a.dst_port,
+                    "process_path": a.process_path,
+                    "score": a.score,
+                    "reason": a.reason,
+                    "notes": a.notes,
+                }),
+                a.link.as_ref(),
+            ),
         },
         StoredEvent::Audit(a) => Row {
             ts: a.ts,
@@ -90,7 +93,7 @@ pub fn encode(event: &StoredEvent) -> Row {
             module: None,
             host: None,
             schema: SCHEMA_VERSION,
-            payload: json!({ "message": a.message }),
+            payload: with_link(json!({ "message": a.message }), a.link.as_ref()),
         },
         StoredEvent::Metric(m) => Row {
             ts: m.ts,
@@ -192,10 +195,12 @@ pub fn decode(row: Row) -> Result<StoredEvent, StorageError> {
                 .cloned()
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default(),
+            link: read_link(p),
         })),
         "audit" => Ok(StoredEvent::Audit(AuditRecord {
             ts: row.ts,
             message: opt_text("message").unwrap_or_default(),
+            link: read_link(p),
         })),
         "metric" => {
             let labels: BTreeMap<String, String> = match p.get("labels") {
@@ -254,6 +259,40 @@ fn security_name(s: Security) -> &'static str {
         Security::Plaintext => "plaintext",
         Security::Unknown => "unknown",
     }
+}
+
+/// Add `seq` and `prev_hmac` to an audit or alert payload.
+fn with_link(mut payload: Value, link: Option<&ChainLink>) -> Value {
+    if let (Some(link), Some(map)) = (link, payload.as_object_mut()) {
+        map.insert("seq".into(), json!(link.seq));
+        map.insert("prev_hmac".into(), json!(link.prev_hmac));
+    }
+    payload
+}
+
+fn read_link(p: &Value) -> Option<ChainLink> {
+    Some(ChainLink {
+        seq: p.get("seq")?.as_u64()?,
+        prev_hmac: p.get("prev_hmac")?.as_str()?.to_owned(),
+    })
+}
+
+/// The bytes a record's HMAC covers: its encoded row (kind, host, time, payload without the
+/// chain fields) as compact JSON with sorted keys, so any backend computes the same value.
+pub fn chain_bytes(event: &StoredEvent) -> Vec<u8> {
+    let row = encode(event);
+    let mut payload = row.payload;
+    if let Some(map) = payload.as_object_mut() {
+        map.remove("seq");
+        map.remove("prev_hmac");
+    }
+    serde_json::to_vec(&json!({
+        "kind": row.kind,
+        "host": row.host,
+        "ts_ms": to_millis(row.ts),
+        "payload": payload,
+    }))
+    .expect("JSON values always serialize")
 }
 
 fn flow_kind_name(k: FlowKind) -> &'static str {

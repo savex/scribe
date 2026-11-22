@@ -92,6 +92,7 @@ fn every_kind_round_trips() {
             n.insert("url", serde_json::json!("http://198.51.100.7/x"));
             n
         },
+        link: None,
     };
     let StoredEvent::Alert(a) = round_trip(StoredEvent::Alert(alert.clone())) else {
         panic!()
@@ -116,6 +117,7 @@ fn every_kind_round_trips() {
     let StoredEvent::Audit(a) = round_trip(StoredEvent::Audit(AuditRecord {
         ts: ts(),
         message: "mode changed".into(),
+        link: None,
     })) else {
         panic!()
     };

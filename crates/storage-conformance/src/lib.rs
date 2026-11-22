@@ -503,5 +503,6 @@ fn audit_event(message: &str) -> StoredEvent {
     StoredEvent::Audit(AuditRecord {
         ts: now(),
         message: message.into(),
+        link: None,
     })
 }

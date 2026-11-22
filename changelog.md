@@ -43,6 +43,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 5 step 5: config reload (`Command::Reload`, SIGHUP on Unix): the start file is re-read and checked;
   mode, profile, policy (threat files re-read), modules, `[daemon]` and the log level apply live; storage, sinks,
   limits and log output report "needs restart"; a broken file changes nothing. Spec 8.5.2 updated to match.
+- Phase 5 step 6: tamper evidence and start checks: audit and alert records carry `seq` and `prev_hmac`
+  (HMAC-SHA256, key `audit.key`, chain continues across restarts, `chain::verify` finds gaps and edits);
+  `audit` events for start, stop and an unclean previous stop; `scribed` refuses to start when the config file
+  or `data_dir` is writable by group or others.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

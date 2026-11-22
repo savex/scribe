@@ -577,7 +577,11 @@ pub async fn store(target: &dyn Store, profile: &str, writes: &Writes) -> Vec<St
 }
 
 fn audit(ts: SystemTime, message: String) -> StoredEvent {
-    StoredEvent::Audit(AuditRecord { ts, message })
+    StoredEvent::Audit(AuditRecord {
+        ts,
+        message,
+        link: None,
+    })
 }
 
 fn when(until: Option<SystemTime>) -> String {

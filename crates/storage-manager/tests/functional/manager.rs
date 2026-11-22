@@ -188,6 +188,7 @@ fn routes_events_to_subscribed_sinks_only() {
         score: 90,
         reason: "raw_ip".into(),
         notes: Default::default(),
+        link: None,
     });
     block_on(manager.publish(&[flow_event.clone(), alert_event])).unwrap();
     block_on(manager.publish(&[flow_event])).unwrap();

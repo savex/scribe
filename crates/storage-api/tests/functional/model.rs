@@ -49,6 +49,7 @@ fn module_events_report_their_kind_and_module() {
     let audit = StoredEvent::Audit(AuditRecord {
         ts: UNIX_EPOCH,
         message: "x".into(),
+        link: None,
     });
     assert_eq!(audit.module(), None);
 }

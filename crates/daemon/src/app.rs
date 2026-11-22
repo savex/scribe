@@ -22,10 +22,12 @@ use scribe_storage_manager::{
 };
 use tracing::{error, info, warn};
 
+use crate::chain::Chain;
 use crate::config::{self, Settings};
 use crate::logging;
 use crate::modules::{self, ModuleHost, Output, OutputQueue, QUEUE};
 use crate::pipeline::{self, Pipeline, Status, Writes};
+use crate::security;
 
 pub const EXIT_FAILURE: u8 = 1;
 pub const EXIT_CONFIG: u8 = 2;
@@ -249,12 +251,7 @@ async fn reload(
     );
     info!("{message}");
     let mut writes = Writes::default();
-    writes
-        .events
-        .push(StoredEvent::Audit(scribe_storage_api::AuditRecord {
-            ts: clock.now(),
-            message,
-        }));
+    writes.events.push(audit(clock.now(), message));
     *running = plan.settings;
     Ok((report, writes))
 }
@@ -292,6 +289,10 @@ pub async fn serve_controlled(
         std::fs::create_dir_all(dir)
             .with_context(|| format!("cannot create folder {}", dir.display()))?;
     }
+    security::strict_modes(&settings).map_err(|e| anyhow::anyhow!("refusing to start: {e}"))?;
+    let chain = Chain::open(&settings.data_dir).map_err(anyhow::Error::msg)?;
+    let marker = settings.data_dir.join(RUNNING_MARKER);
+    let unclean = std::fs::read_to_string(&marker).ok();
 
     let registry = Registry::with_builtin();
     let manager =
@@ -419,11 +420,40 @@ pub async fn serve_controlled(
         ),
     }
 
+    let mut writer = Writer::new(chain);
+    let mut started = Writes::default();
+    if let Some(previous) = unclean {
+        warn!(
+            "the previous run did not stop cleanly ({})",
+            previous.trim()
+        );
+        started.events.push(audit(
+            clock.now(),
+            format!(
+                "previous run did not stop cleanly (crash or kill): {}",
+                previous.trim()
+            ),
+        ));
+    }
+    std::fs::write(
+        &marker,
+        format!(
+            "pid {} started {}\n",
+            std::process::id(),
+            pipeline::humantime_rfc3339(clock.now())
+        ),
+    )
+    .with_context(|| format!("cannot write {}", marker.display()))?;
+    started.events.push(audit(
+        clock.now(),
+        format!("scribed {VERSION} started (sensor {})", sensor.name()),
+    ));
+    writer.apply(&storage, pipeline.profile(), started).await;
+
     info!("scribed started; waiting for a stop signal");
     let mut running = settings.clone();
     let mut hup = hangup_signal();
     let mut drain = Drain::default();
-    let mut writer = Writer::default();
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
     tokio::pin!(shutdown);
     loop {
@@ -506,7 +536,10 @@ pub async fn serve_controlled(
         let writes = pipeline.process(obs);
         writer.apply(&storage, pipeline.profile(), writes).await;
     }
-    let writes = pipeline.flush();
+    let mut writes = pipeline.flush();
+    writes
+        .events
+        .push(audit(clock.now(), "scribed stopped".into()));
     writer.apply(&storage, pipeline.profile(), writes).await;
     let counters = pipeline.counters().clone();
     info!(
@@ -530,6 +563,7 @@ pub async fn serve_controlled(
     }
 
     storage.shutdown().await;
+    let _ = std::fs::remove_file(&marker);
     info!("scribed stopped");
     Ok(())
 }
@@ -624,15 +658,36 @@ pub fn load_threats(settings: &Settings) -> anyhow::Result<ThreatSet> {
     Ok(set)
 }
 
-/// Applies pipeline writes to storage and reports alerts; storage errors are logged once per kind
-/// of error until one write succeeds again.
-#[derive(Default)]
+/// Marks a running daemon in `data_dir`; still there at the next start means a crash or kill.
+pub const RUNNING_MARKER: &str = "scribed.running";
+
+fn audit(ts: std::time::SystemTime, message: String) -> StoredEvent {
+    StoredEvent::Audit(scribe_storage_api::AuditRecord {
+        ts,
+        message,
+        link: None,
+    })
+}
+
+/// Seals audit and alert records into the chain, applies pipeline writes to storage and reports
+/// alerts; storage errors are logged once until a write succeeds again.
 struct Writer {
+    chain: Chain,
     failing: bool,
 }
 
 impl Writer {
-    async fn apply(&mut self, storage: &Storage, profile: &str, writes: Writes) {
+    fn new(chain: Chain) -> Self {
+        Self {
+            chain,
+            failing: false,
+        }
+    }
+
+    async fn apply(&mut self, storage: &Storage, profile: &str, mut writes: Writes) {
+        if let Err(e) = self.chain.seal(&mut writes.events) {
+            warn!("cannot save the audit chain state: {e}");
+        }
         for alert in &writes.alerts {
             warn!(
                 target: "scribe::alert",

@@ -687,11 +687,13 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "anyhow",
  "clap",
+ "ring",
  "scribe-core",
  "scribe-enrich",
  "scribe-module-api",
  "scribe-module-url",
  "scribe-policy",
+ "scribe-secrets",
  "scribe-sensor-linux",
  "scribe-sensor-pcap",
  "scribe-sensor-windows",
