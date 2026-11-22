@@ -661,4 +661,25 @@ mod functional {
         assert_eq!(files[0].2, scribe_policy::ThreatFormat::Domains);
         assert_eq!(skipped, vec!["remote".to_owned()]);
     }
+
+    #[test]
+    fn max_hibernate_defaults_to_four_hours_and_can_be_unlimited() {
+        let s = resolve_text("");
+        assert_eq!(
+            s.config.daemon.max_hibernate.map(|d| d.get()),
+            Some(std::time::Duration::from_secs(4 * 3600))
+        );
+        assert!(s.warnings.is_empty());
+        let unlimited = resolve_text("[daemon]\nmax_hibernate = \"\"\n");
+        assert_eq!(unlimited.config.daemon.max_hibernate, None);
+        assert!(unlimited
+            .warnings
+            .iter()
+            .any(|w| w.contains("max_hibernate is unlimited")));
+        let short = resolve_text("[daemon]\nmax_hibernate = \"30m\"\n");
+        assert_eq!(
+            short.config.daemon.max_hibernate.map(|d| d.get()),
+            Some(std::time::Duration::from_secs(1800))
+        );
+    }
 }

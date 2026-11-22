@@ -271,3 +271,110 @@ fn store_applies_every_write() {
         .is_some());
     assert_eq!(doubles.published.lock().unwrap().len(), 3); // two flows, one alert
 }
+
+// ─── Run states (specs 8.5) ─────────────────────────────────────────────────
+
+#[test]
+fn hibernate_is_capped_alerts_and_drops_flows_until_it_ends() {
+    use scribe_daemon::pipeline::DaemonState;
+    let (p, clock) = pipeline(Mode::Alert, &[]);
+    let mut p = p.with_max_hibernate(Some(Duration::from_secs(4 * 3600)));
+    let w = p.hibernate(Some(Duration::from_secs(10 * 3600)), "admin");
+    assert_eq!(w.alerts.len(), 1);
+    assert_eq!(w.alerts[0].reason, "hibernated");
+    assert_eq!(w.alerts[0].notes.get("daemon").unwrap()["caller"], "admin");
+    assert!(w.events.iter().any(
+        |e| matches!(e, StoredEvent::Audit(a) if a.message.starts_with("hibernate by admin until "))
+    ));
+    let DaemonState::Hibernating {
+        until: Some(until), ..
+    } = p.state().clone()
+    else {
+        panic!()
+    };
+    assert_eq!(
+        until,
+        clock_now(&clock) + Duration::from_secs(4 * 3600),
+        "capped at max_hibernate"
+    );
+
+    let dropped = p.process(new_flow(
+        flow("192.0.2.12:443")
+            .payload(&hello(Some("docs.example.com")))
+            .observe(),
+    ));
+    assert!(dropped.is_empty());
+    assert_eq!(p.counters().dropped_hibernating, 1);
+
+    let again = p.hibernate(Some(Duration::from_secs(60)), "other");
+    assert!(again.alerts.is_empty(), "one alert per hibernation");
+    assert!(
+        matches!(&again.events[0], StoredEvent::Audit(a) if a.message.starts_with("hibernate extended by other"))
+    );
+
+    clock.advance(Duration::from_secs(61));
+    assert!(p.wakeup_due());
+    let w = p.tick();
+    assert!(matches!(&w.events[0], StoredEvent::Audit(a) if a.message == "wakeup by timer"));
+    assert_eq!(p.state(), &DaemonState::Running);
+    assert_eq!(
+        p.process(new_flow(
+            flow("192.0.2.12:443")
+                .payload(&hello(Some("docs.example.com")))
+                .observe()
+        ))
+        .alerts
+        .len(),
+        1
+    );
+}
+
+#[test]
+fn wakeup_resumes_modules_and_does_nothing_when_running() {
+    let (mut p, _) = pipeline(Mode::Learn, &[]);
+    assert!(p.wakeup("admin").is_empty());
+    p.hibernate(None, "admin");
+    assert!(p
+        .modules()
+        .status()
+        .iter()
+        .all(|m| m.state == scribe_daemon::modules::RunState::Paused));
+    let w = p.wakeup("admin");
+    assert!(matches!(&w.events[0], StoredEvent::Audit(a) if a.message == "wakeup by admin"));
+    assert!(p
+        .modules()
+        .status()
+        .iter()
+        .all(|m| m.state == scribe_daemon::modules::RunState::Running));
+    let status = p.status();
+    assert_eq!(status.state.name(), "running");
+    assert_eq!(status.mode, Mode::Learn);
+}
+
+#[test]
+fn unlimited_hibernation_has_no_end() {
+    let (p, clock) = pipeline(Mode::Learn, &[]);
+    let mut p = p.with_max_hibernate(None);
+    p.hibernate(None, "admin");
+    clock.advance(Duration::from_secs(365 * 86_400));
+    assert!(!p.wakeup_due());
+    assert!(p.is_hibernating());
+}
+
+#[test]
+fn clear_caches_forgets_dns_answers() {
+    let (mut p, _) = pipeline(Mode::Learn, &[]);
+    let answer = response(
+        1,
+        "cdn.example.com",
+        TYPE_A,
+        &[Answer::A("cdn.example.com", "192.0.2.50".parse().unwrap())],
+        300,
+    );
+    let mut dns = flow("10.0.0.2:53").udp().payload(&answer).observe();
+    dns.event.kind = FlowKind::DnsResponse;
+    p.process(dns);
+    assert_eq!(p.status().dns_entries, 1);
+    p.clear_caches();
+    assert_eq!(p.status().dns_entries, 0);
+}

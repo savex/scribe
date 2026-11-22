@@ -208,6 +208,11 @@ pub fn resolve(
     };
 
     let mut warnings = Vec::new();
+    if config.daemon.max_hibernate.is_none() {
+        warnings.push(
+            "daemon.max_hibernate is unlimited: `scribe daemon hibernate` can silence scribed until someone wakes it up".to_owned(),
+        );
+    }
     if let Some(q) = &config.privacy.url_query {
         let value = toml::Value::try_from(q.get_ref())
             .ok()

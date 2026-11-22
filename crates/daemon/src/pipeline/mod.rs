@@ -14,14 +14,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use scribe_core::{Alert, Clock, FlowKind, Observation, Protocol, Security};
+use scribe_core::{Alert, Clock, FlowKind, Notes, Observation, Protocol, Security};
 use scribe_enrich::quic::Progress;
 use scribe_enrich::{Enricher, InitialReassembler};
 use scribe_policy::{alert_key, Policy};
 use scribe_storage_api::{
-    AlertRecord, AlertState, BaselineEntry, EntrySource, HostDelta, StateStore, StorageError,
-    StoredEvent,
+    AlertRecord, AlertState, AuditRecord, BaselineEntry, EntrySource, HostDelta, StateStore,
+    StorageError, StoredEvent,
 };
+use serde_json::json;
 
 use crate::modules::ModuleHost;
 
@@ -86,6 +87,8 @@ pub struct RuntimeCounters {
     pub baseline_added: u64,
     /// QUIC flows judged without a complete ClientHello (time or room ran out).
     pub quic_unfinished: u64,
+    /// Observations that arrived while hibernating (not recorded).
+    pub dropped_hibernating: u64,
 }
 
 impl RuntimeCounters {
@@ -99,9 +102,47 @@ impl RuntimeCounters {
             alerts: 0,
             baseline_added: 0,
             quic_unfinished: 0,
+            dropped_hibernating: 0,
         }
     }
 }
+
+/// The daemon's run state (specs 8.5); `degraded` is a health result, not a state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DaemonState {
+    Running,
+    Hibernating {
+        since: SystemTime,
+        /// When it wakes up on its own; `None` only with an unlimited `daemon.max_hibernate`.
+        until: Option<SystemTime>,
+        caller: String,
+    },
+}
+
+impl DaemonState {
+    pub fn name(&self) -> &'static str {
+        match self {
+            DaemonState::Running => "running",
+            DaemonState::Hibernating { .. } => "hibernating",
+        }
+    }
+}
+
+/// What `scribe daemon status` reports from the pipeline (the API adds storage and sensor parts).
+#[derive(Debug, Clone)]
+pub struct Status {
+    pub state: DaemonState,
+    pub mode: scribe_core::Mode,
+    pub learn_until: Option<SystemTime>,
+    pub profile: String,
+    pub counters: RuntimeCounters,
+    pub held_quic: usize,
+    pub dns_entries: usize,
+    pub modules: Vec<crate::modules::ModuleStatus>,
+}
+
+/// The address daemon alerts (`hibernated`) carry: they have no destination.
+pub const NO_DESTINATION: std::net::IpAddr = std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED);
 
 struct Held {
     obs: Observation,
@@ -126,6 +167,8 @@ pub struct Pipeline {
     policy: Policy,
     held: HashMap<FlowKey, Held>,
     counters: RuntimeCounters,
+    state: DaemonState,
+    max_hibernate: Option<Duration>,
 }
 
 impl Pipeline {
@@ -145,7 +188,123 @@ impl Pipeline {
             policy,
             held: HashMap::new(),
             counters,
+            state: DaemonState::Running,
+            max_hibernate: Some(Duration::from_secs(4 * 3600)),
         }
+    }
+
+    /// The cap for hibernation (`daemon.max_hibernate`); `None` = unlimited.
+    pub fn with_max_hibernate(mut self, max: Option<Duration>) -> Self {
+        self.max_hibernate = max;
+        self
+    }
+
+    pub fn state(&self) -> &DaemonState {
+        &self.state
+    }
+
+    pub fn is_hibernating(&self) -> bool {
+        matches!(self.state, DaemonState::Hibernating { .. })
+    }
+
+    pub fn status(&self) -> Status {
+        Status {
+            state: self.state.clone(),
+            mode: self.policy.mode(),
+            learn_until: self.policy.learn_until(),
+            profile: self.profile.clone(),
+            counters: self.counters.clone(),
+            held_quic: self.held.len(),
+            dns_entries: self.enricher.dns().len(),
+            modules: self.modules.status(),
+        }
+    }
+
+    /// Stop processing (specs 8.5): held flows are judged first, modules pause, the learn
+    /// countdown stops; an `audit` event and a `hibernated` alert are written. The caller stops
+    /// the sensor. `for_` is capped by `daemon.max_hibernate`; without it the cap applies. Calling
+    /// it again while hibernating sets a new end (still capped) and writes only an audit event.
+    pub fn hibernate(&mut self, for_: Option<Duration>, caller: &str) -> Writes {
+        let now = self.clock.now();
+        let length = match (for_, self.max_hibernate) {
+            (Some(d), Some(max)) => Some(d.min(max)),
+            (Some(d), None) => Some(d),
+            (None, max) => max,
+        };
+        let until = length.map(|d| now + d);
+        let mut w = Writes::default();
+        if let DaemonState::Hibernating {
+            since,
+            caller: first,
+            ..
+        } = &self.state
+        {
+            self.state = DaemonState::Hibernating {
+                since: *since,
+                until,
+                caller: first.clone(),
+            };
+            w.events.push(audit(
+                now,
+                format!("hibernate extended by {caller} until {}", when(until)),
+            ));
+            return w;
+        }
+        w.extend(self.flush());
+        self.modules.pause();
+        self.policy.pause_learn_timer();
+        self.state = DaemonState::Hibernating {
+            since: now,
+            until,
+            caller: caller.to_owned(),
+        };
+        w.events.push(audit(
+            now,
+            format!("hibernate by {caller} until {}", when(until)),
+        ));
+        let mut notes = Notes::new();
+        notes.insert(
+            "daemon",
+            json!({ "caller": caller, "until": until.map(humantime_rfc3339) }),
+        );
+        let alert = Alert {
+            ts: now,
+            host: None,
+            dst_ip: NO_DESTINATION,
+            dst_port: 0,
+            process_path: None,
+            score: 100,
+            reason: "hibernated".into(),
+            notes,
+        };
+        self.counters.alerts += 1;
+        w.events.push(StoredEvent::Alert(AlertRecord::from(&alert)));
+        w.alerts.push(alert);
+        w
+    }
+
+    /// Resume processing with the same mode, baseline and caches; the caller starts the sensor.
+    pub fn wakeup(&mut self, caller: &str) -> Writes {
+        let mut w = Writes::default();
+        if !self.is_hibernating() {
+            return w;
+        }
+        self.state = DaemonState::Running;
+        self.modules.resume();
+        self.policy.resume_learn_timer();
+        w.events
+            .push(audit(self.clock.now(), format!("wakeup by {caller}")));
+        w
+    }
+
+    /// Whether a hibernation has reached its end ([`Pipeline::tick`] wakes it).
+    pub fn wakeup_due(&self) -> bool {
+        matches!(&self.state, DaemonState::Hibernating { until: Some(u), .. } if self.clock.now() >= *u)
+    }
+
+    /// Empty the DNS cache (`reset --caches`; the caller also clears the storage cache).
+    pub fn clear_caches(&mut self) {
+        self.enricher.clear_dns();
     }
 
     pub fn profile(&self) -> &str {
@@ -189,6 +348,10 @@ impl Pipeline {
     /// Handle one sensor observation.
     pub fn process(&mut self, mut obs: Observation) -> Writes {
         self.counters.observations += 1;
+        if self.is_hibernating() {
+            self.counters.dropped_hibernating += 1;
+            return Writes::default();
+        }
         match obs.event.kind {
             FlowKind::DnsResponse => {
                 if let Some(msg) = &obs.head {
@@ -214,8 +377,12 @@ impl Pipeline {
         self.judge(obs)
     }
 
-    /// Judge held QUIC flows whose time ran out. Call about once a second.
+    /// Judge held QUIC flows whose time ran out and end a hibernation that reached its end.
+    /// Call about once a second; check [`Pipeline::state`] afterwards to restart the sensor.
     pub fn tick(&mut self) -> Writes {
+        if self.wakeup_due() {
+            return self.wakeup("timer");
+        }
         let now = self.clock.now();
         let expired: Vec<FlowKey> = self
             .held
@@ -398,4 +565,37 @@ pub async fn store(target: &dyn Store, profile: &str, writes: &Writes) -> Vec<St
         }
     }
     errors
+}
+
+fn audit(ts: SystemTime, message: String) -> StoredEvent {
+    StoredEvent::Audit(AuditRecord { ts, message })
+}
+
+fn when(until: Option<SystemTime>) -> String {
+    until.map_or_else(|| "it is woken up".to_owned(), humantime_rfc3339)
+}
+
+/// `2026-11-22T10:00:00Z` (UTC, whole seconds).
+pub fn humantime_rfc3339(t: SystemTime) -> String {
+    let secs = t
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let days = secs / 86_400;
+    let rem = secs % 86_400;
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60
+    )
 }

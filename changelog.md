@@ -36,6 +36,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   alerts logged (`scribe::alert`), held QUIC flows judged every second, queued observations processed at
   shutdown; known processes loaded from storage. `serve_with` takes a sensor (tests). The scenario runner
   uses the real pipeline: `counters-exact` passes (17 of 19). Integration test INT-10.
+- Phase 5 step 4: run states in the daemon: `Pipeline::hibernate` / `wakeup` (capped by the new
+  `[daemon] max_hibernate`, `hibernated` alert, `audit` events, modules and the learn countdown paused, flows
+  dropped and counted), timer wakeup on the tick, `reset` of counters and caches, a status snapshot, and
+  `serve_controlled` with `Command`s that stop and restart the sensor. All 19 scenarios pass.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

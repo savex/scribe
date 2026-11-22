@@ -13,7 +13,7 @@ use std::time::{Duration, SystemTime};
 
 use scribe_core::{Alert, Clock, FlowKind, HumanDuration, Mode, Observation};
 use scribe_daemon::modules::ModuleHost;
-use scribe_daemon::pipeline::{store, Pipeline, Store};
+use scribe_daemon::pipeline::{store, Pipeline, RuntimeCounters, Store, Writes, NO_DESTINATION};
 use scribe_enrich::Enricher;
 use scribe_module_api::{ConfigDoc, Module};
 use scribe_policy::{alert_key, Policy, PolicyConfig, ThreatSet};
@@ -155,25 +155,10 @@ pub fn needs_phase_5(s: &Scenario) -> Vec<&'static str> {
     let mut out = Vec::new();
     for e in &s.events {
         if let Some(api) = &e.api {
-            if api.hibernate.is_some() {
-                out.push("api hibernate");
-            }
-            if api.wakeup.is_some() {
-                out.push("api wakeup");
-            }
-            if api.reset.is_some() {
-                out.push("api reset");
+            if api.reset.iter().flatten().any(|r| r == "config") {
+                out.push("api reset config (reload)");
             }
         }
-    }
-    if s.max_hibernate.is_some() {
-        out.push("max_hibernate");
-    }
-    if s.expect.run_state.is_some() {
-        out.push("expect run_state");
-    }
-    if s.expect.runtime.is_some() {
-        out.push("expect runtime");
     }
     out
 }
@@ -289,36 +274,15 @@ pub fn run(s: &Scenario) {
         .with_baseline(s.baseline.iter().cloned())
         .with_threats(threats);
     let enricher = Enricher::new(clock_dyn.clone(), 1_000);
-    let mut pipeline = Pipeline::new(clock_dyn, s.profile.clone(), enricher, host, policy);
+    let mut pipeline = Pipeline::new(clock_dyn, s.profile.clone(), enricher, host, policy)
+        .with_max_hibernate(Some(duration(s.max_hibernate.as_deref().unwrap_or("4h"))));
     let target = Doubles::default();
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap();
     let mut out = Outcome::default();
 
-    for e in &s.events {
-        clock.set(start + duration(&e.at));
-        if let Some(api) = &e.api {
-            let policy = pipeline.policy_mut();
-            if let Some(mode) = api.set_mode {
-                policy.set_mode(mode);
-            }
-            if let Some(i) = api.ack {
-                let alert = out
-                    .alerts
-                    .get(i)
-                    .unwrap_or_else(|| panic!("ack {i}: no such alert"));
-                policy.acknowledge(alert);
-            }
-            if let Some(h) = &api.baseline_add {
-                policy.add_to_baseline(h.clone());
-            }
-            if let Some(h) = &api.baseline_rm {
-                policy.remove_from_baseline(h);
-            }
-            continue;
-        }
-        let w = pipeline.process(observation(e, clock.now()));
+    let apply = |w: Writes, out: &mut Outcome| {
         for r in &w.signals {
             if !out.signals.contains(r) {
                 out.signals.push(r.clone());
@@ -336,8 +300,61 @@ pub fn run(s: &Scenario) {
                 .expect("an update for an alert that was raised");
             *earlier = updated.clone();
         }
-        let errors = rt.block_on(store(&target, pipeline.profile(), &w));
+        let errors = rt.block_on(store(&target, &s.profile, &w));
         assert!(errors.is_empty(), "{}: storage errors {errors:?}", s.name);
+    };
+
+    for e in &s.events {
+        clock.set(start + duration(&e.at));
+        // What the daemon's one-second tick would have done by now (a hibernation ending).
+        if pipeline.wakeup_due() {
+            let w = pipeline.tick();
+            apply(w, &mut out);
+        }
+        if let Some(api) = &e.api {
+            if let Some(mode) = api.set_mode {
+                pipeline.policy_mut().set_mode(mode);
+            }
+            if let Some(i) = api.ack {
+                let alert = out
+                    .alerts
+                    .get(i)
+                    .unwrap_or_else(|| panic!("ack {i}: no such alert"))
+                    .clone();
+                pipeline.policy_mut().acknowledge(&alert);
+            }
+            if let Some(h) = &api.baseline_add {
+                pipeline.policy_mut().add_to_baseline(h.clone());
+            }
+            if let Some(h) = &api.baseline_rm {
+                pipeline.policy_mut().remove_from_baseline(h);
+            }
+            if let Some(h) = &api.hibernate {
+                let for_ = h.get("for").and_then(|v| v.as_str()).map(duration);
+                let w = pipeline.hibernate(for_, "scenario");
+                apply(w, &mut out);
+            }
+            if api.wakeup == Some(true) {
+                let w = pipeline.wakeup("scenario");
+                apply(w, &mut out);
+            }
+            for what in api.reset.iter().flatten() {
+                match what.as_str() {
+                    "counters" => pipeline.reset_counters(),
+                    "caches" => pipeline.clear_caches(),
+                    other => panic!("{}: reset {other} is not supported by the runner", s.name),
+                }
+            }
+            continue;
+        }
+        let w = pipeline.process(observation(e, clock.now()));
+        apply(w, &mut out);
+    }
+    if let Some(state) = &s.expect.run_state {
+        assert_eq!(pipeline.state().name(), state, "{}: run_state", s.name);
+    }
+    if let Some(runtime) = &s.expect.runtime {
+        check_runtime(&s.name, runtime, pipeline.counters());
     }
     check(s, pipeline.policy(), &target.state, &out);
 }
@@ -368,13 +385,11 @@ fn check(s: &Scenario, policy: &Policy, store: &MemoryStore, out: &Outcome) {
         let got: Vec<String> = out.alerts.iter().map(describe).collect();
         assert_eq!(out.alerts.len(), expected.len(), "{name}: alerts {got:#?}");
         for (i, (a, e)) in out.alerts.iter().zip(expected).enumerate() {
-            let dst = SocketAddr::new(a.dst_ip, a.dst_port).to_string();
-            if e.reason == "hibernated" {
-                panic!("{name}: daemon alerts need phase 5");
-            }
+            let dst = (a.dst_ip != NO_DESTINATION || a.dst_port != 0)
+                .then(|| SocketAddr::new(a.dst_ip, a.dst_port).to_string());
             assert_eq!(a.reason, e.reason, "{name}: alert {i} reason, got {got:#?}");
             assert_eq!(a.host, e.host, "{name}: alert {i} host");
-            assert_eq!(Some(dst), e.dst.clone(), "{name}: alert {i} dst");
+            assert_eq!(dst, e.dst.clone(), "{name}: alert {i} dst");
             if let Some(p) = &e.process {
                 assert_eq!(
                     a.process_path.as_ref(),
@@ -427,6 +442,22 @@ fn check(s: &Scenario, policy: &Policy, store: &MemoryStore, out: &Outcome) {
     }
     if let Some(expected) = &s.expect.processes {
         check_processes(name, expected, store);
+    }
+}
+
+/// `runtime: { flows: N, … }` against the pipeline's runtime counters.
+fn check_runtime(name: &str, expected: &serde_yaml_ng::Value, c: &RuntimeCounters) {
+    for (field, want) in expected.as_mapping().expect("runtime is a map") {
+        let want = want.as_u64().expect("a counter");
+        let got = match field.as_str().expect("field name") {
+            "flows" => c.flows,
+            "observations" => c.observations,
+            "alerts" => c.alerts,
+            "payloads" => c.payloads,
+            "dropped_hibernating" => c.dropped_hibernating,
+            other => panic!("{name}: unknown runtime counter {other}"),
+        };
+        assert_eq!(got, want, "{name}: runtime {field:?}");
     }
 }
 

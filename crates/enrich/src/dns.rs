@@ -251,6 +251,11 @@ impl DnsCache {
         self.entries.is_empty()
     }
 
+    /// Forget every answer (`scribe daemon reset --caches`); new answers refill it.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
     pub fn purge_expired(&mut self) {
         let now = self.clock.now();
         self.entries.retain(|_, (_, expires)| *expires > now);

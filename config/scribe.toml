@@ -99,6 +99,14 @@ query = "redact_values"
 # hash_key = "file:/var/lib/scribe/url_hash.key"
 
 
+# ─── Daemon ──────────────────────────────────────────────────────────────────
+
+[daemon]
+# Longest pause `scribe daemon hibernate` may take; it always wakes up on its own and raises a
+# `hibernated` alert when it starts. "" = unlimited (warned at every start).
+max_hibernate = "4h"
+
+
 # ─── Storage ─────────────────────────────────────────────────────────────────
 
 [storage.state]

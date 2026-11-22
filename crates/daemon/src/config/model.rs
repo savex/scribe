@@ -29,6 +29,7 @@ pub struct Config {
     pub modules: Modules,
     pub storage: Storage,
     pub log: Log,
+    pub daemon: Daemon,
 }
 
 impl Default for Config {
@@ -43,6 +44,26 @@ impl Default for Config {
             modules: Modules::default(),
             storage: Storage::default(),
             log: Log::default(),
+            daemon: Daemon::default(),
+        }
+    }
+}
+
+// ─── Daemon ─────────────────────────────────────────────────────────────────
+
+/// `[daemon]`: run states (specs 8.5).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Daemon {
+    /// The longest `scribe daemon hibernate` may last; `""` = unlimited (warned at every start).
+    #[serde(with = "optional_duration")]
+    pub max_hibernate: Option<HumanDuration>,
+}
+
+impl Default for Daemon {
+    fn default() -> Self {
+        Self {
+            max_hibernate: Some(HumanDuration::from_secs(4 * 3600)),
         }
     }
 }

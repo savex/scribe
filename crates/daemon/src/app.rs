@@ -25,7 +25,7 @@ use tracing::{error, info, warn};
 use crate::config::{self, Settings};
 use crate::logging;
 use crate::modules::{self, ModuleHost, Output, OutputQueue, QUEUE};
-use crate::pipeline::{self, Pipeline, Writes};
+use crate::pipeline::{self, Pipeline, Status, Writes};
 
 pub const EXIT_FAILURE: u8 = 1;
 pub const EXIT_CONFIG: u8 = 2;
@@ -108,11 +108,52 @@ pub const OBSERVATION_QUEUE: usize = 4096;
 /// Entries in the DNS (IP → name) cache.
 pub const DNS_CACHE_ENTRIES: usize = 100_000;
 
+/// Requests to the running daemon (`scribe daemon …`; the local API sends them from phase 10).
+/// Each one answers with the status after it ran.
+#[derive(Debug)]
+pub enum Command {
+    Hibernate {
+        for_: Option<Duration>,
+        caller: String,
+        reply: tokio::sync::oneshot::Sender<Status>,
+    },
+    Wakeup {
+        caller: String,
+        reply: tokio::sync::oneshot::Sender<Status>,
+    },
+    /// `reset --counters` / `--caches` (`--config` is a reload, see SIGHUP).
+    Reset {
+        counters: bool,
+        caches: bool,
+        reply: tokio::sync::oneshot::Sender<Status>,
+    },
+    Status {
+        reply: tokio::sync::oneshot::Sender<Status>,
+    },
+}
+
 /// [`serve`] with a given sensor (tests pass `FakeSensor`). Observations still queued at shutdown
 /// are processed before storage closes.
 pub async fn serve_with(
     settings: Settings,
+    sensor: Box<dyn Sensor>,
+    shutdown: impl Future<Output = ()>,
+) -> anyhow::Result<()> {
+    serve_controlled(settings, sensor, None, shutdown).await
+}
+
+async fn next_command(rx: &mut Option<tokio::sync::mpsc::Receiver<Command>>) -> Option<Command> {
+    match rx {
+        Some(rx) => rx.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// [`serve_with`] that also takes [`Command`]s.
+pub async fn serve_controlled(
+    settings: Settings,
     mut sensor: Box<dyn Sensor>,
+    mut commands: Option<tokio::sync::mpsc::Receiver<Command>>,
     shutdown: impl Future<Output = ()>,
 ) -> anyhow::Result<()> {
     info!(version = VERSION, "scribed starting");
@@ -221,7 +262,8 @@ pub async fn serve_with(
         enricher,
         host,
         policy,
-    );
+    )
+    .with_max_hibernate(settings.config.daemon.max_hibernate.map(|d| d.get()));
 
     // The sensor pushes into a std channel from its own threads; a forwarding thread hands
     // observations to the async loop through a bounded queue.
@@ -237,6 +279,7 @@ pub async fn serve_with(
             }
         })
         .context("cannot start the sensor thread")?;
+    let restart_tx = sensor_tx.clone();
     match sensor.start(sensor_tx) {
         Ok(()) => info!(
             sensor = sensor.name(),
@@ -261,9 +304,42 @@ pub async fn serve_with(
                 let writes = pipeline.process(obs);
                 writer.apply(&storage, pipeline.profile(), writes).await;
             }
+            Some(cmd) = next_command(&mut commands) => {
+                let was = pipeline.is_hibernating();
+                let reply = match cmd {
+                    Command::Hibernate { for_, caller, reply } => {
+                        let writes = pipeline.hibernate(for_, &caller);
+                        writer.apply(&storage, pipeline.profile(), writes).await;
+                        storage.flush().await;
+                        reply
+                    }
+                    Command::Wakeup { caller, reply } => {
+                        let writes = pipeline.wakeup(&caller);
+                        writer.apply(&storage, pipeline.profile(), writes).await;
+                        reply
+                    }
+                    Command::Reset { counters, caches, reply } => {
+                        if counters {
+                            pipeline.reset_counters();
+                        }
+                        if caches {
+                            storage.flush().await;
+                            storage.clear_cache();
+                            pipeline.clear_caches();
+                        }
+                        info!(counters, caches, "runtime reset");
+                        reply
+                    }
+                    Command::Status { reply } => reply,
+                };
+                follow_state(was, &pipeline, sensor.as_mut(), &restart_tx);
+                let _ = reply.send(pipeline.status());
+            }
             _ = ticker.tick() => {
+                let was = pipeline.is_hibernating();
                 let writes = pipeline.tick();
                 writer.apply(&storage, pipeline.profile(), writes).await;
+                follow_state(was, &pipeline, sensor.as_mut(), &restart_tx);
                 pipeline.modules_mut().tick();
                 drain.run(&queue, &storage).await;
             }
@@ -273,6 +349,7 @@ pub async fn serve_with(
 
     sensor.stop();
     drop(sensor);
+    drop(restart_tx);
     // Whatever the sensor delivered before it stopped is still processed.
     while let Ok(Some(obs)) = tokio::time::timeout(Duration::from_millis(200), obs_rx.recv()).await
     {
@@ -429,5 +506,34 @@ impl Writer {
             Some(_) => {}
             None => self.failing = false,
         }
+    }
+}
+
+/// Stop the sensor when the pipeline started hibernating, start it again when it woke up.
+fn follow_state(
+    was_hibernating: bool,
+    pipeline: &Pipeline,
+    sensor: &mut dyn Sensor,
+    tx: &std::sync::mpsc::Sender<Observation>,
+) {
+    match (was_hibernating, pipeline.is_hibernating()) {
+        (false, true) => {
+            sensor.stop();
+            if let pipeline::DaemonState::Hibernating { until, caller, .. } = pipeline.state() {
+                warn!(
+                    caller = %caller,
+                    until = %until.map_or_else(|| "woken up".to_owned(), pipeline::humantime_rfc3339),
+                    "hibernating: capture stopped"
+                );
+            }
+        }
+        (true, false) => match sensor.start(tx.clone()) {
+            Ok(()) => info!(sensor = sensor.name(), "woke up: capture started again"),
+            Err(e) => warn!(
+                sensor = sensor.name(),
+                "woke up, but capture is not available: {e}"
+            ),
+        },
+        _ => {}
     }
 }

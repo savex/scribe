@@ -52,6 +52,11 @@ impl Enricher {
         &self.dns
     }
 
+    /// Empty the DNS cache (`scribe daemon reset --caches`).
+    pub fn clear_dns(&mut self) {
+        self.dns.clear();
+    }
+
     /// Mark `event` as QUIC and take the name and ECH flag from its ClientHello.
     pub fn apply_hello(event: &mut FlowEvent, hello: ClientHello) {
         event.proto = Protocol::Quic;

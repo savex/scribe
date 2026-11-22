@@ -124,3 +124,85 @@ fn pipeline_stores_flows_counters_and_alerts() {
         ("raw_ip", 8443)
     );
 }
+
+/// Commands reach the running daemon: hibernate (capped, audited, alerted), status, reset, wakeup.
+#[test]
+fn commands_drive_the_run_states() {
+    use scribe_daemon::app::{serve_controlled, Command};
+    use scribe_storage_api::{EventQuery, EventSink, StoredEvent};
+    use scribe_test_support::FakeSensor;
+    use std::time::Duration;
+    use tokio::sync::{mpsc, oneshot};
+
+    let dir = tempfile::tempdir().unwrap();
+    let settings = settings_in(dir.path());
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let (tx, rx) = mpsc::channel(4);
+        let (stop_tx, stop_rx) = oneshot::channel::<()>();
+        let daemon = serve_controlled(
+            settings,
+            Box::new(FakeSensor::new(vec![])),
+            Some(rx),
+            async {
+                let _ = stop_rx.await;
+            },
+        );
+        let driver = async move {
+            let ask = |make: Box<dyn FnOnce(oneshot::Sender<_>) -> Command + Send>| {
+                let tx = tx.clone();
+                async move {
+                    let (reply, answer) = oneshot::channel();
+                    tx.send(make(reply)).await.unwrap();
+                    answer.await.unwrap()
+                }
+            };
+            let s = ask(Box::new(|reply| Command::Hibernate {
+                for_: Some(Duration::from_secs(10 * 3600)),
+                caller: "test".into(),
+                reply,
+            }))
+            .await;
+            assert_eq!(s.state.name(), "hibernating");
+            let s = ask(Box::new(|reply| Command::Reset {
+                counters: true,
+                caches: true,
+                reply,
+            }))
+            .await;
+            assert_eq!(s.counters.flows, 0);
+            let s = ask(Box::new(|reply| Command::Wakeup {
+                caller: "test".into(),
+                reply,
+            }))
+            .await;
+            assert_eq!(s.state.name(), "running");
+            let s = ask(Box::new(|reply| Command::Status { reply })).await;
+            assert_eq!(s.state.name(), "running");
+            stop_tx.send(()).unwrap();
+        };
+        let (result, ()) = tokio::join!(daemon, driver);
+        result.unwrap();
+    });
+
+    let sink = scribe_tests::sqlite_sink("local-history", &dir.path().join("events.db"));
+    let events = rt
+        .block_on(sink.query(&EventQuery::default()))
+        .unwrap()
+        .items;
+    let audits: Vec<String> = events
+        .iter()
+        .filter_map(|e| match e {
+            StoredEvent::Audit(a) => Some(a.message.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        audits[0].starts_with("hibernate by test until "),
+        "{audits:?}"
+    );
+    assert_eq!(audits[1], "wakeup by test");
+    assert!(events
+        .iter()
+        .any(|e| matches!(e, StoredEvent::Alert(a) if a.reason == "hibernated")));
+}

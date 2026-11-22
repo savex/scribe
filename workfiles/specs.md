@@ -166,9 +166,9 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-26 | Store plaintext URLs according to `[modules.url] query` (formerly `privacy.url_query`); always remove user info (`user:password@`) | Planned | Unit tests (planned); fixture `http_plain` |
 | FR-27 | `scribe daemon status` shows the run state, live counters and critical metrics (section 6.2.1); `scribe status` is its short form | Planned | API tests; CLI output tests with `MockApiServer` |
 | FR-28 | `scribe daemon health` reports healthy / degraded / unhealthy with reasons, exits `0` / `1`, and answers within its timeout; also over `grpc.health.v1` | Planned | Daemon tests with `FaultySink` and a stopped `FakeSensor`; mock `daemon-down` |
-| FR-29 | `scribe daemon reset` clears runtime counters and caches and reloads the config without a restart; never changes stored history; an invalid config is rejected and the running one kept | Planned | Daemon tests; config error table reused for reload |
-| FR-30 | `scribe daemon hibernate [--for]` stops capture and processing while the daemon keeps serving the API; the pause is capped by `daemon.max_hibernate`, raises an alert, and is recorded and visible | Planned | Daemon tests with `FakeSensor` and `FakeClock`; sensor conformance (stop and start again) |
-| FR-31 | `scribe daemon wakeup` (or the end of `--for`) resumes processing with the same mode, baseline and caches | Planned | Same as FR-30 |
+| FR-29 | `scribe daemon reset` clears runtime counters and caches and reloads the config without a restart; never changes stored history; an invalid config is rejected and the running one kept | Partly (daemon side of `--counters` / `--caches`: `Command::Reset`; `--config` with SIGHUP next; the command in phase 10) | Daemon tests; config error table reused for reload |
+| FR-30 | `scribe daemon hibernate [--for]` stops capture and processing while the daemon keeps serving the API; the pause is capped by `daemon.max_hibernate`, raises an alert, and is recorded and visible | Implemented in the daemon (`Pipeline::hibernate`, `Command::Hibernate`; the command in phase 10) | Daemon tests with `FakeSensor` and `FakeClock`; sensor conformance (stop and start again) |
+| FR-31 | `scribe daemon wakeup` (or the end of `--for`) resumes processing with the same mode, baseline and caches | Implemented in the daemon (`Pipeline::wakeup`, timer wakeup on the 1 s tick; the command in phase 10) | Same as FR-30 |
 | FR-32 | Load features as compiled-in modules through a registry; enable them with `[modules] enabled`; a module that isn't built or enabled costs nothing at run time | Implemented (registry, `url` feature, `[modules] enabled`) | Module conformance; daemon tests |
 | FR-33 | Modules produce data only through the generic outputs: flow notes, module records, metric samples and module state (section 7.4.3) | Implemented (interfaces, in-memory doubles, schema v2; backends store them in phases 1 and 12) | Storage and module conformance |
 | FR-34 | Modules may add an API service and CLI subcommands; `scribe modules` lists modules with version, state and health; calls to a module that isn't enabled fail clearly | Planned (phase 10; manifests already declare calls and access) | API tests; CLI tests with `MockApiServer` |
@@ -488,7 +488,7 @@ The default mode is `learn`. Hosts added to the baseline in learn mode stay list
 | Hostname hidden (ECH, DoH) | Track by IP or outer name, flag it | Planned |
 | Invalid config | At start: refuse to start, report the error and line (Implemented). On reload: keep the running config, report the error and line (Planned) | Partly |
 
-### 8.5 Daemon run states (Planned, phase 5)
+### 8.5 Daemon run states (implemented in the daemon in phase 5; commands in phase 10)
 
 ```
 starting ──▶ running ◀──(health checks)──▶ degraded
@@ -514,6 +514,12 @@ any ──(SIGTERM, Ctrl-C, service stop)──▶ stopping ──▶ stopped
 - **Mode changes and baseline edits** are accepted while hibernating and apply after wakeup.
 - **Limits and alerting:** hibernation always has an end (`--for`, capped by `daemon.max_hibernate`),
   and starting it raises a `hibernated` alert, so silencing scribe is never quiet (section 12.1.1).
+- **Implementation:** `Pipeline::hibernate` / `wakeup` / `tick`; `serve_controlled` takes `Command`s (`Hibernate`,
+  `Wakeup`, `Reset`, `Status`) and stops or starts the sensor when the state changes. Observations that still
+  arrive while hibernating are dropped and counted (`dropped_hibernating`); held QUIC flows are judged before
+  the pause. A second `hibernate` sets a new end (still capped) with an audit event and no new alert. The
+  `hibernated` alert has no host and the destination `0.0.0.0:0`; its `daemon` note carries the caller and the
+  planned end. Alert state is saved but not restored at start yet (restored with acknowledgements in phase 10).
 - **Restart:** hibernation doesn't survive a restart; `scribed` always starts in `running` (Proposed;
   the alternative of persisting it in the state store is open question 9).
 - **Stops and crashes:** a daemon stop, a crash found at the next start, and gaps in the audit sequence are
@@ -619,7 +625,7 @@ These keys come from section 12.1.1 (the module keys landed in phase 0b and are 
 
 | Key | Values / default | Phase |
 |---|---|---|
-| `daemon.max_hibernate` | duration, default `4h`; the cap for `scribe daemon hibernate` | 5 |
+| `daemon.max_hibernate` | duration, default `4h`, `""` = unlimited (warned at every start); the cap for `scribe daemon hibernate` | Implemented (phase 5) |
 | `sslmode` in `[storage.state]` and `[[storage.sinks]]` (Postgres) | `verify-full` (default), `verify-ca`, `require`; `disable` and `prefer` only for loopback hosts | 12 |
 | `ca`, `client_cert`, `client_key` in the same tables | CA file path; TLS client certificate and key, the key as a credential reference (`keychain:` …) | 12 |
 | `[[alerts.webhooks]]` `secret` (the `[alerts]` section itself arrives in phase 11) | credential reference for the `X-Scribe-Signature` HMAC key | 11 |
@@ -968,7 +974,7 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 | 8 | Log locations | **Answered:** `/var/log/scribe/` on Linux and macOS (system log optional); on Windows a file next to the app, or the Event Viewer when configured (`log.output`, section 9.1) |
 | 9 | Should hibernation survive a restart of `scribed`? | **Open.** Proposed: no, a restart always resumes processing, so a forgotten pause can't silence monitoring for good; `--for` covers planned windows (section 8.5). Since hibernation is now always capped by `daemon.max_hibernate` and alerts at start, keeping it across a restart (until its planned end) is less risky than before |
 | 10 | Names: `hibernate` / `wakeup` with aliases `hybernate`, `sleep`, `wake`; `scribe status` kept as short form of `scribe daemon status` | **Proposed** (section 6.2.1) |
-| 11 | Default for `daemon.max_hibernate`, and whether admins may set it to unlimited | **Proposed:** `4h`; `0` (unlimited) allowed but logged as a warning at every start (section 12.1.1) |
+| 11 | Default for `daemon.max_hibernate`, and whether admins may set it to unlimited | **Answered:** `4h`; `""` (unlimited) allowed but logged as a warning at every start (section 12.1.1) |
 | 12 | Group names `scribe` (read) and `scribe-admin` (control); who creates them | **Proposed:** these names, created by the installers in phase 13 |
 | 13 | Release signing: Sigstore cosign keyless or minisign | **Open** (section 12.1.1, NFR-19) |
 | 14 | When to build the module framework | **Answered:** phase 0b, done before phase 1 (plan.md) |

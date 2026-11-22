@@ -110,6 +110,8 @@ pub struct Policy {
     clock: Arc<dyn Clock>,
     mode: Mode,
     learn_until: Option<SystemTime>,
+    /// Set while the learn countdown is paused (hibernation).
+    learn_paused_at: Option<SystemTime>,
     baseline: HashSet<String>,
     tlds: HashSet<String>,
     processes: HashSet<String>,
@@ -139,6 +141,7 @@ impl Policy {
         let mut policy = Self {
             mode,
             learn_until: None,
+            learn_paused_at: None,
             config,
             clock,
             baseline: HashSet::new(),
@@ -180,6 +183,26 @@ impl Policy {
     /// When learn mode ends, if it is time-limited.
     pub fn learn_until(&self) -> Option<SystemTime> {
         self.learn_until
+    }
+
+    /// Stop the learn countdown (hibernation); [`Policy::resume_learn_timer`] adds the pause to it.
+    pub fn pause_learn_timer(&mut self) {
+        if self.learn_paused_at.is_none() {
+            self.learn_paused_at = Some(self.clock.now());
+        }
+    }
+
+    pub fn resume_learn_timer(&mut self) {
+        if let Some(paused) = self.learn_paused_at.take() {
+            let pause = self
+                .clock
+                .now()
+                .duration_since(paused)
+                .unwrap_or(Duration::ZERO);
+            if let Some(until) = &mut self.learn_until {
+                *until += pause;
+            }
+        }
     }
 
     pub fn config(&self) -> &PolicyConfig {

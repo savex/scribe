@@ -32,16 +32,8 @@ scenario!(
     "caution-unusual-port-new-process"
 );
 scenario!(counters_exact, "counters-exact");
-scenario!(
-    #[ignore = "hibernation and run states arrive in plan phase 5"]
-    daemon_hibernate_capped,
-    "daemon-hibernate-capped"
-);
-scenario!(
-    #[ignore = "wakeup, reset and runtime counters arrive in plan phase 5"]
-    daemon_wakeup_and_reset,
-    "daemon-wakeup-and-reset"
-);
+scenario!(daemon_hibernate_capped, "daemon-hibernate-capped");
+scenario!(daemon_wakeup_and_reset, "daemon-wakeup-and-reset");
 scenario!(hostname_unresolved, "hostname-unresolved");
 scenario!(learn_adds_hosts_no_alerts, "learn-adds-hosts-no-alerts");
 scenario!(learn_auto_switch, "learn-auto-switch");
@@ -72,7 +64,7 @@ fn every_scenario_file_has_a_test() {
         "mode-switch-via-api",
         "module-signal-scored",
     ];
-    const NEED_PHASE_5: &[&str] = &["daemon-hibernate-capped", "daemon-wakeup-and-reset"];
+    const NEED_PHASE_5: &[&str] = &[];
     let dir = scribe_tests::testdata("scenarios");
     let mut files: Vec<String> = std::fs::read_dir(&dir)
         .unwrap()

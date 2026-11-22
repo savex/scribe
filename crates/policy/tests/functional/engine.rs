@@ -325,3 +325,22 @@ fn scores_of_zero_disable_signals_and_close_events_are_ignored() {
     assert!(quic.signals.iter().all(|(r, _)| r != "unusual_port"));
     assert_eq!(quic.host, "q.example.com");
 }
+
+#[test]
+fn a_paused_learn_timer_ends_later_by_the_pause() {
+    let clock = FakeClock::default();
+    let config = PolicyConfig {
+        learn_for: Some(Duration::from_secs(3600)),
+        ..Default::default()
+    };
+    let mut p = Policy::new(config, Arc::new(clock.clone()));
+    let end = p.learn_until().unwrap();
+    clock.advance(Duration::from_secs(600));
+    p.pause_learn_timer();
+    clock.advance(Duration::from_secs(1800));
+    p.pause_learn_timer(); // a second pause call changes nothing
+    p.resume_learn_timer();
+    assert_eq!(p.learn_until(), Some(end + Duration::from_secs(1800)));
+    p.resume_learn_timer(); // nothing paused: no change
+    assert_eq!(p.learn_until(), Some(end + Duration::from_secs(1800)));
+}
