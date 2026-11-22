@@ -183,9 +183,11 @@ fn routes_events_to_subscribed_sinks_only() {
         ts: std::time::UNIX_EPOCH + Duration::from_secs(1_700_000_000),
         host: None,
         dst_ip: "198.51.100.7".parse().unwrap(),
+        dst_port: 8443,
         process_path: None,
         score: 90,
         reason: "raw_ip".into(),
+        notes: Default::default(),
     });
     block_on(manager.publish(&[flow_event.clone(), alert_event])).unwrap();
     block_on(manager.publish(&[flow_event])).unwrap();

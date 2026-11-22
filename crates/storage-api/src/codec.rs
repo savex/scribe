@@ -77,9 +77,11 @@ pub fn encode(event: &StoredEvent) -> Row {
             schema: SCHEMA_VERSION,
             payload: json!({
                 "dst_ip": a.dst_ip.to_string(),
+                "dst_port": a.dst_port,
                 "process_path": a.process_path,
                 "score": a.score,
                 "reason": a.reason,
+                "notes": a.notes,
             }),
         },
         StoredEvent::Audit(a) => Row {
@@ -137,6 +139,7 @@ pub fn decode(row: Row) -> Result<StoredEvent, StorageError> {
                 Some("new_flow") | None => FlowKind::NewFlow,
                 Some("payload") | Some("request") => FlowKind::Payload,
                 Some("close") => FlowKind::Close,
+                Some("dns_response") => FlowKind::DnsResponse,
                 Some(other) => return Err(bad(&format!("unknown flow kind `{other}`"))),
             };
             Ok(StoredEvent::Flow(FlowEvent {
@@ -176,9 +179,19 @@ pub fn decode(row: Row) -> Result<StoredEvent, StorageError> {
             ts: row.ts,
             host: row.host.clone(),
             dst_ip: ip("dst_ip")?,
+            dst_port: p
+                .get("dst_port")
+                .and_then(Value::as_u64)
+                .and_then(|v| u16::try_from(v).ok())
+                .unwrap_or(0),
             process_path: opt_text("process_path"),
             score: p.get("score").and_then(Value::as_u64).unwrap_or(0) as u32,
             reason: opt_text("reason").unwrap_or_default(),
+            notes: p
+                .get("notes")
+                .cloned()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
         })),
         "audit" => Ok(StoredEvent::Audit(AuditRecord {
             ts: row.ts,
@@ -248,5 +261,6 @@ fn flow_kind_name(k: FlowKind) -> &'static str {
         FlowKind::NewFlow => "new_flow",
         FlowKind::Payload => "payload",
         FlowKind::Close => "close",
+        FlowKind::DnsResponse => "dns_response",
     }
 }

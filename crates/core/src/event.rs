@@ -26,6 +26,9 @@ pub enum FlowKind {
     /// connection); the bytes travel in [`Observation::head`].
     Payload,
     Close,
+    /// A DNS response the client received: the message travels in [`Observation::head`]. It feeds
+    /// the DNS cache only; it is not a flow of its own and is never judged or counted.
+    DnsResponse,
 }
 
 /// One normalized observation emitted by any sensor.

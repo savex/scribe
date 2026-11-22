@@ -5,4 +5,5 @@ mod app;
 mod logging;
 mod module_host;
 mod modules;
+mod pipeline;
 mod scribed;

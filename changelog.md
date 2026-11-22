@@ -25,6 +25,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 4 step 5: the runner refuses bad scenario files with the line (SCN-26). Spec (rules settled in 8.3,
   FR-11–15), skill, plan (phase 4 done, rate limits to phase 11), status (coverage 92.1%), test list, test
   approach, scenario README and readme updated.
+- Phase 5 step 1: `scribe_daemon::pipeline`: observation → DNS cache / enrichment → modules → policy → writes
+  (flow and alert events, host deltas, learned baseline entries, alert state) and runtime counters; QUIC flows
+  wait up to 1 s for a ClientHello split over several datagrams. `FlowKind::DnsResponse` carries DNS answers;
+  alert records keep the port and the flow's notes.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

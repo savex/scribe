@@ -90,9 +90,28 @@ pub struct AlertRecord {
     pub ts: SystemTime,
     pub host: Option<String>,
     pub dst_ip: IpAddr,
+    /// 0 in rows written before the port was stored.
+    pub dst_port: u16,
     pub process_path: Option<String>,
     pub score: u32,
     pub reason: String,
+    /// The flow's module notes (e.g. the URL); empty in older rows.
+    pub notes: scribe_core::Notes,
+}
+
+impl From<&scribe_core::Alert> for AlertRecord {
+    fn from(a: &scribe_core::Alert) -> Self {
+        Self {
+            ts: a.ts,
+            host: a.host.clone(),
+            dst_ip: a.dst_ip,
+            dst_port: a.dst_port,
+            process_path: a.process_path.clone(),
+            score: a.score,
+            reason: a.reason.clone(),
+            notes: a.notes.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

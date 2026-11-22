@@ -245,6 +245,7 @@ fn observed(obs: &Observation, url: &UrlModule) -> Seen {
             FlowKind::NewFlow => "new_flow",
             FlowKind::Payload => "payload",
             FlowKind::Close => "close",
+            FlowKind::DnsResponse => "dns_response",
         },
     }
 }

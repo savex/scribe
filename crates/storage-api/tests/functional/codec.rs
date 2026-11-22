@@ -83,9 +83,15 @@ fn every_kind_round_trips() {
         ts: ts(),
         host: None,
         dst_ip: "198.51.100.7".parse().unwrap(),
+        dst_port: 8443,
         process_path: Some("/opt/agent/bin/agent".into()),
         score: 80,
         reason: "raw_ip".into(),
+        notes: {
+            let mut n = scribe_core::Notes::new();
+            n.insert("url", serde_json::json!("http://198.51.100.7/x"));
+            n
+        },
     };
     let StoredEvent::Alert(a) = round_trip(StoredEvent::Alert(alert.clone())) else {
         panic!()
@@ -100,6 +106,11 @@ fn every_kind_round_trips() {
             alert.score,
             alert.reason
         )
+    );
+    assert_eq!(
+        (a.dst_port, a.notes),
+        (alert.dst_port, alert.notes),
+        "port and notes round-trip"
     );
 
     let StoredEvent::Audit(a) = round_trip(StoredEvent::Audit(AuditRecord {
