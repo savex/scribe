@@ -682,4 +682,53 @@ mod functional {
             Some(std::time::Duration::from_secs(1800))
         );
     }
+
+    #[test]
+    fn reload_splits_live_and_restart_changes() {
+        use crate::config::reload::plan;
+        let running = resolve_text("mode = \"learn\"\n[log]\nlevel = \"info\"\n");
+        let new = resolve_text(
+            "mode = \"alert\"\nprofile = \"work\"\ndata_dir = \"/srv/scribe\"\n[policy]\nthreshold = 40\n[modules.url]\nquery = \"strip\"\n[daemon]\nmax_hibernate = \"1h\"\n[log]\nlevel = \"debug\"\nformat = \"json\"\n[storage.cache]\nmax_hosts = 10\n",
+        );
+        let p = plan(&running, new);
+        assert_eq!(
+            p.applied,
+            [
+                "mode",
+                "profile",
+                "policy",
+                "modules",
+                "daemon",
+                "log.level"
+            ]
+        );
+        assert_eq!(
+            p.needs_restart,
+            [
+                "data_dir",
+                "storage limits (cache, buffer, spool)",
+                "log (file, output, format, rotation)"
+            ]
+        );
+        // Live changes are in the merged settings; restart-only ones keep the running values.
+        assert_eq!(p.settings.mode, Mode::Alert);
+        assert_eq!(p.settings.profile, "work");
+        assert_eq!(p.settings.config.policy.threshold.0, 40);
+        assert_eq!(p.settings.log.level, crate::config::LogLevel::Debug);
+        assert_eq!(p.settings.data_dir, running.data_dir);
+        assert_eq!(p.settings.config.log.format, running.config.log.format);
+        assert_eq!(
+            p.settings.config.storage.cache,
+            running.config.storage.cache
+        );
+        assert_ne!(p.settings.config.modules, running.config.modules);
+    }
+
+    #[test]
+    fn reload_of_the_same_file_changes_nothing() {
+        use crate::config::reload::plan;
+        let text = "mode = \"caution\"\n[policy]\nthreshold = 40\n";
+        let p = plan(&resolve_text(text), resolve_text(text));
+        assert!(p.applied.is_empty() && p.needs_restart.is_empty());
+    }
 }

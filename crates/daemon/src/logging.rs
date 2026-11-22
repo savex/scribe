@@ -7,12 +7,13 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use tracing::Dispatch;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{Builder as RollingBuilder, Rotation};
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{fmt, EnvFilter, Layer, Registry};
+use tracing_subscriber::{fmt, reload, EnvFilter, Layer, Registry};
 
 use crate::config::{LogFormat, LogSettings, Rotate};
 
@@ -37,11 +38,44 @@ pub struct LogSetup {
     pub guard: LogGuard,
     /// Problems that made logging fall back to stderr.
     pub warnings: Vec<String>,
+    /// Changes the level of this logger (config reload).
+    pub level: LevelHandle,
+}
+
+/// Changes a logger's level while it runs. Does nothing when `SCRIBE_LOG` set the filter: the
+/// environment wins over the config, at start and on reload.
+type SetLevel = Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
+pub struct LevelHandle {
+    set: SetLevel,
+    from_env: bool,
+}
+
+impl LevelHandle {
+    /// Apply `level` (`error` … `trace`); returns whether it changed anything.
+    pub fn set(&self, level: &str) -> Result<bool, String> {
+        if self.from_env {
+            return Ok(false);
+        }
+        (self.set)(level).map(|()| true)
+    }
+}
+
+static LEVEL: OnceLock<LevelHandle> = OnceLock::new();
+
+/// Change the installed logger's level (config reload). `Ok(false)` when no logger was installed
+/// by [`init`] or `SCRIBE_LOG` overrides the config.
+pub fn set_level(level: &str) -> Result<bool, String> {
+    match LEVEL.get() {
+        Some(handle) => handle.set(level),
+        None => Ok(false),
+    }
 }
 
 /// Builds the logger without installing it. `filter` (from `SCRIBE_LOG`, `RUST_LOG` syntax)
 /// overrides the configured level.
 pub fn build(settings: &LogSettings, filter: Option<&str>) -> Result<LogSetup, LogError> {
+    let from_env = filter.map(str::trim).is_some_and(|f| !f.is_empty());
     let filter_text = filter
         .map(str::trim)
         .filter(|f| !f.is_empty())
@@ -92,11 +126,20 @@ pub fn build(settings: &LogSettings, filter: Option<&str>) -> Result<LogSetup, L
         layers.push(stderr_layer(settings.format));
     }
 
+    let (env_filter, handle) = reload::Layer::new(env_filter);
     let subscriber = Registry::default().with(layers).with(env_filter);
+    let level = LevelHandle {
+        set: Box::new(move |level: &str| {
+            let filter = EnvFilter::try_new(level).map_err(|e| e.to_string())?;
+            handle.reload(filter).map_err(|e| e.to_string())
+        }),
+        from_env,
+    };
     Ok(LogSetup {
         dispatch: Dispatch::new(subscriber),
         guard: LogGuard { _guards: guards },
         warnings,
+        level,
     })
 }
 
@@ -107,6 +150,7 @@ pub fn init(
 ) -> Result<(LogGuard, Vec<String>), LogError> {
     let setup = build(settings, filter)?;
     tracing::dispatcher::set_global_default(setup.dispatch).map_err(|_| LogError::AlreadySet)?;
+    let _ = LEVEL.set(setup.level);
     Ok((setup.guard, setup.warnings))
 }
 

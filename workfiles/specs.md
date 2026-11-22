@@ -166,7 +166,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-26 | Store plaintext URLs according to `[modules.url] query` (formerly `privacy.url_query`); always remove user info (`user:password@`) | Planned | Unit tests (planned); fixture `http_plain` |
 | FR-27 | `scribe daemon status` shows the run state, live counters and critical metrics (section 6.2.1); `scribe status` is its short form | Planned | API tests; CLI output tests with `MockApiServer` |
 | FR-28 | `scribe daemon health` reports healthy / degraded / unhealthy with reasons, exits `0` / `1`, and answers within its timeout; also over `grpc.health.v1` | Planned | Daemon tests with `FaultySink` and a stopped `FakeSensor`; mock `daemon-down` |
-| FR-29 | `scribe daemon reset` clears runtime counters and caches and reloads the config without a restart; never changes stored history; an invalid config is rejected and the running one kept | Partly (daemon side of `--counters` / `--caches`: `Command::Reset`; `--config` with SIGHUP next; the command in phase 10) | Daemon tests; config error table reused for reload |
+| FR-29 | `scribe daemon reset` clears runtime counters and caches and reloads the config without a restart; never changes stored history; an invalid config is rejected and the running one kept | Implemented in the daemon (`Command::Reset`, `Command::Reload`, SIGHUP; the command in phase 10) | Daemon tests; config error table reused for reload |
 | FR-30 | `scribe daemon hibernate [--for]` stops capture and processing while the daemon keeps serving the API; the pause is capped by `daemon.max_hibernate`, raises an alert, and is recorded and visible | Implemented in the daemon (`Pipeline::hibernate`, `Command::Hibernate`; the command in phase 10) | Daemon tests with `FakeSensor` and `FakeClock`; sensor conformance (stop and start again) |
 | FR-31 | `scribe daemon wakeup` (or the end of `--for`) resumes processing with the same mode, baseline and caches | Implemented in the daemon (`Pipeline::wakeup`, timer wakeup on the 1 s tick; the command in phase 10) | Same as FR-30 |
 | FR-32 | Load features as compiled-in modules through a registry; enable them with `[modules] enabled`; a module that isn't built or enabled costs nothing at run time | Implemented (registry, `url` feature, `[modules] enabled`) | Module conformance; daemon tests |
@@ -539,9 +539,13 @@ change live:
 
 | Applies live | Needs a restart (reported, not applied) |
 |---|---|
-| `mode`, `learn_for`, `then`, `profile`; all of `[policy]` (scores, threshold, usual ports, entropy, threat lists); `privacy.url_query`; `[log] level` and `format`; alert outputs; sink retention and batching; cache, buffer and spool limits (shrinking drops the oldest entries) | `data_dir`; the state store backend and its URL; adding or removing sinks; the sensor; `[log] file`, `output` and `rotate`; the API socket |
+| `mode` (only when the file's value changed, so a mode set through the API isn't undone), `profile` (its baseline is loaded), all of `[policy]` (scores, threshold, usual ports, entropy; threat list files read again), `[modules.*]` and `privacy.url_query`, `[daemon]`, `[log] level` (unless `SCRIBE_LOG` is set); alert outputs (phase 11) | `data_dir`; the state store backend and its URL; any `[[storage.sinks]]` change, retention and batching included; cache, buffer and spool limits; `[log] file`, `output`, `format`, `rotate`, `max_size`, `keep`; the sensor; the API socket |
 
-A reload is all-or-nothing for the live settings: if the file fails any check, nothing changes.
+A reload is all-or-nothing for the live settings: if the file fails any check, or a threat list or the new
+profile's baseline can't be read, nothing changes and the running config stays. Restart-only changes are
+reported on every reload until `scribed` restarts. Each reload writes an `audit` event naming the caller and
+both lists. Implemented in phase 5 (`config::reload`, `Command::Reload`, SIGHUP); sink, limit and log-format
+changes may become live later.
 
 ## 9. Options
 

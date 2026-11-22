@@ -40,6 +40,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `[daemon] max_hibernate`, `hibernated` alert, `audit` events, modules and the learn countdown paused, flows
   dropped and counted), timer wakeup on the tick, `reset` of counters and caches, a status snapshot, and
   `serve_controlled` with `Command`s that stop and restart the sensor. All 19 scenarios pass.
+- Phase 5 step 5: config reload (`Command::Reload`, SIGHUP on Unix): the start file is re-read and checked;
+  mode, profile, policy (threat files re-read), modules, `[daemon]` and the log level apply live; storage, sinks,
+  limits and log output report "needs restart"; a broken file changes nothing. Spec 8.5.2 updated to match.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

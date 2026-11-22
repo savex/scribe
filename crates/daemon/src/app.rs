@@ -130,6 +130,133 @@ pub enum Command {
     Status {
         reply: tokio::sync::oneshot::Sender<Status>,
     },
+    /// `reset --config` (also SIGHUP): re-read the config file and apply what can change live.
+    Reload {
+        caller: String,
+        reply: tokio::sync::oneshot::Sender<Result<ReloadReport, String>>,
+    },
+}
+
+/// What a config reload did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReloadReport {
+    /// Changed keys that now apply.
+    pub applied: Vec<String>,
+    /// Changed keys that apply after a restart.
+    pub needs_restart: Vec<String>,
+}
+
+#[cfg(unix)]
+type Hangup = Option<tokio::signal::unix::Signal>;
+#[cfg(not(unix))]
+type Hangup = ();
+
+#[cfg(unix)]
+fn hangup_signal() -> Hangup {
+    use tokio::signal::unix::{signal, SignalKind};
+    signal(SignalKind::hangup()).ok()
+}
+
+#[cfg(not(unix))]
+fn hangup_signal() -> Hangup {}
+
+/// Completes on SIGHUP (Unix only).
+#[cfg(unix)]
+async fn hangup(signal: &mut Hangup) {
+    match signal {
+        Some(s) => {
+            s.recv().await;
+        }
+        None => std::future::pending().await,
+    }
+}
+
+#[cfg(not(unix))]
+async fn hangup(_signal: &mut Hangup) {
+    std::future::pending::<()>().await
+}
+
+/// Re-read the config `running` came from and apply what can change live (specs 8.5.2).
+/// Everything that can fail is checked before anything changes.
+async fn reload(
+    running: &mut Settings,
+    pipeline: &mut Pipeline,
+    storage: &Storage,
+    clock: &dyn Clock,
+    caller: &str,
+) -> Result<(ReloadReport, Writes), String> {
+    let new = config::reload::reread(running).map_err(|e| e.to_string())?;
+    let plan = config::reload::plan(running, new);
+    let threats = if plan.changed("policy") {
+        Some(load_threats(&plan.settings).map_err(|e| format!("{e:#}"))?)
+    } else {
+        None
+    };
+    let baseline = if plan.changed("profile") {
+        match storage.state().baseline(&plan.settings.profile).await {
+            Ok(b) => Some(b.entries.into_iter().map(|e| e.host).collect::<Vec<_>>()),
+            Err(StorageError::NotImplemented(_)) => Some(Vec::new()),
+            Err(e) => {
+                return Err(format!(
+                    "cannot read the baseline of profile \"{}\": {e}",
+                    plan.settings.profile
+                ))
+            }
+        }
+    } else {
+        None
+    };
+    let mut needs_restart: Vec<String> =
+        plan.needs_restart.iter().map(|k| (*k).to_owned()).collect();
+    if plan.changed("modules") {
+        let keys = pipeline
+            .modules_mut()
+            .reconfigure(&ConfigDoc::new(&plan.settings.text))?;
+        needs_restart.extend(keys);
+    }
+    let settings = &plan.settings;
+    if let Some(threats) = threats {
+        let policy = pipeline.policy_mut();
+        policy.set_config(settings.policy_config());
+        policy.set_threats(threats);
+    }
+    if plan.changed("mode") {
+        pipeline.policy_mut().set_mode(settings.mode);
+    }
+    if let Some(hosts) = baseline {
+        pipeline.set_profile(settings.profile.clone());
+        pipeline.policy_mut().replace_baseline(hosts);
+    }
+    if plan.changed("daemon") {
+        pipeline.set_max_hibernate(settings.config.daemon.max_hibernate.map(|d| d.get()));
+    }
+    if plan.changed("log.level") {
+        if let Err(e) = logging::set_level(settings.log.level.as_str()) {
+            warn!("cannot change the log level: {e}");
+        }
+    }
+    for warning in &settings.warnings {
+        warn!("{warning}");
+    }
+    let report = ReloadReport {
+        applied: plan.applied.iter().map(|k| (*k).to_owned()).collect(),
+        needs_restart,
+    };
+    let message = format!(
+        "config reloaded by {caller}: applied [{}]; needs restart [{}]",
+        report.applied.join(", "),
+        report.needs_restart.join(", ")
+    );
+    info!("{message}");
+    let mut writes = Writes::default();
+    writes
+        .events
+        .push(StoredEvent::Audit(scribe_storage_api::AuditRecord {
+            ts: clock.now(),
+            message,
+        }));
+    *running = plan.settings;
+    Ok((report, writes))
 }
 
 /// [`serve`] with a given sensor (tests pass `FakeSensor`). Observations still queued at shutdown
@@ -293,6 +420,8 @@ pub async fn serve_controlled(
     }
 
     info!("scribed started; waiting for a stop signal");
+    let mut running = settings.clone();
+    let mut hup = hangup_signal();
     let mut drain = Drain::default();
     let mut writer = Writer::default();
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
@@ -331,9 +460,30 @@ pub async fn serve_controlled(
                         reply
                     }
                     Command::Status { reply } => reply,
+                    Command::Reload { caller, reply } => {
+                        let result = reload(&mut running, &mut pipeline, &storage, clock.as_ref(), &caller).await;
+                        let result = match result {
+                            Ok((report, writes)) => {
+                                writer.apply(&storage, pipeline.profile(), writes).await;
+                                Ok(report)
+                            }
+                            Err(e) => {
+                                warn!("config reload by {caller} rejected; the running config stays: {e}");
+                                Err(e)
+                            }
+                        };
+                        let _ = reply.send(result);
+                        continue;
+                    }
                 };
                 follow_state(was, &pipeline, sensor.as_mut(), &restart_tx);
                 let _ = reply.send(pipeline.status());
+            }
+            _ = hangup(&mut hup) => {
+                match reload(&mut running, &mut pipeline, &storage, clock.as_ref(), "SIGHUP").await {
+                    Ok((_, writes)) => writer.apply(&storage, pipeline.profile(), writes).await,
+                    Err(e) => warn!("config reload (SIGHUP) rejected; the running config stays: {e}"),
+                }
             }
             _ = ticker.tick() => {
                 let was = pipeline.is_hibernating();

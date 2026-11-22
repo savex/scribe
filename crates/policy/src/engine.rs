@@ -209,6 +209,24 @@ impl Policy {
         &self.config
     }
 
+    /// New settings from a config reload, from the next flow on. Mode, learn countdown, baseline,
+    /// what was seen and alert state stay; change the mode with [`Policy::set_mode`].
+    pub fn set_config(&mut self, config: PolicyConfig) {
+        self.config = config;
+    }
+
+    pub fn set_threats(&mut self, threats: ThreatSet) {
+        self.threats = threats;
+    }
+
+    /// The baseline of another profile (profile switch); TLDs seen so far stay seen.
+    pub fn replace_baseline<I: IntoIterator<Item = S>, S: Into<String>>(&mut self, hosts: I) {
+        self.baseline.clear();
+        for host in hosts {
+            self.add_to_baseline(host);
+        }
+    }
+
     /// Switch mode from the next flow on (`scribe mode`, the API). Learn mode restarts its timer.
     pub fn set_mode(&mut self, mode: Mode) {
         self.mode = mode;

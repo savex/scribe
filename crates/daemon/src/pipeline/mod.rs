@@ -199,6 +199,15 @@ impl Pipeline {
         self
     }
 
+    pub fn set_max_hibernate(&mut self, max: Option<Duration>) {
+        self.max_hibernate = max;
+    }
+
+    /// Another baseline profile (config reload); the caller loads its baseline into the policy.
+    pub fn set_profile(&mut self, profile: impl Into<String>) {
+        self.profile = profile.into();
+    }
+
     pub fn state(&self) -> &DaemonState {
         &self.state
     }

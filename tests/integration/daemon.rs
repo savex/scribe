@@ -206,3 +206,73 @@ fn commands_drive_the_run_states() {
         .iter()
         .any(|e| matches!(e, StoredEvent::Alert(a) if a.reason == "hibernated")));
 }
+
+/// INT-07: a config reload reaches the policy and the modules; restart-only keys are reported;
+/// a broken file is refused and the running config stays.
+#[test]
+fn config_reload_applies_live_keys_and_refuses_broken_files() {
+    use scribe_core::Mode;
+    use scribe_daemon::app::{serve_controlled, Command};
+    use scribe_daemon::config::load_settings;
+    use scribe_test_support::FakeSensor;
+    use tokio::sync::{mpsc, oneshot};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("scribe.toml");
+    let base = format!("data_dir = '{}'\n[log]\nfile = ''\n", dir.path().display());
+    std::fs::write(&path, format!("mode = 'learn'\n{base}")).unwrap();
+    let settings = load_settings(Some(&path), None).unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let (tx, rx) = mpsc::channel(4);
+        let (stop_tx, stop_rx) = oneshot::channel::<()>();
+        let daemon = serve_controlled(
+            settings,
+            Box::new(FakeSensor::new(vec![])),
+            Some(rx),
+            async {
+                let _ = stop_rx.await;
+            },
+        );
+        let driver = async move {
+            let reload = || async {
+                let (reply, answer) = oneshot::channel();
+                tx.send(Command::Reload { caller: "test".into(), reply }).await.unwrap();
+                answer.await.unwrap()
+            };
+            let status = || async {
+                let (reply, answer) = oneshot::channel();
+                tx.send(Command::Status { reply }).await.unwrap();
+                answer.await.unwrap()
+            };
+
+            std::fs::write(
+                &path,
+                format!("mode = 'alert'\n{base}rotate = 'size'\n[policy]\nthreshold = 40\n[modules.url]\nquery = 'strip'\n"),
+            )
+            .unwrap();
+            let report = reload().await.unwrap();
+            assert_eq!(report.applied, ["mode", "policy", "modules"]);
+            assert_eq!(report.needs_restart, ["log (file, output, format, rotation)"]);
+            assert_eq!(status().await.mode, Mode::Alert);
+
+            std::fs::write(&path, format!("mode = 'paranoid'\n{base}")).unwrap();
+            let err = reload().await.unwrap_err();
+            assert!(err.contains("unknown variant `paranoid`"), "{err}");
+            assert_eq!(status().await.mode, Mode::Alert, "the running config stays");
+
+            std::fs::write(
+                &path,
+                format!("mode = 'alert'\n{base}rotate = 'size'\n[policy]\nthreshold = 40\n[modules.url]\nquery = 'strip'\n"),
+            )
+            .unwrap();
+            let again = reload().await.unwrap();
+            assert!(again.applied.is_empty(), "nothing new to apply");
+            assert_eq!(again.needs_restart, ["log (file, output, format, rotation)"], "still pending");
+            stop_tx.send(()).unwrap();
+        };
+        let (result, ()) = tokio::join!(daemon, driver);
+        result.unwrap();
+    });
+}

@@ -5,6 +5,7 @@
 
 mod load;
 mod model;
+pub mod reload;
 mod resolve;
 
 #[cfg(test)]
