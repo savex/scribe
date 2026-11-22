@@ -9,6 +9,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
 use crate::spool::{Spool, SpoolBudget, SpoolOptions};
+use crate::state::{BufferLimits, BufferedState, StateStatus};
 use crate::writer::{Command, SinkCounters, SinkStatus, Writer};
 use crate::{SinkConfig, StorageManager};
 
@@ -26,6 +27,8 @@ pub struct RunOptions {
     /// First retry after a failed write; doubled after each failure up to `retry_max`.
     pub retry_min: Duration,
     pub retry_max: Duration,
+    /// The in-memory buffer for state-store outages.
+    pub buffer: BufferLimits,
 }
 
 impl Default for RunOptions {
@@ -37,6 +40,7 @@ impl Default for RunOptions {
             spool: None,
             retry_min: Duration::from_secs(1),
             retry_max: Duration::from_secs(60),
+            buffer: BufferLimits::default(),
         }
     }
 }
@@ -51,8 +55,9 @@ struct SinkHandle {
 /// Storage with its writer tasks running. Created by [`StorageManager::start`] inside a Tokio
 /// runtime.
 pub struct Storage {
-    state: Arc<dyn StateStore>,
+    state: Arc<BufferedState>,
     sinks: Vec<SinkHandle>,
+    replay: JoinHandle<()>,
 }
 
 impl StorageManager {
@@ -90,16 +95,28 @@ impl StorageManager {
                 }
             })
             .collect();
+        let state = Arc::new(BufferedState::new(self.state, options.buffer));
+        let replay = tokio::spawn(replay_state(
+            state.clone(),
+            options.retry_min,
+            options.retry_max,
+        ));
         Storage {
-            state: self.state,
+            state,
             sinks,
+            replay,
         }
     }
 }
 
 impl Storage {
+    /// The state store, with the outage buffer in front of it.
     pub fn state(&self) -> &dyn StateStore {
         self.state.as_ref()
+    }
+
+    pub fn state_status(&self) -> StateStatus {
+        self.state.status()
     }
 
     /// Queue events for every sink subscribed to their kind. Never waits: when a sink's queue is
@@ -151,8 +168,11 @@ impl Storage {
             .collect()
     }
 
-    /// Write what is queued, stop the writer tasks and flush the sinks.
+    /// Write what is queued, stop the writer tasks and flush the sinks. Buffered state writes get
+    /// one last replay; whatever still can't be stored is lost (and was counted as buffered).
     pub async fn shutdown(self) {
+        self.replay.abort();
+        self.state.replay().await;
         let mut tasks = Vec::new();
         for sink in self.sinks {
             drop(sink.tx);
@@ -161,5 +181,23 @@ impl Storage {
         for task in tasks {
             let _ = task.await;
         }
+    }
+}
+
+/// Replays the state buffer while it holds writes: every `retry_min`, doubling to `retry_max`
+/// while the store stays down.
+async fn replay_state(state: Arc<BufferedState>, retry_min: Duration, retry_max: Duration) {
+    let mut wait = retry_min;
+    loop {
+        tokio::time::sleep(wait).await;
+        if !state.is_buffering() {
+            wait = retry_min;
+            continue;
+        }
+        wait = if state.replay().await {
+            retry_min
+        } else {
+            (wait * 2).min(retry_max)
+        };
     }
 }

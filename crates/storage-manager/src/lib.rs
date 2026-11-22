@@ -2,13 +2,14 @@
 //!
 //! [`StorageManager`] builds the backends from config; [`StorageManager::start`] turns it into a
 //! running [`Storage`] with one writer task per sink (batching by size and time, retention for
-//! sinks without their own, an on-disk spool with ordered replay while a sink is down). Still to
-//! come in phase 2: the state-store outage buffer and the host cache.
+//! sinks without their own, an on-disk spool with ordered replay while a sink is down). The state
+//! store sits behind an in-memory outage buffer. Still to come in phase 2: the host cache.
 
 pub mod config;
 pub mod registry;
 mod run;
 mod spool;
+mod state;
 mod writer;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ pub use config::{BackendConfig, SinkConfig, StorageConfig};
 pub use registry::Registry;
 pub use run::{RunOptions, Storage};
 pub use spool::{FreeSpace, SpoolOptions};
+pub use state::{BufferLimits, BufferedState, StateStatus};
 pub use writer::{SinkCounters, SinkStatus};
 
 pub struct StorageManager {

@@ -15,7 +15,9 @@ use clap::Parser;
 use scribe_core::{Clock, Sensor, SystemClock, VERSION};
 use scribe_module_api::ConfigDoc;
 use scribe_storage_api::{StorageError, StoredEvent};
-use scribe_storage_manager::{Registry, RunOptions, SpoolOptions, Storage, StorageManager};
+use scribe_storage_manager::{
+    BufferLimits, Registry, RunOptions, SpoolOptions, Storage, StorageManager,
+};
 use tracing::{error, info, warn};
 
 use crate::config::{self, Settings};
@@ -124,6 +126,10 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
             limits.spool_max_size,
             limits.spool_min_free,
         )),
+        buffer: BufferLimits {
+            max_events: limits.buffer_events,
+            max_memory: limits.buffer_memory,
+        },
         ..RunOptions::default()
     });
 

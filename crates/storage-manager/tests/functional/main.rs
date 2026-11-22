@@ -3,4 +3,5 @@
 
 mod manager;
 mod spool;
+mod state;
 mod writer;

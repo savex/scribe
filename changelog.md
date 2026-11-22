@@ -73,6 +73,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - On-disk spool per sink (`storage.spool`): failed batches wait there, new batches queue behind them, replay
   is in order with doubling back-off (1 s to 60 s); size and free-disk limits drop the oldest and count; a spool
   left by an earlier run is replayed at start.
+- State-store outage buffer (`storage.buffer`): failed writes and all later ones wait in order, the oldest is
+  dropped at the count or memory limit, replay runs with back-off; IP links follow buffered hosts; writes that
+  can never succeed are dropped on replay; health is degraded while buffering.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
