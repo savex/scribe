@@ -70,6 +70,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Storage manager runs: `StorageManager::start` gives a `Storage` with one writer task per sink. Batches by
   size and time, non-blocking `publish` (full queues drop and count), hourly retention for sinks without their
   own, per-sink counters (`sink_status`), flush and shutdown.
+- On-disk spool per sink (`storage.spool`): failed batches wait there, new batches queue behind them, replay
+  is in order with doubling back-off (1 s to 60 s); size and free-disk limits drop the oldest and count; a spool
+  left by an earlier run is replayed at start.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

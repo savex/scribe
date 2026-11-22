@@ -15,7 +15,7 @@ use clap::Parser;
 use scribe_core::{Clock, Sensor, SystemClock, VERSION};
 use scribe_module_api::ConfigDoc;
 use scribe_storage_api::{StorageError, StoredEvent};
-use scribe_storage_manager::{Registry, RunOptions, Storage, StorageManager};
+use scribe_storage_manager::{Registry, RunOptions, SpoolOptions, Storage, StorageManager};
 use tracing::{error, info, warn};
 
 use crate::config::{self, Settings};
@@ -116,8 +116,14 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
     }
 
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let limits = &settings.limits;
     let storage = manager.start(RunOptions {
         clock: clock.clone(),
+        spool: Some(SpoolOptions::new(
+            &limits.spool_dir,
+            limits.spool_max_size,
+            limits.spool_min_free,
+        )),
         ..RunOptions::default()
     });
 

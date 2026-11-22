@@ -15,6 +15,7 @@ scribe-storage-api.workspace = true
 scribe-core.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
 tracing.workspace = true
+serde_json.workspace = true
 scribe-storage-sqlite = { workspace = true, optional = true }
 scribe-storage-postgres = { workspace = true, optional = true }
 

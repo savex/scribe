@@ -2,4 +2,5 @@
 //! Run with `cargo nextest run -p scribe-storage-manager -E 'binary(functional)'`.
 
 mod manager;
+mod spool;
 mod writer;
