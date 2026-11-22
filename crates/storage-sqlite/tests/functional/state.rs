@@ -167,3 +167,20 @@ fn state_survives_reopening() {
         serde_json::json!({"n": 1})
     );
 }
+
+#[test]
+fn calls_run_on_the_worker_without_being_polled() {
+    // Each call is queued to the SQLite thread when it is made, so futures can be awaited in any
+    // order (or concurrently) and every one completes.
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(dir.path());
+    let deltas: Vec<_> = (0..100).map(|i| delta("api.example.com", i)).collect();
+    let pending: Vec<_> = deltas.iter().map(|d| s.upsert_host(d)).collect();
+    for f in pending.into_iter().rev() {
+        block_on(f).unwrap();
+    }
+    let h = block_on(s.get_host("api.example.com")).unwrap().unwrap();
+    assert_eq!(h.conn_count, 100);
+    assert_eq!(h.first_seen, UNIX_EPOCH);
+    assert_eq!(h.last_seen, UNIX_EPOCH + Duration::from_secs(99));
+}

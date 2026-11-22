@@ -101,6 +101,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   need private code stay in `src/`.
 - Tag check reads `cargo nextest list`: a test's tag is its binary (`smoke`, `functional`, …) or its module.
 - Sensor tests workflow selects `traffic_generator::` and `sensors::` inside the `functional` binary.
+- SQLite runs on a worker thread per database; calls return futures that work on any executor and never
+  block the async runtime.
 
 ### Deprecated
 - `privacy.url_query`. Use `[modules.url] query`. The old key still works, with a warning, for one minor version.

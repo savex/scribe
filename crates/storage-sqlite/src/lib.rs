@@ -2,7 +2,7 @@
 //!
 //! Options: `path` (required) — database file. Schema lives in `migrations/`; `migrate` applies
 //! the missing ones and refuses a database newer than this build. The file is opened on first use
-//! in WAL mode.
+//! in WAL mode, on a worker thread of its own, so async callers never block on SQLite.
 
 mod db;
 mod sink;
@@ -76,7 +76,7 @@ impl SqliteStore {
 
     /// The highest applied migration (0 for a new file).
     pub fn schema_version(&self) -> Result<u32> {
-        self.db.version()
+        self.db.version().wait()
     }
 }
 
@@ -89,28 +89,33 @@ impl StateStore for SqliteStore {
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {
-        Box::pin(async move { self.db.migrate().map(|_| ()) })
+        let reply = self.db.migrate();
+        Box::pin(async move { reply.await.map(|_| ()) })
     }
 
     fn upsert_host<'a>(&'a self, delta: &'a HostDelta) -> BoxFuture<'a, Result<HostId>> {
-        Box::pin(async move { self.db.with(|c| state::upsert_host(c, delta)) })
+        let delta = delta.clone();
+        Box::pin(self.db.with(move |c| state::upsert_host(c, &delta)))
     }
 
     fn get_host<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<Option<Host>>> {
-        Box::pin(async move { self.db.with(|c| state::get_host(c, name)) })
+        let name = name.to_owned();
+        Box::pin(self.db.with(move |c| state::get_host(c, &name)))
     }
 
     fn link_ip(&self, host: HostId, ip: IpAddr, ttl: Duration) -> BoxFuture<'_, Result<()>> {
         let now = self.db.now_ms();
-        Box::pin(async move { self.db.with(|c| state::link_ip(c, host, ip, ttl, now)) })
+        Box::pin(self.db.with(move |c| state::link_ip(c, host, ip, ttl, now)))
     }
 
     fn list_hosts<'a>(&'a self, query: &'a HostQuery) -> BoxFuture<'a, Result<Page<Host>>> {
-        Box::pin(async move { self.db.with(|c| state::list_hosts(c, query)) })
+        let query = query.clone();
+        Box::pin(self.db.with(move |c| state::list_hosts(c, &query)))
     }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {
-        Box::pin(async move { self.db.with(|c| state::baseline(c, profile)) })
+        let profile = profile.to_owned();
+        Box::pin(self.db.with(move |c| state::baseline(c, &profile)))
     }
 
     fn add_to_baseline<'a>(
@@ -118,19 +123,26 @@ impl StateStore for SqliteStore {
         profile: &'a str,
         entry: &'a BaselineEntry,
     ) -> BoxFuture<'a, Result<()>> {
-        Box::pin(async move { self.db.with(|c| state::add_to_baseline(c, profile, entry)) })
+        let (profile, entry) = (profile.to_owned(), entry.clone());
+        Box::pin(
+            self.db
+                .with(move |c| state::add_to_baseline(c, &profile, &entry)),
+        )
     }
 
     fn put_alert_state<'a>(&'a self, alert: &'a AlertState) -> BoxFuture<'a, Result<()>> {
-        Box::pin(async move { self.db.with(|c| state::put_alert_state(c, alert)) })
+        let alert = alert.clone();
+        Box::pin(self.db.with(move |c| state::put_alert_state(c, &alert)))
     }
 
     fn get_alert_state<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>> {
-        Box::pin(async move { self.db.with(|c| state::get_alert_state(c, key)) })
+        let key = key.to_owned();
+        Box::pin(self.db.with(move |c| state::get_alert_state(c, &key)))
     }
 
     fn module_state<'a>(&'a self, module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
-        Box::pin(async move { self.db.with(|c| state::module_state(c, module)) })
+        let module = module.to_owned();
+        Box::pin(self.db.with(move |c| state::module_state(c, &module)))
     }
 
     fn put_module_state<'a>(
@@ -140,14 +152,15 @@ impl StateStore for SqliteStore {
         value: &'a serde_json::Value,
     ) -> BoxFuture<'a, Result<()>> {
         let now = self.db.now_ms();
-        Box::pin(async move {
+        let (module, key, value) = (module.to_owned(), key.to_owned(), value.clone());
+        Box::pin(
             self.db
-                .with(|c| state::put_module_state(c, module, key, value, now))
-        })
+                .with(move |c| state::put_module_state(c, &module, &key, &value, now)),
+        )
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {
-        Box::pin(async move { self.db.health() })
+        Box::pin(self.db.health())
     }
 }
 
@@ -175,7 +188,7 @@ impl SqliteSink {
     }
 
     pub fn schema_version(&self) -> Result<u32> {
-        self.db.version()
+        self.db.version().wait()
     }
 }
 
@@ -193,20 +206,23 @@ impl EventSink for SqliteSink {
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {
-        Box::pin(async move { self.db.migrate().map(|_| ()) })
+        let reply = self.db.migrate();
+        Box::pin(async move { reply.await.map(|_| ()) })
     }
 
     fn write_batch<'a>(&'a self, batch: &'a [StoredEvent]) -> BoxFuture<'a, Result<()>> {
-        Box::pin(async move { self.db.with(|c| sink::write_batch(c, batch)) })
+        let batch = batch.to_vec();
+        Box::pin(self.db.with(move |c| sink::write_batch(c, &batch)))
     }
 
     fn query<'a>(&'a self, query: &'a EventQuery) -> BoxFuture<'a, Result<Page<StoredEvent>>> {
-        Box::pin(async move { self.db.with_result(|c| sink::query(c, query)) })
+        let query = query.clone();
+        Box::pin(self.db.run(move |c| sink::query(c, &query)))
     }
 
     fn delete_before(&self, cutoff: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
         let cutoff = scribe_storage_api::codec::to_millis(cutoff);
-        Box::pin(async move { self.db.with(|c| sink::delete_before(c, cutoff)) })
+        Box::pin(self.db.with(move |c| sink::delete_before(c, cutoff)))
     }
 
     /// Every batch is committed when `write_batch` returns, so there is nothing to flush.
@@ -215,6 +231,6 @@ impl EventSink for SqliteSink {
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {
-        Box::pin(async move { self.db.health() })
+        Box::pin(self.db.health())
     }
 }
