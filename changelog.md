@@ -32,6 +32,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 5 step 2: schema v3 (`0003_processes.sql`, SQLite and Postgres): per process + host counters
   (`process_hosts`, `StateStore::process_hosts`) and a sticky `hosts.unresolved` flag; snapshots `v3.db`,
   `v3_seed.sql`; two conformance cases.
+- Phase 5 step 3: `scribed` runs the capture pipeline: sensor thread → bounded queue → pipeline → storage,
+  alerts logged (`scribe::alert`), held QUIC flows judged every second, queued observations processed at
+  shutdown; known processes loaded from storage. `serve_with` takes a sensor (tests). The scenario runner
+  uses the real pipeline: `counters-exact` passes (17 of 19). Integration test INT-10.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

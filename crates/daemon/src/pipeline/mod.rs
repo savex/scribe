@@ -43,6 +43,11 @@ pub struct Writes {
     pub alert_states: Vec<AlertState>,
     /// Alerts for the alert outputs.
     pub alerts: Vec<Alert>,
+    /// Earlier alerts that gained notes (the URL of a later request) inside the dedupe window.
+    /// They are not stored or sent again; the API shows them from phase 10.
+    pub alert_updates: Vec<Alert>,
+    /// Module signal reasons the hooks returned (for metrics and tests).
+    pub signals: Vec<String>,
 }
 
 impl Writes {
@@ -52,6 +57,7 @@ impl Writes {
             && self.baseline.is_empty()
             && self.alert_states.is_empty()
             && self.alerts.is_empty()
+            && self.alert_updates.is_empty()
     }
 
     fn extend(&mut self, other: Writes) {
@@ -60,6 +66,8 @@ impl Writes {
         self.baseline.extend(other.baseline);
         self.alert_states.extend(other.alert_states);
         self.alerts.extend(other.alerts);
+        self.alert_updates.extend(other.alert_updates);
+        self.signals.extend(other.signals);
     }
 }
 
@@ -305,6 +313,7 @@ impl Pipeline {
         obs.event.notes.merge(notes);
         let reasons: Vec<String> = signals.into_iter().map(|s| s.reason).collect();
         let d = self.policy.decide(&obs.event, &reasons);
+        w.signals = reasons;
         let event = &obs.event;
         match event.kind {
             FlowKind::NewFlow => self.counters.flows += 1,
@@ -342,8 +351,9 @@ impl Pipeline {
             w.events.push(StoredEvent::Alert(AlertRecord::from(&alert)));
             w.alerts.push(alert);
         }
-        // An updated alert (new notes inside the dedupe window) is not stored again: the stored
-        // alert keeps the notes it was raised with, and outputs are not notified twice.
+        if let Some(updated) = d.alert_update {
+            w.alert_updates.push(updated);
+        }
         w
     }
 }

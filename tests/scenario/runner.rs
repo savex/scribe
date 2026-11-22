@@ -6,16 +6,18 @@
 //! phase 5 (hibernate, wakeup, reset, run states, runtime and per-process counters) are refused
 //! with a clear message; their tests are marked `#[ignore]`.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use scribe_core::{Alert, Clock, FlowKind, HumanDuration, Mode, Observation};
 use scribe_daemon::modules::ModuleHost;
+use scribe_daemon::pipeline::{store, Pipeline, Store};
+use scribe_enrich::Enricher;
 use scribe_module_api::{ConfigDoc, Module};
 use scribe_policy::{alert_key, Policy, PolicyConfig, ThreatSet};
-use scribe_storage_api::{HostDelta, StateStore};
+use scribe_storage_api::{StateStore, StoredEvent};
 use scribe_test_support::{flow, FakeClock, MemoryStore, RecordingEmitter, TagModule, TicksModule};
 use serde::Deserialize;
 
@@ -173,9 +175,6 @@ pub fn needs_phase_5(s: &Scenario) -> Vec<&'static str> {
     if s.expect.runtime.is_some() {
         out.push("expect runtime");
     }
-    if s.expect.processes.is_some() {
-        out.push("expect processes (per-process counters)");
-    }
     out
 }
 
@@ -185,7 +184,6 @@ struct Outcome {
     alerts: Vec<Alert>,
     baseline_added: Vec<String>,
     signals: Vec<String>,
-    unresolved: HashMap<String, bool>,
 }
 
 fn modules(ids: &[String]) -> Vec<Box<dyn Module>> {
@@ -287,10 +285,12 @@ pub fn run(s: &Scenario) {
             "bad threat entry {entry:?}"
         );
     }
-    let mut policy = Policy::new(config, clock_dyn)
+    let policy = Policy::new(config, clock_dyn.clone())
         .with_baseline(s.baseline.iter().cloned())
         .with_threats(threats);
-    let store = MemoryStore::default();
+    let enricher = Enricher::new(clock_dyn.clone(), 1_000);
+    let mut pipeline = Pipeline::new(clock_dyn, s.profile.clone(), enricher, host, policy);
+    let target = Doubles::default();
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
         .unwrap();
@@ -299,6 +299,7 @@ pub fn run(s: &Scenario) {
     for e in &s.events {
         clock.set(start + duration(&e.at));
         if let Some(api) = &e.api {
+            let policy = pipeline.policy_mut();
             if let Some(mode) = api.set_mode {
                 policy.set_mode(mode);
             }
@@ -317,48 +318,45 @@ pub fn run(s: &Scenario) {
             }
             continue;
         }
-        let mut obs = observation(e, clock.now());
-        let (notes, signals) = host.on_flow(&obs);
-        obs.event.notes.merge(notes);
-        let reasons: Vec<String> = signals.into_iter().map(|s| s.reason).collect();
-        for r in &reasons {
+        let w = pipeline.process(observation(e, clock.now()));
+        for r in &w.signals {
             if !out.signals.contains(r) {
                 out.signals.push(r.clone());
             }
         }
-        let d = policy.decide(&obs.event, &reasons);
-        if let Some(h) = d.baseline_add.clone() {
-            out.baseline_added.push(h);
-        }
-        if let Some(a) = d.alert.clone() {
-            out.alerts.push(a);
-        }
-        if let Some(updated) = d.alert_update.clone() {
-            let key = alert_key(&updated);
+        out.baseline_added
+            .extend(w.baseline.iter().map(|b| b.host.clone()));
+        out.alerts.extend(w.alerts.iter().cloned());
+        for updated in &w.alert_updates {
+            let key = alert_key(updated);
             let earlier = out
                 .alerts
                 .iter_mut()
                 .rfind(|a| a.ts == updated.ts && alert_key(a) == key)
                 .expect("an update for an alert that was raised");
-            *earlier = updated;
+            *earlier = updated.clone();
         }
-        if obs.event.kind != FlowKind::Close {
-            let unresolved = obs.event.hostname.is_none() || obs.event.ech;
-            *out.unresolved.entry(d.host.clone()).or_insert(false) |= unresolved;
-            let delta = HostDelta {
-                name: d.host.clone(),
-                seen_at: obs.event.ts,
-                connections: u64::from(obs.event.kind == FlowKind::NewFlow),
-                requests: u64::from(obs.event.notes.get_str("url").is_some()),
-                bytes_out: obs.event.bytes_out,
-                security: obs.event.security,
-                unresolved: obs.event.unresolved(),
-                process: obs.event.process_path.clone(),
-            };
-            rt.block_on(store.upsert_host(&delta)).unwrap();
-        }
+        let errors = rt.block_on(store(&target, pipeline.profile(), &w));
+        assert!(errors.is_empty(), "{}: storage errors {errors:?}", s.name);
     }
-    check(s, &policy, &store, &out);
+    check(s, pipeline.policy(), &target.state, &out);
+}
+
+/// The pipeline's storage target: `MemoryStore` for state; published events are kept in memory.
+#[derive(Default)]
+struct Doubles {
+    state: MemoryStore,
+    events: std::sync::Mutex<Vec<StoredEvent>>,
+}
+
+impl Store for Doubles {
+    fn publish(&self, events: &[StoredEvent]) {
+        self.events.lock().unwrap().extend_from_slice(events);
+    }
+
+    fn state(&self) -> &dyn StateStore {
+        &self.state
+    }
 }
 
 fn check(s: &Scenario, policy: &Policy, store: &MemoryStore, out: &Outcome) {
@@ -423,11 +421,40 @@ fn check(s: &Scenario, policy: &Policy, store: &MemoryStore, out: &Outcome) {
                 assert_eq!(h.plaintext_seen, p, "{name}: {key} plaintext_seen");
             }
             if let Some(u) = e.unresolved {
-                assert_eq!(
-                    out.unresolved.get(key).copied(),
-                    Some(u),
-                    "{name}: {key} unresolved"
-                );
+                assert_eq!(h.unresolved, u, "{name}: {key} unresolved");
+            }
+        }
+    }
+    if let Some(expected) = &s.expect.processes {
+        check_processes(name, expected, store);
+    }
+}
+
+/// `processes: { <path>: { <host>: { connections, requests, bytes } } }`, compared with the
+/// store's per process + host counters (only the fields written).
+fn check_processes(name: &str, expected: &serde_yaml_ng::Value, store: &MemoryStore) {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let rows = rt.block_on(store.process_hosts(None)).unwrap();
+    let processes = expected.as_mapping().expect("processes is a map");
+    for (process, hosts) in processes {
+        let process = process.as_str().expect("process path");
+        for (host, fields) in hosts.as_mapping().expect("hosts is a map") {
+            let host = host.as_str().expect("host name");
+            let row = rows
+                .iter()
+                .find(|r| r.process == process && r.host == host)
+                .unwrap_or_else(|| panic!("{name}: no counters for {process} → {host}"));
+            for (field, want) in fields.as_mapping().expect("fields is a map") {
+                let want = want.as_u64().expect("a counter");
+                let got = match field.as_str().expect("field name") {
+                    "connections" => row.conn_count,
+                    "requests" => row.req_count,
+                    "bytes" => row.bytes_out,
+                    other => panic!("{name}: unknown process counter {other}"),
+                };
+                assert_eq!(got, want, "{name}: {process} → {host} {field:?}");
             }
         }
     }

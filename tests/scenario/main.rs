@@ -31,11 +31,7 @@ scenario!(
     caution_unusual_port_new_process,
     "caution-unusual-port-new-process"
 );
-scenario!(
-    #[ignore = "per-process counters arrive with the daemon pipeline (plan phase 5)"]
-    counters_exact,
-    "counters-exact"
-);
+scenario!(counters_exact, "counters-exact");
 scenario!(
     #[ignore = "hibernation and run states arrive in plan phase 5"]
     daemon_hibernate_capped,
@@ -76,11 +72,7 @@ fn every_scenario_file_has_a_test() {
         "mode-switch-via-api",
         "module-signal-scored",
     ];
-    const NEED_PHASE_5: &[&str] = &[
-        "counters-exact",
-        "daemon-hibernate-capped",
-        "daemon-wakeup-and-reset",
-    ];
+    const NEED_PHASE_5: &[&str] = &["daemon-hibernate-capped", "daemon-wakeup-and-reset"];
     let dir = scribe_tests::testdata("scenarios");
     let mut files: Vec<String> = std::fs::read_dir(&dir)
         .unwrap()

@@ -12,7 +12,8 @@ use std::time::Duration;
 
 use anyhow::Context as _;
 use clap::Parser;
-use scribe_core::{Clock, Sensor, SystemClock, VERSION};
+use scribe_core::{Clock, Observation, Sensor, SystemClock, VERSION};
+use scribe_enrich::Enricher;
 use scribe_module_api::ConfigDoc;
 use scribe_policy::{Policy, ThreatSet};
 use scribe_storage_api::{StorageError, StoredEvent};
@@ -24,6 +25,7 @@ use tracing::{error, info, warn};
 use crate::config::{self, Settings};
 use crate::logging;
 use crate::modules::{self, ModuleHost, Output, OutputQueue, QUEUE};
+use crate::pipeline::{self, Pipeline, Writes};
 
 pub const EXIT_FAILURE: u8 = 1;
 pub const EXIT_CONFIG: u8 = 2;
@@ -95,8 +97,24 @@ pub fn run(args: Args, config_env: Option<OsString>, log_filter: Option<String>)
     code
 }
 
-/// Opens storage, then runs until `shutdown` completes. The capture pipeline arrives in plan phase 5.
+/// Opens storage, starts the platform sensor and runs the capture pipeline until `shutdown`
+/// completes.
 pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> anyhow::Result<()> {
+    serve_with(settings, platform_sensor(), shutdown).await
+}
+
+/// Observations waiting between the sensor thread and the pipeline.
+pub const OBSERVATION_QUEUE: usize = 4096;
+/// Entries in the DNS (IP → name) cache.
+pub const DNS_CACHE_ENTRIES: usize = 100_000;
+
+/// [`serve`] with a given sensor (tests pass `FakeSensor`). Observations still queued at shutdown
+/// are processed before storage closes.
+pub async fn serve_with(
+    settings: Settings,
+    mut sensor: Box<dyn Sensor>,
+    shutdown: impl Future<Output = ()>,
+) -> anyhow::Result<()> {
     info!(version = VERSION, "scribed starting");
     for line in settings.summary() {
         info!("{line}");
@@ -138,13 +156,6 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
         ..RunOptions::default()
     });
 
-    let sensor = platform_sensor();
-    info!(
-        sensor = sensor.name(),
-        process_info = sensor.has_process_info(),
-        "capture is not wired up yet (plan phase 5)"
-    );
-
     let mut host = ModuleHost::new(
         modules::instantiate(
             &modules::builtin(),
@@ -184,34 +195,101 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
             Vec::new()
         }
     };
+    let known_processes = match storage.state().process_hosts(None).await {
+        Ok(rows) => rows.into_iter().map(|r| r.process).collect(),
+        Err(StorageError::NotImplemented(_)) => Vec::new(),
+        Err(e) => {
+            warn!("cannot read known processes: {e}");
+            Vec::new()
+        }
+    };
     let listed = baseline.len();
     let policy = Policy::new(settings.policy_config(), clock.clone())
         .with_baseline(baseline)
+        .with_known_processes::<Vec<String>, String>(known_processes)
         .with_threats(threats);
     info!(
         mode = %policy.mode(),
         profile = %settings.profile,
         baseline = listed,
-        "policy ready (the capture pipeline feeds it from plan phase 5)"
+        "policy ready"
+    );
+    let enricher = Enricher::new(clock.clone(), DNS_CACHE_ENTRIES);
+    let mut pipeline = Pipeline::new(
+        clock.clone(),
+        settings.profile.clone(),
+        enricher,
+        host,
+        policy,
     );
 
+    // The sensor pushes into a std channel from its own threads; a forwarding thread hands
+    // observations to the async loop through a bounded queue.
+    let (sensor_tx, sensor_rx) = std::sync::mpsc::channel::<Observation>();
+    let (obs_tx, mut obs_rx) = tokio::sync::mpsc::channel::<Observation>(OBSERVATION_QUEUE);
+    std::thread::Builder::new()
+        .name("scribe-sensor-forward".into())
+        .spawn(move || {
+            for obs in sensor_rx {
+                if obs_tx.blocking_send(obs).is_err() {
+                    break;
+                }
+            }
+        })
+        .context("cannot start the sensor thread")?;
+    match sensor.start(sensor_tx) {
+        Ok(()) => info!(
+            sensor = sensor.name(),
+            process_info = sensor.has_process_info(),
+            "capture started"
+        ),
+        Err(e) => warn!(
+            sensor = sensor.name(),
+            "capture is not available ({e}); scribed runs without a sensor"
+        ),
+    }
+
     info!("scribed started; waiting for a stop signal");
-    // Until the capture pipeline arrives (plan phase 5), only sources run; their output is
-    // written once a second.
     let mut drain = Drain::default();
+    let mut writer = Writer::default();
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
             _ = &mut shutdown => break,
+            Some(obs) = obs_rx.recv() => {
+                let writes = pipeline.process(obs);
+                writer.apply(&storage, pipeline.profile(), writes).await;
+            }
             _ = ticker.tick() => {
-                host.tick();
+                let writes = pipeline.tick();
+                writer.apply(&storage, pipeline.profile(), writes).await;
+                pipeline.modules_mut().tick();
                 drain.run(&queue, &storage).await;
             }
         }
     }
     info!("stop signal received; shutting down");
 
+    sensor.stop();
+    drop(sensor);
+    // Whatever the sensor delivered before it stopped is still processed.
+    while let Ok(Some(obs)) = tokio::time::timeout(Duration::from_millis(200), obs_rx.recv()).await
+    {
+        let writes = pipeline.process(obs);
+        writer.apply(&storage, pipeline.profile(), writes).await;
+    }
+    let writes = pipeline.flush();
+    writer.apply(&storage, pipeline.profile(), writes).await;
+    let counters = pipeline.counters().clone();
+    info!(
+        observations = counters.observations,
+        flows = counters.flows,
+        alerts = counters.alerts,
+        "pipeline stopped"
+    );
+
+    let host = pipeline.modules_mut();
     host.stop();
     drain.run(&queue, &storage).await;
     for status in host.status() {
@@ -317,4 +395,39 @@ pub fn load_threats(settings: &Settings) -> anyhow::Result<ThreatSet> {
         warn!(list = %name, "threat list downloads arrive in plan phase 11; list \"{name}\" is not used yet");
     }
     Ok(set)
+}
+
+/// Applies pipeline writes to storage and reports alerts; storage errors are logged once per kind
+/// of error until one write succeeds again.
+#[derive(Default)]
+struct Writer {
+    failing: bool,
+}
+
+impl Writer {
+    async fn apply(&mut self, storage: &Storage, profile: &str, writes: Writes) {
+        for alert in &writes.alerts {
+            warn!(
+                target: "scribe::alert",
+                reason = %alert.reason,
+                host = alert.host.as_deref().unwrap_or("-"),
+                dst = %std::net::SocketAddr::new(alert.dst_ip, alert.dst_port),
+                process = alert.process_path.as_deref().unwrap_or("-"),
+                score = alert.score,
+                "alert"
+            );
+        }
+        if writes.is_empty() {
+            return;
+        }
+        let errors = pipeline::store(storage, profile, &writes).await;
+        match errors.first() {
+            Some(e) if !self.failing => {
+                self.failing = true;
+                warn!("pipeline writes not stored: {e}");
+            }
+            Some(_) => {}
+            None => self.failing = false,
+        }
+    }
 }
