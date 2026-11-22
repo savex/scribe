@@ -88,6 +88,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   the URL module parses requests (origin and proxy form, user info removed, odd ports kept) and applies
   `full`, `redact_values`, `strip` and `path_only` exactly as the specs 12.2 examples; `url.request` records
   carry `method` and `url`.
+- Phase 3 step 3: DNS response parser (compressed names with a jump limit, A / AAAA / CNAME) and a `DnsCache`
+  on `Clock` that maps answer IPs to the queried name through CNAME chains, with the shortest TTL on the chain,
+  a one-day cap and an entry limit.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
