@@ -48,6 +48,10 @@ scribe-enrich.workspace = true
 scribe-core.workspace = true
 scribe-module-api.workspace = true
 scribe-module-url.workspace = true
+scribe-policy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
 scribe-storage-manager = { workspace = true, features = ["sqlite"] }
 scribe-storage-postgres.workspace = true
 scribe-storage-conformance.workspace = true

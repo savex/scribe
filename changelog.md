@@ -117,6 +117,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 4 step 3: `[policy.scores]` takes module signal scores (`"<module>.<reason>" = 0–100`, module must be
   enabled; checked with line numbers). `scribed` builds the policy from its settings, reads the baseline and
   loads threat lists from files at start (a missing file stops it; `url` lists wait for phase 11).
+- Phase 4 step 4: scenario runner (`tests/scenario`, YAML via `serde_yaml_ng`): one test per scenario file,
+  played through `ModuleHost`, `Policy` and `MemoryStore`; 16 of 19 pass, 3 wait for phase 5 run states and
+  per-process counters (ignored with the reason).
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
