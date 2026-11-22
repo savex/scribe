@@ -36,6 +36,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Changelog: the `0.1.0-alpha.1` release had no section (the workflow did not write one).
 - Plan and status cited phase 4 commit ids from before the rebase onto the release commit.
 - `Cargo.lock` listed `scribe-policy` at 0.1.1 after the rebase onto the release; `--locked` builds failed.
+- Fuzz target `http_request` flagged any `@` in the URL as user info; it now checks the authority only. The
+  parser was right (an `@` in a query is data). Regression test and an `at_in_query` fuzz seed added.
 
 ## [0.1.0-alpha.1] - 2026-11-22
 

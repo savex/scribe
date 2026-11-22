@@ -460,6 +460,12 @@ pub fn fuzz_seeds() -> Vec<(&'static str, &'static str, Vec<u8>)> {
             b"GET / HTTP/1.0\r\n\r\n".to_vec(),
         ),
         ("http_request", "binary", b"\x00\x01\x02\xff".to_vec()),
+        // Fuzz finding 2026-11-22: an `@` in the query is data, not user info.
+        (
+            "http_request",
+            "at_in_query",
+            http::get_request("seed.example.com", "/a/b?c=d&@=f"),
+        ),
         (
             "dns_message",
             "a",

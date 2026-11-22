@@ -128,3 +128,36 @@ fn requests_without_a_url() {
     let post = parse_request(b"POST /api HTTP/1.1\r\nHost: api.example.com\r\n\r\n").unwrap();
     assert_eq!(post.method, "POST");
 }
+
+/// Fuzz finding (Fuzz run 45075016342, `http_request`): an `@` in the query is data, not user info.
+/// User info only lives in the authority; it is dropped there and nowhere else.
+#[test]
+fn an_at_sign_outside_the_authority_is_kept() {
+    let crash = b"GET /a/b?c=d&@=f HTTP/1.1\r\nHost: seed.example.com\r\nUser-Agent: scribe-fixture/1.0\r\nr-Agent: sCribe";
+    assert_eq!(
+        request_url(crash).as_deref(),
+        Some("http://seed.example.com/a/b?c=d&@=f")
+    );
+    let at_path = b"GET /users/@me HTTP/1.1\r\nHost: api.example.com\r\n\r\n";
+    assert_eq!(
+        request_url(at_path).as_deref(),
+        Some("http://api.example.com/users/@me")
+    );
+    let proxy = b"GET http://user:pw@proxy.example.com/x?y=@z HTTP/1.1\r\n\r\n";
+    assert_eq!(
+        request_url(proxy).as_deref(),
+        Some("http://proxy.example.com/x?y=@z")
+    );
+    let at_host = b"GET /x HTTP/1.1\r\nHost: user@evil.example.com\r\n\r\n";
+    let url = request_url(at_host);
+    assert!(
+        url.as_deref().is_none_or(|u| !authority(u).contains('@')),
+        "{url:?}"
+    );
+}
+
+/// The authority of an `http://` URL: up to the first `/`, `?` or `#`.
+fn authority(url: &str) -> &str {
+    let rest = url.strip_prefix("http://").unwrap_or(url);
+    rest.split(['/', '?', '#']).next().unwrap_or("")
+}
