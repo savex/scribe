@@ -95,7 +95,9 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 `tracing-subscriber`, `tracing-appender`, `tracing-journald` (Linux), `tracing-oslog` (macOS), `fs4`,
 `libc` (macOS), `windows-sys` (Windows); tests: `proptest`, `tempfile`.
 
-**Planned libraries** (add when implementing): `rusqlite` (bundled), `tokio-postgres` + `deadpool`, `aya`,
+Also `serde_json`, `rusqlite` 0.43 (bundled SQLite, phase 1).
+
+**Planned libraries** (add when implementing): `tokio-postgres` + `deadpool`, `aya`,
 `windows`, `pcap`, `tonic` (gRPC), `libfuzzer-sys`, `ring` 0.17 (decided, see table above).
 
 ## 4. Crates and binaries
@@ -107,7 +109,7 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | `scribe-sensor-linux` / `-windows` / `-pcap` | lib | Capture sensors |
 | `scribe-storage-api` | lib | `StateStore`, `EventSink`, `StorageFactory` |
 | `scribe-storage-manager` | lib | Registry, fan-out to sinks (later: cache, batching, spool, retention) |
-| `scribe-storage-sqlite` | lib | Default backend (feature `sqlite`, on by default) |
+| `scribe-storage-sqlite` | lib | Default backend (feature `sqlite`, on by default); implemented, passes both conformance suites |
 | `scribe-storage-postgres` | lib | Optional backend (feature `postgres`) |
 | `scribe-storage-conformance` / `scribe-sensor-conformance` | lib | Shared test suites |
 | `scribe-test-support` | lib + bin | Test doubles, packet builders, `gen-fixtures` |
@@ -131,7 +133,9 @@ external gRPC storage plugins were discussed and **deliberately left out**.
 | Backend selection | `kind = "sqlite"` / `"postgres"` in config, resolved by the registry | Decided |
 | Counter updates | Always as deltas (`n = n + excluded.n`), never read-modify-write | Decided |
 | Security flags | `tls_seen` / `plaintext_seen` only ever turn on | Decided |
-| Record schema version | `SCHEMA_VERSION = 1` | Decided |
+| Record schema version | `SCHEMA_VERSION = 2` (v1 rows still readable) | Decided |
+| Row layout | `scribe_storage_api::codec`: kind, module, host, schema, JSON payload per event; epoch-ms times; shared by SQLite and Postgres | Implemented |
+| SQLite backend | `rusqlite` 0.43 bundled; opened on first use, WAL, `synchronous = NORMAL`, 5 s busy timeout; migrations per transaction into `schema_migrations` + `user_version`, newer schema refused; metric samples in `metrics`, everything else in `events`; queries merge both by time (`since` inclusive, `until` exclusive) | Implemented (phase 1) |
 | SQLite timestamps | Unix epoch **milliseconds** (INTEGER); booleans as 0/1 | Decided |
 | Postgres types | `TIMESTAMPTZ`, `BOOLEAN`, `INET`, `JSONB` payloads | Decided |
 | Event payloads | JSON text (SQLite) / JSONB (Postgres) | Decided |
@@ -335,11 +339,13 @@ Notes:
 |---|---|
 | Estimates assume | one experienced Rust developer; LOC without blanks and comments; tests counted separately |
 | Total size | ~17,500 production LOC + ~5,200 test LOC |
-| Total effort | 118–147 person-days; 101.5–127.5 remaining after phases 0 and 0b, 122–153 with a 20% buffer (includes the security design, +14.5 days, and the module framework, +10–12 days) |
+| Total effort | 118–147 person-days; 98–123 remaining after phases 0, 0b and 1, 118–148 with a 20% buffer (includes the security design, +14.5 days, and the module framework, +10–12 days) |
 | Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 61.5–75.5 days; M2 native sensors 35.5–45.5 days; M3 production 21–26 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning |
 
 ## 15. Development environment
+
+- Local cross-target checks (clippy for Linux / Windows from macOS) leave out the `sqlite` feature: bundled SQLite needs a C cross compiler. CI builds it natively on each OS.
 
 | Item | Value |
 |---|---|

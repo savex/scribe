@@ -1,6 +1,6 @@
 # scribe specification
 
-*Version 0.8 (draft), 2026-11-08: module framework implemented (phase 0b); section 7.4 records what was built and five refinements (7.4.9). 0.7: adds the module framework (section 7.4) with URL tracking as the first module and kernel metrics as the example of a later one. 0.6: security design carried into the daemon commands, API, run states, config keys, verification and open questions. 0.5: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
+*Version 0.9 (draft), 2026-11-22: SQLite backend implemented (phase 1). 0.8: module framework implemented (phase 0b); section 7.4 records what was built and five refinements (7.4.9). 0.7: adds the module framework (section 7.4) with URL tracking as the first module and kernel metrics as the example of a later one. 0.6: security design carried into the daemon commands, API, run states, config keys, verification and open questions. 0.5: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
 Built from [plan.md](plan.md), [diagram.md](diagram.md), [status.md](status.md) and the
 [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md). When they disagree,
 the code and the skill win; update this document in the same commit.
@@ -147,15 +147,15 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Planned | Scenario `hostname-unresolved`; fixture `doh` |
 | FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Planned | Fixture `http_plain`; module conformance |
 | FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Planned | Scenario `counters-exact`; storage conformance |
-| FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Stub | Storage conformance |
+| FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Implemented in the SQLite state store (Postgres in phase 12) | Storage conformance |
 | FR-11 | Support the modes `learn`, `caution` and `alert` with the behaviour in section 8 | Planned | Scenarios |
 | FR-12 | Support time-limited learn mode that switches to a chosen mode | Planned | Scenario `learn-auto-switch` |
-| FR-13 | Keep baselines per profile with learned / manual entries; add and remove entries | Stub | Storage conformance; scenarios |
+| FR-13 | Keep baselines per profile with learned / manual entries; add and remove entries | Partly (stored per profile with learned / manual entries in SQLite; removing entries and the policy use arrive in phases 4 and 10) | Storage conformance; scenarios |
 | FR-14 | Score unlisted hosts with the non-ordinary rules and report the reason | Planned | Caution scenarios |
 | FR-15 | Deduplicate alerts per host + process within a window; support acknowledging | Planned | Scenario `alert-dedupe-window` |
 | FR-16 | Deliver alerts as OS notifications, log entries and optional webhook calls | Planned | `RecordingAlertSink` in daemon tests |
-| FR-17 | Store state in exactly one state store and events in zero or more event sinks, each subscribed to event kinds | Partly (routing written, untested) / Stub (backends) | Storage conformance; manager tests (planned) |
-| FR-18 | Provide SQLite (default) and PostgreSQL (feature `postgres`) backends | Stub | Storage conformance; Tests workflow |
+| FR-17 | Store state in exactly one state store and events in zero or more event sinks, each subscribed to event kinds | Partly (routing tested, SQLite state store and sink implemented; per-sink tasks in phase 2) | Storage conformance; manager tests (planned) |
+| FR-18 | Provide SQLite (default) and PostgreSQL (feature `postgres`) backends | Partly (SQLite implemented and conformant; PostgreSQL in phase 12) | Storage conformance; Tests workflow |
 | FR-19 | Spool events when a sink fails and replay them in order; enforce per-sink retention | Planned | `FaultySink` tests (planned) |
 | FR-20 | Expose a local API for the CLI and UI, including runtime mode changes | Planned | API tests with `MockApiServer` (planned) |
 | FR-21 | Provide the CLI commands in section 6.2 | Partly (all commands parsed; only `version` works until the API exists) | `scribe-cli` unit and binary tests |
@@ -183,7 +183,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-3 | Memory | Daemon < 100 MB; the default cache (32 MiB) and buffer (32 MiB) budgets fit inside it | Proposed |
 | NFR-4 | Latency | Flow to database p99 < 1 s; sensor reports each flow within 1 s | Proposed (1 s sensor deadline is decided) |
 | NFR-5 | Stability | 24 h soak with flat memory, no handle leaks, empty spool | Proposed |
-| NFR-6 | Durability | Restart keeps hosts, counters, baselines and mode; sink outages lose no events within the spool cap | Planned |
+| NFR-6 | Durability | Restart keeps hosts, counters, baselines and mode; sink outages lose no events within the spool cap | Partly (hosts, counters, baselines and module state survive a restart in SQLite; mode and spool in phases 2 and 5)
 | NFR-7 | Isolation | A slow or failing sink never blocks capture or other sinks | Planned |
 | NFR-8 | Privileges | Runs as root / SYSTEM only as long as the sensor needs; drops privileges after start | Proposed |
 | NFR-9 | API access | Local socket / named pipe only; caller identity from the OS; read calls for the `scribe` group, control calls for root / Administrators and `scribe-admin`, all control calls audited; clients verify the server (sections 6.3, 12.1.1) | Proposed |
@@ -301,7 +301,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | macOS extension | `macos/ScribeExtension` | Network Extension + XPC bridge | — | Planned |
 | Storage API | `crates/storage-api` | `StateStore`, `EventSink`, `StorageFactory`, data model, errors | core | Implemented (interfaces) |
 | Storage manager | `crates/storage-manager` | Backend registry, routing to sinks; later host cache, batching, spool, retention | storage-api, backends | Partly (registry, routing) |
-| SQLite backend | `crates/storage-sqlite` | Default state store and event sink | storage-api | Stub (schema v1 done) |
+| SQLite backend | `crates/storage-sqlite` | Default state store and event sink | storage-api | Implemented (schemas v1–v2, both conformance suites)
 | PostgreSQL backend | `crates/storage-postgres` | Optional state store and event sink | storage-api | Stub (schema v1 done) |
 | Policy engine | `crates/policy` (`scribe-policy`), no I/O | Modes, scoring rules, dedupe, learn time limit | core, storage-api | Planned |
 | Alert outputs | `crates/alerts` (`scribe-alerts`) | OS notifications, log, webhook | core | Planned (interface exists) |
@@ -672,6 +672,21 @@ Released snapshots are never edited, so module support is a new schema version: 
 | `metrics` (new) | name, labels (JSON), value, timestamp; retention per sink like events |
 | `module_state` (new) | module id, key, JSON value, updated at |
 | `hosts.req_count` | kept for v1 compatibility, written from the URL module's state; dropped in a later version |
+
+### 10.4 SQLite backend (implemented in phase 1)
+
+| Item | Value |
+|---|---|
+| Library | `rusqlite` 0.43 with bundled SQLite (needs Rust 1.89, the current minimum) |
+| Connection | Opened on first use; WAL, `synchronous = NORMAL`, `busy_timeout` 5 s; calls are short and serialized per backend instance |
+| Migrations | Missing ones applied in order, each in its own transaction, recorded in `schema_migrations` and `user_version`; a database with a newer schema than the build is refused (`StorageError::Data`) |
+| Health | `Ok` at the latest schema, `Degraded` while a migration is pending, `Down` when the file can't be opened |
+| Hosts | One upsert per delta: counters added, `first_seen` / `last_seen` as min / max, `tls_seen` / `plaintext_seen` only turn on |
+| Lists | Hosts sorted by name, filter matched literally (`%` and `_` escaped); baselines sorted by host, re-adding keeps the first entry; IP expiries only extend |
+| Events | A batch is one transaction; flow, alert, audit and module records in `events`, metric samples in `metrics`; payload layout from `scribe_storage_api::codec` |
+| Queries | Both tables merged oldest first (then events before metrics, then insertion order); `since` inclusive, `until` exclusive; `total` counts all matches |
+| Old rows | Schema 1 flows (`url`, `request`) are read as `notes.url` and `payload` |
+| Files | `state.db` and `events.db` in `data_dir` by default; state and sink may share one file |
 
 ## 11. Platform support
 

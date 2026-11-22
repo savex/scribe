@@ -98,6 +98,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   filter by kind and time (`since` inclusive, `until` exclusive), page with a total, and read schema 1 rows and
   both snapshots. Both SQLite conformance suites now run; the storage manager publishes through SQLite end to end.
 
+- Phase 1 step 5: documents. Spec 0.9 adds 10.4 (SQLite backend) and updates FR-10, FR-13, FR-17, FR-18,
+  NFR-6; skill (schema version 2, row codec, SQLite settings, cross-check note), plan (phase 1 done, 98–123 days
+  left), status (91.7% product coverage), test approach and readme.
+
 ### Changed
 - Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
 

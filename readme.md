@@ -21,7 +21,7 @@ crates/
   sensor-pcap/          libpcap / Npcap fallback (all OSes)
   storage-api/          storage plugin traits: StateStore, EventSink, StorageFactory
   storage-manager/      backend registry, fan-out to sinks
-  storage-sqlite/       default backend
+  storage-sqlite/       default backend (implemented)
   storage-postgres/     PostgreSQL backend (feature `postgres`)
   storage-conformance/  shared test suite every backend must pass
   sensor-conformance/   shared test suite every sensor must pass + traffic generator
@@ -122,6 +122,6 @@ GitHub Release. Pushing a `v*` tag by hand starts **Release** too.
 
 ## Status
 
-Phases 0 and 0b are done: config, logging, daemon lifecycle, CLI parsing and the module framework
-with the URL module skeleton. Sensors, storage backends, the policy engine and the local API are
-not implemented yet. Details: `workfiles/status.md`.
+Phases 0, 0b and 1 are done: config, logging, daemon lifecycle, CLI parsing, the module framework
+with the URL module skeleton, and the SQLite backend (state and events). Sensors, the storage
+manager's batching and spool, Postgres, the policy engine and the local API are not implemented yet. Details: `workfiles/status.md`.
