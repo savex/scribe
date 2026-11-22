@@ -51,4 +51,4 @@ scribe-storage-conformance.workspace = true
 scribe-test-support.workspace = true
 clap.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

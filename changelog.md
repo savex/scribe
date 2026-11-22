@@ -79,6 +79,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Host and baseline cache (`storage.cache`): least recently used hosts evicted at the count or memory limit,
   writes update cached entries, `clear_cache` for reset. `Storage::health` gives the worst of state store and
   sinks (spooling or drops make a sink degraded).
+- Storage tests: SQLite in-memory conformance, a counter property test, four writers on one SQLite file, and an
+  integration test of the running storage (writers, spool, buffer, cache) over SQLite.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

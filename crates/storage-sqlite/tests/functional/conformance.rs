@@ -35,3 +35,20 @@ fn state_and_sink_can_share_a_file() {
         sink.schema_version().unwrap()
     );
 }
+
+/// `:memory:` gives each store its own private database, so the suites run without files.
+fn in_memory() -> HashMap<String, String> {
+    HashMap::from([("path".to_owned(), ":memory:".to_owned())])
+}
+
+#[test]
+fn sqlite_in_memory_state_store_conforms() {
+    let store = SqliteStore::from_options(&in_memory()).unwrap();
+    block_on(state_store_suite(&store));
+}
+
+#[test]
+fn sqlite_in_memory_event_sink_conforms() {
+    let sink = SqliteSink::from_options("memory", &in_memory()).unwrap();
+    block_on(event_sink_suite(&sink));
+}

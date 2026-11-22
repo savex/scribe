@@ -1,10 +1,11 @@
-//! Storage manager → SQLite, and released snapshots → migration → codec → readers.
+//! Storage manager → SQLite (direct and running), and released snapshots → migration → codec →
+//! readers.
 
 use scribe_storage_api::{
-    EventKind, EventQuery, EventSink, StateStore, StoredEvent, SCHEMA_VERSION,
+    EventKind, EventQuery, EventSink, Health, HostDelta, StateStore, StoredEvent, SCHEMA_VERSION,
 };
 use scribe_storage_conformance::block_on;
-use scribe_storage_manager::{Registry, StorageConfig, StorageManager};
+use scribe_storage_manager::{Registry, RunOptions, SpoolOptions, StorageConfig, StorageManager};
 use scribe_test_support::flow;
 use scribe_tests::{sqlite_sink, sqlite_snapshot, sqlite_store};
 
@@ -95,4 +96,58 @@ fn reads_the_v2_snapshot() {
         .items
         .iter()
         .any(|e| matches!(e, StoredEvent::Metric(m) if m.name == "url.requests")));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_running_storage_writes_through_to_sqlite() {
+    // Writer tasks, spool, outage buffer and cache in front of real SQLite files.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("scribe.db");
+    let config = StorageConfig::sqlite_default(path.to_str().unwrap());
+    let manager = StorageManager::from_config(&Registry::with_builtin(), &config).unwrap();
+    manager.migrate().await.unwrap();
+    let storage = manager.start(RunOptions {
+        spool: Some(SpoolOptions::new(dir.path().join("spool"), 1 << 20, 0)),
+        ..RunOptions::default()
+    });
+
+    // A current timestamp: the default sink keeps 30 days, and retention runs at start.
+    let flow = flow("192.0.2.10:443")
+        .host("api.example.com")
+        .tls()
+        .at(std::time::SystemTime::now())
+        .build();
+    storage.publish(&[StoredEvent::Flow(flow.clone())]);
+    storage
+        .state()
+        .upsert_host(&HostDelta {
+            name: "api.example.com".into(),
+            seen_at: flow.ts,
+            connections: 1,
+            requests: 0,
+            bytes_out: 512,
+            security: flow.security,
+        })
+        .await
+        .unwrap();
+    storage.flush().await;
+
+    let host = storage
+        .state()
+        .get_host("api.example.com")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!((host.conn_count, host.bytes_out), (1, 512));
+    let health = storage.health().await;
+    assert_eq!(health.overall, Health::Ok, "{health:?}");
+    let status = storage.sink_status()[0].clone();
+    assert_eq!((status.written, status.spool_events), (1, 0));
+    storage.shutdown().await;
+
+    // Everything is in the file: read it back with a fresh sink.
+    let sink = sqlite_sink("check", &path);
+    let page = sink.query(&EventQuery::default()).await.unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].kind(), EventKind::Flow);
 }
