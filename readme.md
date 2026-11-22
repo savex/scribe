@@ -176,8 +176,8 @@ Every setting is explained in [config/scribe.toml](config/scribe.toml).
 | Module framework and URL tracking | Done |
 | Local storage (SQLite), buffering and retention | Done |
 | Host names from TLS, QUIC, HTTP and DNS | Done |
-| Policy engine and alert rules | Next |
-| Connecting the sensor to the rest (live capture) | Planned |
+| Policy engine and alert rules | Done |
+| Connecting the sensor to the rest (live capture) | Next |
 | Sensors for Linux, Windows and macOS | Planned |
 | Command-line queries, alert outputs, PostgreSQL, installers | Planned |
 

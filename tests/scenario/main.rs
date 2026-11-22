@@ -130,3 +130,27 @@ fn a_wrong_expectation_fails() {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runner::run(&hosts))).is_err()
     );
 }
+
+/// SCN-26: unknown keys and bad times are refused with where they are.
+#[test]
+fn runner_rejects_bad_scenarios() {
+    let good = "name: x\ndescription: d\nmode: learn\nprofile: default\nevents:\n  - { at: 0s, dst: \"192.0.2.10:443\" }\nexpect: {}\n";
+    assert!(runner::parse(good).is_ok());
+    let typo = good.replace("profile:", "profle:");
+    let err = runner::parse(&typo).err().unwrap();
+    assert!(
+        err.contains("unknown field `profle`") && err.contains("line 4"),
+        "{err}"
+    );
+    let event_typo = good.replace("dst:", "dest:");
+    let err = runner::parse(&event_typo).err().unwrap();
+    assert!(
+        err.contains("unknown field `dest`") && err.contains("line 6"),
+        "{err}"
+    );
+    let bad_time = good.replace("at: 0s", "at: soon");
+    let err = runner::parse(&bad_time).err().unwrap();
+    assert!(err.contains("event 0: bad time \"soon\""), "{err}");
+    let bad_mode = good.replace("mode: learn", "mode: paranoid");
+    assert!(runner::parse(&bad_mode).err().unwrap().contains("line 3"));
+}

@@ -2,7 +2,8 @@
 
 Each file describes one isolated daemon test: the pipeline runs with `FakeSensor`,
 `MemoryStore`, `MemorySink`, `RecordingAlertSink` and `FakeClock`, plays `events`, and
-compares the final state with `expect`. The runner arrives with the policy engine (plan phase 4).
+compares the final state with `expect`. The runner is `tests/scenario` (one test per file); until the
+pipeline exists (plan phase 5) it plays events through `ModuleHost`, the policy engine and `MemoryStore`.
 
 ## Format
 
@@ -68,6 +69,7 @@ Reason ids used so far: `unlisted_host`, `raw_ip`, `unusual_port`, `high_entropy
 `plaintext`, `new_process`, `new_tld`, `threat_list`, `hibernated`, and module reasons such as
 `tag.large_head`.
 
-**Depends on later phases.** Request counters and URL notes need the URL module's parser (phase 3);
-the runner needs the policy engine (phase 4); `hibernate`, `wakeup` and `reset` need the daemon run
-states (phase 5). Scenarios that use them say so in their description.
+**Depends on later phases.** `hibernate`, `wakeup`, `reset`, `max_hibernate`, `run_state`, `runtime` and
+per-process counters (`processes`) need the daemon run states and counters (phase 5); the runner refuses
+them and their tests are ignored until then. `unresolved` is worked out by the runner (no host name, or an
+ECH outer name) until the state store keeps that flag.

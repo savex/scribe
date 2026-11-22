@@ -120,6 +120,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 4 step 4: scenario runner (`tests/scenario`, YAML via `serde_yaml_ng`): one test per scenario file,
   played through `ModuleHost`, `Policy` and `MemoryStore`; 16 of 19 pass, 3 wait for phase 5 run states and
   per-process counters (ignored with the reason).
+- Phase 4 step 5: the runner refuses bad scenario files with the line (SCN-26). Spec (rules settled in 8.3,
+  FR-11–15), skill, plan (phase 4 done, rate limits to phase 11), status (coverage 92.1%), test list, test
+  approach, scenario README and readme updated.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

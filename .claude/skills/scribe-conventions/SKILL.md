@@ -61,7 +61,11 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 - Scores of matching signals are added and capped at 100; caution alerts at `policy.threshold = 50`; the alert names the highest-scoring signal; 0 disables a signal.
 - Usual ports: TCP 22, 53, 80, 443, 465, 587, 853, 993, 995; UDP 53, 123, 443, 853, 5353.
 - Threat lists: none by default (fetching is outgoing traffic); local file or URL + `refresh`, formats `domains`, `hosts`, `ips`.
-- These values reproduce the four caution scenarios in `testdata/scenarios/`; keep them in sync.
+- These values reproduce the caution scenarios in `testdata/scenarios/`; keep them in sync.
+- Module signals: `[policy.scores] "<module>.<reason>" = 0–100`; the module must be enabled; unscored signals count 0.
+- Engine rules (specs 8.3, Implemented): scores only for unlisted hosts; `raw_ip` = no host name at all; caution prefers the top signal over `plaintext`, alert mode `unlisted_host` over `plaintext`; ties keep the table order, then module signals; baseline TLDs count as seen; dedupe window counts from the last alert; a repeat with new notes updates the earlier alert; acknowledged = silent for that host + process.
+- Threat lists: domains cover subdomains, `ips` takes CIDR, unreadable lines skipped and counted, an unreadable file stops `scribed`, `url` lists wait for phase 11.
+- Scenario runner: `tests/scenario` (`serde_yaml_ng`), `ModuleHost` + `Policy` + `MemoryStore`; scenarios needing run states or per-process counters are `#[ignore]`d until phase 5.
 
 ## 3. Language, toolchain and code conventions
 
@@ -115,7 +119,7 @@ Also `serde_json`, `rusqlite` 0.43 (bundled SQLite, phase 1); the storage manage
 | `scribe-storage-conformance` / `scribe-sensor-conformance` | lib | Shared test suites |
 | `scribe-test-support` | lib + bin | Test doubles, packet builders, `gen-fixtures` |
 | `scribe-tests` (`tests/`) | lib + test bins | Cross-crate smoke, integration and scenario tests; not published |
-| `scribe-policy` | lib (planned) | Modes, scoring rules, dedupe, learn time limit; no I/O |
+| `scribe-policy` | lib | `Policy::decide`: modes, scoring (built-in and module signals), threat lists, dedupe and acknowledgement, learn time limit; no I/O |
 | `scribe-alerts` | lib (planned) | OS notifications, log, webhook |
 | `scribe-module-api` | lib | `Module`, `FlowHook`, `Source`, manifest, context, notes, records, metric samples (section 9b) |
 | `scribe-module-url` | lib | URL tracking module, feature `url` of `scribe-daemon`, on by default |

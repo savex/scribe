@@ -107,26 +107,37 @@ pub struct ExpectedHost {
     pub unresolved: Option<bool>,
 }
 
-/// A duration such as `30s` or `61m`; offsets may be zero, which config durations refuse.
-fn duration(text: &str) -> Duration {
-    if text
-        .trim_start_matches('0')
-        .chars()
-        .next()
-        .is_none_or(|c| !c.is_ascii_digit())
-    {
-        return Duration::ZERO;
+/// An event time such as `0s`, `30s` or `61m` (config durations refuse zero; offsets don't).
+fn offset(text: &str) -> Option<Duration> {
+    let digits = text.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    if !digits.is_empty() && digits.bytes().all(|b| b == b'0') && digits.len() < text.len() {
+        return Some(Duration::ZERO);
     }
-    text.parse::<HumanDuration>()
-        .unwrap_or_else(|e| panic!("bad duration {text:?}: {e}"))
-        .get()
+    text.parse::<HumanDuration>().ok().map(HumanDuration::get)
+}
+
+fn duration(text: &str) -> Duration {
+    offset(text).unwrap_or_else(|| panic!("bad duration {text:?}"))
+}
+
+/// Parse scenario text; errors name the line and column. Event times are checked here too.
+pub fn parse(text: &str) -> Result<Scenario, String> {
+    let scenario: Scenario = serde_yaml_ng::from_str(text).map_err(|e| e.to_string())?;
+    for (i, e) in scenario.events.iter().enumerate() {
+        if offset(&e.at).is_none() {
+            return Err(format!(
+                "event {i}: bad time {:?}: use a duration such as 30s or 61m",
+                e.at
+            ));
+        }
+    }
+    Ok(scenario)
 }
 
 pub fn load(name: &str) -> Scenario {
     let path = scribe_tests::testdata(&format!("scenarios/{name}.yaml"));
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    let scenario: Scenario =
-        serde_yaml_ng::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let scenario = parse(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     assert_eq!(scenario.name, name, "name must match the file name");
     assert!(
         !scenario.description.trim().is_empty(),

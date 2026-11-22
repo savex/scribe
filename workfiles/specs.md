@@ -148,11 +148,11 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Implemented (request parser, all `query` modes including `hash`; wired to traffic in phase 5) | Fixture `http_plain`; module conformance |
 | FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Planned | Scenario `counters-exact`; storage conformance |
 | FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Implemented in the SQLite state store (Postgres in phase 12) | Storage conformance |
-| FR-11 | Support the modes `learn`, `caution` and `alert` with the behaviour in section 8 | Planned | Scenarios |
-| FR-12 | Support time-limited learn mode that switches to a chosen mode | Planned | Scenario `learn-auto-switch` |
-| FR-13 | Keep baselines per profile with learned / manual entries; add and remove entries | Partly (stored per profile with learned / manual entries in SQLite; removing entries and the policy use arrive in phases 4 and 10) | Storage conformance; scenarios |
-| FR-14 | Score unlisted hosts with the non-ordinary rules and report the reason | Planned | Caution scenarios |
-| FR-15 | Deduplicate alerts per host + process within a window; support acknowledging | Planned | Scenario `alert-dedupe-window` |
+| FR-11 | Support the modes `learn`, `caution` and `alert` with the behaviour in section 8 | Implemented (`scribe-policy`; fed by the pipeline in phase 5) | Scenarios |
+| FR-12 | Support time-limited learn mode that switches to a chosen mode | Implemented (pausing the timer while hibernating arrives with phase 5) | Scenario `learn-auto-switch` |
+| FR-13 | Keep baselines per profile with learned / manual entries; add and remove entries | Partly (stored per profile with learned / manual entries in SQLite; the policy adds and removes entries in memory; saving them and the commands arrive in phases 5 and 10) | Storage conformance; scenarios |
+| FR-14 | Score unlisted hosts with the non-ordinary rules and report the reason | Implemented (built-in and module signals, threat lists from files) | Caution scenarios |
+| FR-15 | Deduplicate alerts per host + process within a window; support acknowledging | Implemented in the engine (saving the alert state arrives in phase 5) | Scenario `alert-dedupe-window` |
 | FR-16 | Deliver alerts as OS notifications, log entries and optional webhook calls | Planned | `RecordingAlertSink` in daemon tests |
 | FR-17 | Store state in exactly one state store and events in zero or more event sinks, each subscribed to event kinds | Implemented (state store behind cache and outage buffer; sinks by subscribed kind through writer tasks) | Storage conformance; manager tests (planned) |
 | FR-18 | Provide SQLite (default) and PostgreSQL (feature `postgres`) backends | Partly (SQLite implemented and conformant; PostgreSQL in phase 12) | Storage conformance; Tests workflow |
@@ -304,7 +304,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | Storage manager | `crates/storage-manager` | Backend registry, routing to sinks; later host cache, batching, spool, retention | storage-api, backends | Implemented (registry, writer tasks, spool, outage buffer, host cache, health)
 | SQLite backend | `crates/storage-sqlite` | Default state store and event sink | storage-api | Implemented (schemas v1–v2, both conformance suites)
 | PostgreSQL backend | `crates/storage-postgres` | Optional state store and event sink | storage-api | Stub (schema v1 done) |
-| Policy engine | `crates/policy` (`scribe-policy`), no I/O | Modes, scoring rules, dedupe, learn time limit | core, storage-api | Planned |
+| Policy engine | `crates/policy` (`scribe-policy`), no I/O | Modes, scoring rules, threat lists, dedupe, learn time limit | core | Implemented (phase 4) |
 | Alert outputs | `crates/alerts` (`scribe-alerts`) | OS notifications, log, webhook | core | Planned (interface exists) |
 | Local API | `crates/api` (`scribe-api`, features `server` / `client`) + `proto/scribe/v1/api.proto` | gRPC service and client | core, storage-api | Planned |
 | Daemon | `crates/daemon` (`scribed`) | Wires everything; config, logging, service lifecycle | all of the above | Stub |
@@ -467,6 +467,15 @@ The default mode is `learn`. Hosts added to the baseline in learn mode stay list
 - **Scoring:** the scores of all matching signals are added and capped at 100. Caution mode alerts when the total reaches `policy.threshold` (default **50**), and the alert names the highest-scoring signal. A score of 0 disables a signal.
 - **Usual ports:** TCP 22, 53, 80, 443, 465, 587, 853, 993, 995; UDP 53, 123, 443, 853, 5353.
 - **Threat lists:** none by default, because fetching a list is itself outgoing traffic. Lists can be local files or URLs with a refresh interval, in `domains`, `hosts` or `ips` format.
+- **Rules settled in phase 4** (`scribe-policy`):
+  - Signals are scored for **unlisted** hosts only; a listed host never gets a score alert.
+  - `raw_ip` means the flow has no host name at all (no SNI, `Host`, sensor name or DNS answer). An ECH outer name counts as a name.
+  - Caution: a score alert (top signal) wins over `plaintext`; `plaintext` is used when the score stays below the threshold. Alert mode: `unlisted_host` wins over `plaintext`.
+  - Ties between signals keep this order: `raw_ip`, `unusual_port`, `high_entropy`, `new_tld`, `new_process`, `threat_list`, then module signals.
+  - The TLDs of baseline hosts count as seen; every judged flow adds its TLD and process to what has been seen, in every mode.
+  - The dedupe window counts from the **last alert**, not the last flow. A repeat inside the window that brings new notes (the URL of a later request) adds them to the earlier alert.
+  - Module signals score `[policy.scores] "<module>.<reason>"` (0–100, the module must be enabled); a signal with no score counts 0.
+  - Threat lists: a domain also covers its subdomains; `ips` takes addresses and CIDR networks; lines that can't be read are skipped and counted. A list file that can't be read stops `scribed`; `url` lists are downloaded from phase 11 on.
 - **Check against the scenarios:** an ordinary new host scores 25 (`new_process`) and stays quiet; the raw-IP case scores 60 + 30 + 25 and alerts as `raw_ip`; the random-looking domain scores 50 + 20 + 25 and alerts as `high_entropy`. This matches `caution-ordinary-new-host`, `caution-raw-ip`, `caution-high-entropy-domain` and `learn-auto-switch`.
 
 ### 8.4 Degraded operation
@@ -554,6 +563,7 @@ Loaded and checked by `crates/daemon/src/config/` (phase 0).
 | `[policy] dedupe_window` | duration | `10m` | Draft default |
 | `[policy] threshold` | 0–100 | `50` | Draft default |
 | `[policy.scores] raw_ip`, `unusual_port`, `high_entropy`, `new_tld`, `new_process`, `threat_list` | 0–100 | 60, 30, 50, 20, 25, 100 | Draft default |
+| `[policy.scores] "<module>.<reason>"` | 0–100, module enabled | none (unscored module signals count 0) | Implemented |
 | `[policy.usual_ports] tcp`, `udp` | port lists | section 8.3 | Draft default |
 | `[policy.entropy] min_label_length`, `min_bits_per_char` | integer, number | `10`, `3.5` | Draft default |
 | `[[policy.threat_lists]] name`, `path` or `url`, `format`, `refresh` | — | none | Draft default |
@@ -921,7 +931,7 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 | Area | Test assets | Ready |
 |---|---|---|
 | Parsing and enrichment (FR-3 – FR-8) | 14 pcap fixtures with expected flows (incl. a kept-alive connection), raw sensor samples, fuzz targets | Yes, except QUIC |
-| Policy and modes (FR-11 – FR-15) | 19 daemon scenarios (incl. hibernation, reset, acknowledge, module signals) with `FakeSensor`, `MemoryStore`, `FakeClock` | Yes (runner planned) |
+| Policy and modes (FR-11 – FR-15) | 19 daemon scenarios (incl. hibernation, reset, acknowledge, module signals) with `FakeSensor`, `MemoryStore`, `FakeClock` | Yes (runner in `tests/scenario`; 16 of 19 run, 3 need phase 5) |
 | Storage (FR-9, FR-10, FR-17 – FR-19) | Storage conformance suite, schema snapshots, `FaultySink` | Yes |
 | Capture (FR-1, FR-2) | Sensor conformance suite and traffic generator, draft raw records | Yes |
 | API and UI (FR-20) | Mock API scenarios | Partly |

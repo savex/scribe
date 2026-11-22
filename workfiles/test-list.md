@@ -94,8 +94,8 @@ Every test follows these rules; review checks them.
 
 ## 4. Time budget
 
-**Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`, after phase 3): 275 tests
-(272 run, 3 ignored) plus doc examples in 42 test binaries, **1.1 s** wall clock; no test reaches the
+**Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`, after phase 4): 325 tests
+(319 run, 6 ignored) plus doc examples in 44 test binaries, **1.2 s** wall clock; no test reaches the
 2 s warning. Before
 tagging, `cargo test` took 5 s, mostly in one test (`catches_every_fault`), now split into one test per
 fault with a shorter case for the slow-hook fault.
@@ -106,10 +106,10 @@ limit). Compile time is not included.
 | Tag | Tests now | Tests planned (M3) | Planned wall time | Per-test limit (warn / kill) |
 |---|---|---|---|---|
 | `smoke` | 13 | ~20 (+ 6 live) | ≤ 5 s | 2 s / 6 s |
-| `functional` | 254 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
+| `functional` | 282 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
 | `integration` | 8 | ~25 | ≤ 15 s | 5 s / 10 s |
-| `scenario` | 0 | 26 | ≤ 10 s | 5 s / 10 s |
-| **Total** | **275** | **~400** | **≤ 60 s** (limit 120 s) | |
+| `scenario` | 22 | 26 | ≤ 10 s | 5 s / 10 s |
+| **Total** | **325** | **~400** | **≤ 60 s** (limit 120 s) | |
 
 **How the budget holds:** runs are parallel, so wall time ≈ the longer of (total test time ÷ cores) and
 the slowest single test. With ~400 tests averaging under 0.5 s and no test over 10 s, a 4-core CI runner
@@ -262,11 +262,11 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 
 | ID | Test | Checks | Isolation | Time | Status |
 |---|---|---|---|---|---|
-| FUN-P01 | `each_signal_scores` | Every signal alone: raw IP, unusual port, entropy, new TLD, new process, threat list | In memory | < 10 ms | Phase 4 |
-| FUN-P02 | `scores_sum_cap_and_name_the_top_reason` | Sum, cap at 100, threshold 50, top reason | In memory | < 10 ms | Phase 4 |
-| FUN-P03 | `entropy_rule_boundaries` | Label length and bits-per-character limits | In memory | < 10 ms | Phase 4 |
-| FUN-P04 | `dedupe_and_acknowledge` | Window per host + process; acknowledged stays silent | `FakeClock` | < 10 ms | Phase 4 |
-| FUN-P05 | `learn_timer` | `learn_for` switch; paused while hibernating | `FakeClock` | < 10 ms | Phase 4 |
+| FUN-P01 | `signals::*` (6), `engine::threat_lists_match_names_and_ips`, `scores_of_zero_disable_signals_and_close_events_are_ignored` | Every signal alone: raw IP, unusual port, entropy, new TLD, new process, threat list; 0 disables | In memory | < 10 ms | Exists |
+| FUN-P02 | `engine::caution_mode_follows_the_table`, `spec_8_3_examples_score_as_documented`, `caution_prefers_the_score_reason_over_plaintext`, `alert_mode_alerts_on_unlisted_hosts_and_plaintext`, `module_signals_use_their_configured_score` | Sum, cap at 100, threshold 50, top reason, reason order, module scores | In memory | < 10 ms | Exists |
+| FUN-P03 | `signals::entropy_matches_hand_computed_values`, `random_looking_names_are_flagged_and_ordinary_ones_are_not`, `entropy_is_bounded_by_the_alphabet` | Label length and bits-per-character limits | In memory | < 10 ms | Exists |
+| FUN-P04 | `engine::alerts_repeat_once_per_window_per_host_and_process`, `acknowledged_alerts_stay_silent`, `a_repeat_with_new_notes_updates_the_earlier_alert` | Window per host + process from the last alert; acknowledged stays silent; notes added to the earlier alert | `FakeClock` | < 10 ms | Exists |
+| FUN-P05 | `engine::learn_ends_after_learn_for_and_switches_mode`, `a_mode_switch_applies_to_the_next_flow`; pause while hibernating in phase 5 | `learn_for` switch; mode change from the next flow | `FakeClock` | < 10 ms | Exists (pause: phase 5) |
 | FUN-A01 | `log_output_writes_alerts` | Alert log line format | Temp dir | < 10 ms | Phase 11 |
 | FUN-A02 | `webhook_signing_and_https` | HMAC test vectors, HTTPS only, no cross-host redirects (local test server) | Port `:0` | 50 ms | Phase 11 |
 | FUN-A03 | `notification_adapters` | OS notification calls through a fake OS interface | In memory | < 10 ms | Phase 11 |
@@ -304,39 +304,40 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 
 ### 5.4 Scenario
 
-One test per file in `testdata/scenarios/`, played by the scenario runner (phase 4; run-state actions
-need phase 5; request counts and URL notes work since phase 3). Each runs in-process with `FakeSensor`,
-`FakeClock`, a temporary SQLite state store, `MemorySink` and `RecordingAlertSink`; simulated time makes
-hour-long scenarios take milliseconds.
+One test per file in `testdata/scenarios/`, played by the scenario runner in `tests/scenario`. Until the
+pipeline exists (phase 5) it plays events through `ModuleHost`, `Policy` and `MemoryStore` with `FakeClock`;
+from phase 5 it uses the real pipeline with `FakeSensor`, a temporary SQLite state store, `MemorySink` and
+`RecordingAlertSink`. Simulated time makes hour-long scenarios take milliseconds. Guard tests:
+`every_scenario_file_has_a_test` and `a_wrong_expectation_fails`.
 
-| ID | Scenario file | Story | Time | Needs |
+| ID | Scenario file | Story | Time | Status |
 |---|---|---|---|---|
-| SCN-01 | `learn-adds-hosts-no-alerts` | Learn mode records everything, alerts on nothing | 20 ms | Phase 4 |
-| SCN-02 | `learn-auto-switch` | `learn_for` ends, caution starts alerting | 20 ms | Phase 4 |
-| SCN-03 | `mode-switch-via-api` | Mode change applies from the next flow | 20 ms | Phase 4 (API action) |
-| SCN-04 | `caution-ordinary-new-host` | Ordinary new host stays quiet | 20 ms | Phase 4 |
-| SCN-05 | `caution-raw-ip` | Raw IP alerts as `raw_ip` | 20 ms | Phase 4 |
-| SCN-06 | `caution-high-entropy-domain` | Random-looking domain alerts | 20 ms | Phase 4 |
-| SCN-07 | `caution-plaintext-known-host` | Plaintext to a listed host alerts with its URL | 20 ms | Phases 3, 4 |
-| SCN-08 | `caution-unusual-port-known-process` | 30 points stay quiet | 20 ms | Phase 4 |
-| SCN-09 | `caution-unusual-port-new-process` | 55 points alert | 20 ms | Phase 4 |
-| SCN-10 | `caution-new-tld-quiet` | 45 points stay quiet | 20 ms | Phase 4 |
-| SCN-11 | `caution-threat-list` | Threat list alerts at 100 | 20 ms | Phase 4 |
-| SCN-12 | `alert-unlisted-host` | Alert mode alerts on unlisted hosts only | 20 ms | Phase 4 |
-| SCN-13 | `alert-dedupe-window` | One alert per window per host + process | 20 ms | Phase 4 |
-| SCN-14 | `alert-acknowledged` | Acknowledged alert stays silent | 20 ms | Phase 4 |
-| SCN-15 | `counters-exact` | Exact counters per host and per process | 20 ms | Phases 3, 4 |
-| SCN-16 | `hostname-unresolved` | ECH and nameless flows tracked and flagged | 20 ms | Phases 3, 4 |
-| SCN-17 | `module-signal-scored` | A module signal lifts the score and names the alert | 20 ms | Phase 4 |
-| SCN-18 | `daemon-hibernate-capped` | Hibernation capped, alerting, recording nothing | 20 ms | Phase 5 |
-| SCN-19 | `daemon-wakeup-and-reset` | Wakeup resumes; reset keeps history | 20 ms | Phase 5 |
+| SCN-01 | `learn-adds-hosts-no-alerts` | Learn mode records everything, alerts on nothing | 20 ms | Exists |
+| SCN-02 | `learn-auto-switch` | `learn_for` ends, caution starts alerting | 20 ms | Exists |
+| SCN-03 | `mode-switch-via-api` | Mode change applies from the next flow | 20 ms | Exists |
+| SCN-04 | `caution-ordinary-new-host` | Ordinary new host stays quiet | 20 ms | Exists |
+| SCN-05 | `caution-raw-ip` | Raw IP alerts as `raw_ip` | 20 ms | Exists |
+| SCN-06 | `caution-high-entropy-domain` | Random-looking domain alerts | 20 ms | Exists |
+| SCN-07 | `caution-plaintext-known-host` | Plaintext to a listed host alerts with its URL | 20 ms | Exists |
+| SCN-08 | `caution-unusual-port-known-process` | 30 points stay quiet | 20 ms | Exists |
+| SCN-09 | `caution-unusual-port-new-process` | 55 points alert | 20 ms | Exists |
+| SCN-10 | `caution-new-tld-quiet` | 45 points stay quiet | 20 ms | Exists |
+| SCN-11 | `caution-threat-list` | Threat list alerts at 100 | 20 ms | Exists |
+| SCN-12 | `alert-unlisted-host` | Alert mode alerts on unlisted hosts only | 20 ms | Exists |
+| SCN-13 | `alert-dedupe-window` | One alert per window per host + process | 20 ms | Exists |
+| SCN-14 | `alert-acknowledged` | Acknowledged alert stays silent | 20 ms | Exists |
+| SCN-15 | `counters-exact` | Exact counters per host and per process | 20 ms | Ignored until phase 5 (per-process counters) |
+| SCN-16 | `hostname-unresolved` | ECH and nameless flows tracked and flagged | 20 ms | Exists |
+| SCN-17 | `module-signal-scored` | A module signal lifts the score and names the alert | 20 ms | Exists |
+| SCN-18 | `daemon-hibernate-capped` | Hibernation capped, alerting, recording nothing | 20 ms | Ignored until phase 5 |
+| SCN-19 | `daemon-wakeup-and-reset` | Wakeup resumes; reset keeps history | 20 ms | Ignored until phase 5 |
 | SCN-20 | `restart_keeps_state` (new file) | Hosts, counters, baseline and mode survive a daemon restart on the same SQLite files | 50 ms | Phase 5 |
 | SCN-21 | `storage_outage_and_replay` (new file) | State store down mid-run: buffer, drops counted, replay in order | 30 ms | Phases 2, 5 |
 | SCN-22 | `sink_outage_spools` (new file) | Event sink down: spool, then replay; other sinks unaffected | 30 ms | Phases 2, 5 |
 | SCN-23 | `module_panics_mid_run` (new file) | A test module panics; it is switched off, health degraded, the rest keeps going | 20 ms | Phase 5 |
 | SCN-24 | `config_reload_mid_run` (new file) | Policy scores changed by reload apply from the next flow | 20 ms | Phase 5 |
-| SCN-25 | `profiles_are_isolated` (new file) | A host learned in `work` is unlisted in `home` | 20 ms | Phase 4 |
-| SCN-26 | `runner_rejects_bad_scenarios` | The runner refuses unknown keys and bad times with the file and line | < 10 ms | Phase 4 |
+| SCN-25 | `profiles_are_isolated` (new file) | A host learned in `work` is unlisted in `home` | 20 ms | Phase 5 (switching profile reloads the baseline) |
+| SCN-26 | `runner_rejects_bad_scenarios` | The runner refuses unknown keys and bad times with the line (or event index) | < 10 ms | Exists |
 
 ## 6. Coverage of the test approach
 

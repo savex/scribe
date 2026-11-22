@@ -119,8 +119,10 @@ Run the real pipeline (ingest → enrichment → modules → counters → policy
 - `FakeClock` instead of system time
 - the real `ModuleHost` with the built-in modules, or test modules from `crates/test-support`
 
-Until the local API exists (phase 10), scenarios drive the pipeline in-process; the scenario runner arrives
-with the policy engine (phase 4) and the pipeline with phase 5. From phase 10 the same scenarios also run
+Until the local API exists (phase 10), scenarios drive the pipeline in-process. The scenario runner
+(`tests/scenario`, since phase 4) plays them through `ModuleHost`, the policy engine and `MemoryStore`; 16 of the 19
+run, and the 3 that need hibernation, reset, run states or per-process counters are ignored until the pipeline
+(phase 5) replaces this stand-in. From phase 10 the same scenarios also run
 through the real local API.
 
 **Scenario files:** each scenario is a YAML file in `testdata/scenarios/` (19 today; format in its README) containing:
@@ -250,7 +252,7 @@ Tags and layout in detail: [test-list.md](test-list.md) section 2.1.
 tests/                   crate scribe-tests: cross-crate tests, one binary per tag
   smoke/                 binaries start, shipped config, fixtures, schema / snapshots, storage opens
   integration/           daemon serve → storage, manager → SQLite, snapshots → migration → readers
-  scenario/              scenario runner (phase 4) over testdata/scenarios/
+  scenario/              scenario runner over testdata/scenarios/ (one test per file)
   support/               shared helpers; bin/ builds scribed / scribe for the smoke tests
   e2e/                   install / upgrade / uninstall scripts per OS
 crates/
@@ -267,7 +269,7 @@ fuzz/                    cargo-fuzz targets (tls_client_hello, http_request) and
 testdata/
   pcap/                  14 generated traffic fixtures with expected flows
   events/                raw eBPF / ETW / Network Extension records with expected observations (draft)
-  scenarios/             19 daemon YAML scenarios (runner in phase 4)
+  scenarios/             19 daemon YAML scenarios (16 run; 3 wait for phase 5)
   db/                    schema snapshots v1 and v2, seeds, build.sh
 ui/tests/                Vitest, Playwright, API mocks
 ```
