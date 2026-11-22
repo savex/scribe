@@ -1,80 +1,201 @@
 # scribe
 
-Cross-platform (macOS, Linux, Windows) tool that logs and tracks every outgoing
-connection from a host: which hosts and URLs are contacted, by which process,
-how often, and whether the traffic uses TLS.
+[![Tests](https://github.com/savex/scribe/actions/workflows/tests.yml/badge.svg)](https://github.com/savex/scribe/actions/workflows/tests.yml)
+[![Release](https://github.com/savex/scribe/actions/workflows/release.yml/badge.svg)](https://github.com/savex/scribe/actions/workflows/release.yml)
+[![Version tracking](https://github.com/savex/scribe/actions/workflows/version.yml/badge.svg)](https://github.com/savex/scribe/actions/workflows/version.yml)
+[![Fuzz](https://github.com/savex/scribe/actions/workflows/fuzz.yml/badge.svg)](https://github.com/savex/scribe/actions/workflows/fuzz.yml)
+![Rust 1.89+](https://img.shields.io/badge/rust-1.89%2B-orange.svg)
+![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)
 
-## Modes
+**scribe watches every connection your computer makes to the outside world.**
+It tells you which hosts are contacted, by which program, how often, and whether the traffic is encrypted.
+It learns what is normal for your machine and warns you when something new or unusual appears.
 
-- **learn** — record everything and build the list of known hosts; no alerts.
-- **caution** — alert on unknown hosts that look unusual, and on any non-TLS traffic.
-- **alert** — alert on every host or request that is not on the list.
+> **Status: preview.** The building blocks are ready and tested, but scribe does not capture live traffic yet.
+> See [Project status](#project-status).
 
-## Layout
+## Why use it
 
-```
-crates/
-  core/                 shared types: FlowEvent, Mode, Sensor trait
-  enrich/               host names from TLS SNI, HTTP Host, DNS answers and QUIC Initials; security detection
-  secrets/              secret references (file: now; OS key stores later) and key generation
-  sensor-linux/         eBPF sensor (Linux)
-  sensor-windows/       ETW sensor (Windows)
-  sensor-pcap/          libpcap / Npcap fallback (all OSes)
-  storage-api/          storage plugin traits: StateStore, EventSink, StorageFactory
-  storage-manager/      backend registry, writer per sink, spool, outage buffer, cache
-  storage-sqlite/       default backend (implemented)
-  storage-postgres/     PostgreSQL backend (feature `postgres`)
-  storage-conformance/  shared test suite every backend must pass
-  sensor-conformance/   shared test suite every sensor must pass + traffic generator
-  module-api/           interface for scribed modules (manifest, hooks, sources, outputs)
-  module-url/           URL tracking module (feature `url`, on by default)
-  module-conformance/   shared test suite every module must pass
-  test-support/         test doubles, packet builders, fixture generator
-  daemon/               `scribed` service
-  cli/                  `scribe` command line client
-macos/ScribeExtension/  Network Extension (Swift), planned
-ui/                     optional Tauri UI, planned (mock API scenarios in ui/tests)
-config/                 default configuration (scribe.toml, format v1 draft)
-testdata/               pcap fixtures, daemon scenarios, raw sensor records, schema snapshots
-fuzz/                   cargo-fuzz targets and seed corpus
-tests/                  cross-crate smoke, integration and scenario tests (crate scribe-tests)
-tests/e2e/              install / upgrade / uninstall tests per OS
-workfiles/              plan, diagrams, test approach, status, specification
-changelog.md            change history (Keep a Changelog format)
-.claude/skills/         scribe-conventions: agreed assumptions and config values
+- **See everything.** Every outgoing connection is recorded, including connections to bare IP addresses.
+- **Know who did it.** Each connection is linked to the program that opened it (with the native sensors).
+- **Spot surprises.** After a learning period, scribe alerts you about hosts it has never seen.
+- **Catch unencrypted traffic.** Plain HTTP and other unencrypted connections are flagged.
+- **Keep your data private.** scribe stores connection details only, never the content of your traffic.
+
+## How it works
+
+scribe has two programs:
+
+- **`scribed`** is a background service. It watches the network, records what it sees and raises alerts.
+- **`scribe`** is the command-line tool. You use it to look at the data and change settings.
+
+```mermaid
+flowchart LR
+    apps["Your programs"] -->|connect| os["Operating system"]
+    os --> sensor["Sensor<br/>sees each new connection"]
+    sensor --> enrich["Enrichment<br/>finds the host name"]
+    enrich --> modules["Modules<br/>add details, e.g. the URL"]
+    modules --> policy["Policy<br/>is this normal?"]
+    policy --> storage[("Storage<br/>SQLite or PostgreSQL")]
+    policy --> alerts["Alerts<br/>notification, log, webhook"]
+    cli["scribe CLI"] <-->|local API| storage
 ```
 
-Design decisions and config values are collected in
-[.claude/skills/scribe-conventions/SKILL.md](.claude/skills/scribe-conventions/SKILL.md);
-rules for AI assistants are in [CLAUDE.md](CLAUDE.md).
+### 1. The sensor sees a new connection
 
-## Build
+Each operating system has its own sensor. It reports the destination, the program and the first bytes the program sends.
+
+| System | Sensor | Knows the program? |
+|---|---|---|
+| Linux | eBPF | Yes |
+| Windows | ETW | Yes |
+| macOS | Network Extension | Yes |
+| Any of them | Packet capture (libpcap / Npcap) | No (fallback) |
+
+### 2. Enrichment finds the host name
+
+A connection starts with an IP address only. scribe looks for the real name in this order:
+
+```mermaid
+flowchart LR
+    a["TLS server name<br/>(HTTPS, QUIC)"] -->|not found| b["HTTP Host header"]
+    b -->|not found| c["Name from the sensor"]
+    c -->|not found| d["Recent DNS answer<br/>for this IP"]
+    d -->|not found| e["Keep the IP,<br/>mark it unresolved"]
+```
+
+It also notes how the traffic is protected: **TLS**, **QUIC** or **plaintext**.
+This is decided from the first bytes of the connection, never from the port number.
+Some sites hide their real name with Encrypted Client Hello (ECH).
+scribe then records the public name it can see and marks the connection as `ech`.
+
+### 3. Modules add details
+
+Modules are built-in features that you can switch on or off.
+The first one is **URL tracking**. It records the address of each plain HTTP request.
+More modules can be added later, for example kernel performance metrics.
+
+### 4. The policy decides if it is normal
+
+scribe keeps a list of known hosts, called the **baseline**. It works in one of three modes:
+
+| Mode | What happens |
+|---|---|
+| **learn** | Records everything and fills the baseline. No alerts. |
+| **caution** | Alerts on unknown hosts that look unusual, and on any unencrypted traffic. |
+| **alert** | Alerts on every host that is not in the baseline. |
+
+A typical setup learns for a week, then switches to caution by itself:
+
+```mermaid
+flowchart LR
+    learn["learn<br/>(e.g. 7 days)"] -->|automatic| caution["caution"]
+    caution -->|your choice| alert["alert"]
+```
+
+In caution mode, a host looks unusual when, for example, a program connects to a bare IP address,
+uses an uncommon port, or uses a random-looking name.
+
+### 5. Storage and alerts
+
+- Data is kept in a local **SQLite** database by default. **PostgreSQL** can collect data from many machines.
+- If storage is down for a while, scribe keeps the data on disk and sends it later.
+- Alerts go to **desktop notifications**, a **log file** or a **webhook**.
+  Repeated alerts for the same host are grouped, so you are not flooded.
+
+## Privacy
+
+- scribe never stores the content of your traffic. It stores who you talked to, when and how much.
+- For plain HTTP, URL values are hidden by default. You choose how much of a URL is kept:
+
+| Setting | `http://api.example.com/v1/users/1234?token=abc&lang=en` is stored as |
+|---|---|
+| `full` | `…/v1/users/1234?token=abc&lang=en` |
+| `redact_values` (default) | `…/v1/users/1234?token=<redacted>&lang=<redacted>` |
+| `strip` | `…/v1/users/1234` |
+| `path_only` | `…/v1/…` |
+| `hash` | `…/v1/users/1234?<hash:a41f9c>` (repeats can be matched, values cannot be read) |
+
+- User names and passwords inside URLs are always removed.
+- Data leaves the machine only if you set up a remote database or a webhook.
+- Passwords and keys are never written in the config file. The config points to a protected file
+  or, later, to the system key store.
+
+## Using scribe
+
+Install packages are not published yet. Until then, build from source (see [For developers](#for-developers)).
+
+Check your settings, then start the service:
 
 ```sh
-cargo build                       # SQLite backend only
-cargo build --features postgres   # add PostgreSQL
-cargo nextest run --workspace --all-features            # fast run (or: cargo test)
-cargo nextest run --workspace -E 'binary(smoke) | test(/(^|::)smoke::/)'  # one tag: smoke, functional, integration, scenario
-cargo run -p scribe-test-support --bin gen-fixtures   # regenerate testdata/pcap and fuzz seeds
+scribed --check-config                     # show the settings in use and exit
+scribed --config /etc/scribe/scribe.toml   # run until stopped
 ```
 
-See [workfiles/test-approach.md](workfiles/test-approach.md) for how testing is organised and
-[workfiles/test-list.md](workfiles/test-list.md) for the tagged test list and its time budget.
-
-## Running scribed
+Planned commands for daily use:
 
 ```sh
-cargo run --bin scribed -- --check-config                      # print the effective config and exit
-cargo run --bin scribed -- --config config/scribe.toml         # run until Ctrl-C / SIGTERM
-SCRIBE_LOG=debug cargo run --bin scribed -- --config my.toml   # more logging (RUST_LOG syntax)
+scribe status                       # is scribed running, and how busy is it?
+scribe hosts                        # hosts seen, with counters and flags
+scribe mode caution                 # switch mode
+scribe alerts                       # list alerts
+scribe baseline add example.com     # mark a host as known
+scribe daemon hibernate --for 30m   # pause processing for a while
 ```
 
-The config is found via `--config`, then `SCRIBE_CONFIG`, then the OS default
-(`/etc/scribe/scribe.toml`, `/Library/Application Support/scribe/scribe.toml`, or `scribe.toml`
-next to `scribed.exe`); with none, built-in defaults apply. The defaults keep data under
-`/var/lib/scribe` (or the macOS / Windows equivalent) and log to `/var/log/scribe`, which needs
-admin rights. For a local run, point `data_dir` at a folder you own and set `log.file = ""` to log
-to the terminal:
+### Configuration
+
+scribe reads one file, `scribe.toml`. An empty file is fine: every setting has a safe default.
+
+| System | Default location |
+|---|---|
+| Linux | `/etc/scribe/scribe.toml` |
+| macOS | `/Library/Application Support/scribe/scribe.toml` |
+| Windows | `scribe.toml` next to `scribed.exe` |
+
+A small example:
+
+```toml
+mode = "learn"
+
+[policy]
+learn_for = "7d"      # learn for a week ...
+then = "caution"      # ... then switch to caution
+
+[modules.url]
+query = "redact_values"
+```
+
+Every setting is explained in [config/scribe.toml](config/scribe.toml).
+
+## Project status
+
+| Part | State |
+|---|---|
+| Configuration, logging, service start and stop | Done |
+| Module framework and URL tracking | Done |
+| Local storage (SQLite), buffering and retention | Done |
+| Host names from TLS, QUIC, HTTP and DNS | Done |
+| Policy engine and alert rules | Next |
+| Connecting the sensor to the rest (live capture) | Planned |
+| Sensors for Linux, Windows and macOS | Planned |
+| Command-line queries, alert outputs, PostgreSQL, installers | Planned |
+
+Details: [workfiles/status.md](workfiles/status.md) and [workfiles/plan.md](workfiles/plan.md).
+Changes: [changelog.md](changelog.md).
+
+## For developers
+
+scribe is a Rust workspace (Rust 1.89 or newer).
+
+```sh
+cargo build                                           # SQLite storage only
+cargo build --features postgres                       # add PostgreSQL
+cargo nextest run --workspace --all-features          # all fast tests (or: cargo test)
+cargo run -p scribe-test-support --bin gen-fixtures   # regenerate test captures and fuzz seeds
+```
+
+For a local run, keep data in a folder you own and log to the terminal:
 
 ```toml
 data_dir = "/tmp/scribe"
@@ -82,51 +203,66 @@ data_dir = "/tmp/scribe"
 file = ""
 ```
 
-Exit codes: `0` success, `1` runtime failure, `2` usage or configuration error. Capture and
-storage aren't wired up yet; scribed starts, logs its settings, starts its modules and waits.
+```sh
+SCRIBE_LOG=debug cargo run --bin scribed -- --config my.toml
+```
 
-## Modules
+Exit codes: `0` success, `1` failure, `2` usage or configuration error.
 
-New functionality is added as a compiled-in module (`crates/module-*`, a Cargo feature of
-`scribe-daemon`) that implements `scribe_module_api::Module` and passes
-`scribe-module-conformance`. Modules attach notes to flows and emit their own records, metric
-samples and state; `[modules] enabled` picks which ones run, and each reads its own
-`[modules.<id>]` table. URL tracking (`url`, on by default) is the first; kernel metrics is the
-example of a later one. Design: `workfiles/specs.md` section 7.4.
+### Code layout
 
-## Versioning
+```
+crates/
+  core/                 shared types: flow events, modes, sensor interface, clock
+  enrich/               host names from TLS, HTTP, DNS and QUIC; security detection
+  secrets/              secret references and key generation
+  sensor-linux/         eBPF sensor (Linux)
+  sensor-windows/       ETW sensor (Windows)
+  sensor-pcap/          libpcap / Npcap fallback
+  storage-api/          storage interfaces
+  storage-manager/      writers, spool, outage buffer, cache
+  storage-sqlite/       default storage
+  storage-postgres/     PostgreSQL storage (feature `postgres`)
+  module-api/           interface for modules
+  module-url/           URL tracking module (feature `url`, on by default)
+  *-conformance/        test suites every storage backend, sensor and module must pass
+  test-support/         test helpers, packet builders, fixture generator
+  daemon/               the scribed service
+  cli/                  the scribe command
+macos/                  Network Extension (planned)
+ui/                     optional desktop app (planned)
+config/                 default configuration
+testdata/               sample captures, scenarios, database snapshots
+fuzz/                   fuzz targets and seeds
+tests/                  smoke, integration and scenario tests
+workfiles/              specification, plan, diagrams, test approach, status
+```
 
-Git tags are the source of truth: `vMAJOR.MINOR.PATCH`, optionally with a pre-release
-label (`v1.0.0-rc.1`). The workspace version in `Cargo.toml` always equals the latest
-release tag.
+To add a feature, write a module in `crates/module-*` that passes `scribe-module-conformance`
+(design: [workfiles/specs.md](workfiles/specs.md) section 7.4).
+How tests are organised: [workfiles/test-approach.md](workfiles/test-approach.md) and
+[workfiles/test-list.md](workfiles/test-list.md).
+Agreed decisions and config values: [.claude/skills/scribe-conventions/SKILL.md](.claude/skills/scribe-conventions/SKILL.md).
+Rules for AI assistants: [CLAUDE.md](CLAUDE.md).
 
-- `scribe --version` / `scribed --version` print the version from the nearest tag:
-  `1.2.0` on a tagged commit, `1.2.0+3.gabc1234` three commits later
-  (built by `crates/core/build.rs`; release builds set it from the tag).
-- [`scripts/version.sh`](scripts/version.sh) shows and checks versions
-  (`current`, `latest-tag`, `next minor rc.1`, `check`, ...).
+### Versions and releases
 
-To release, run the **Bump version** workflow (choose patch / minor / major, an optional
-pre-release label, or an explicit version). It commits `Release vX.Y.Z` to `main`, tags it
-and starts **Release**, which builds Linux, macOS and Windows binaries and publishes a
-GitHub Release. Pushing a `v*` tag by hand starts **Release** too.
+Versions come from git tags (`v1.2.0`, `v1.3.0-rc.1`). `scribe --version` shows the nearest tag,
+for example `1.2.0+3.gabc1234` three commits after `v1.2.0`.
+Use [`scripts/version.sh`](scripts/version.sh) to check versions.
 
-## CI workflows
+To release, run the **Bump version** workflow. It tags `main` and starts **Release**, which builds
+Linux, macOS and Windows binaries and publishes a GitHub Release.
 
-| Workflow | Trigger | What it does |
+### CI workflows
+
+| Workflow | Runs on | What it does |
 |---|---|---|
-| Release | push of a `v*` tag (or started by Bump version) | verify tag, test, build 4 targets, publish release |
-| Version tracking | every push to `main` | `Cargo.toml` vs tags, version report |
-| Bump version | manual | next version, commit, tag, start Release |
-| Tests | manual | fmt, clippy, minimum-Rust-version check, tests on 3 OSes, fixtures, SQLite / Postgres |
-| Sensor tests | manual | privileged sensor conformance on 3 OSes |
-| Fuzz | manual | cargo-fuzz on the parsers |
-| UI tests | manual | Vitest + Playwright against the mock API (skips until the UI exists) |
-| End-to-end | manual | install / modes / upgrade / uninstall from a release's packages |
-
-## Status
-
-Phases 0, 0b, 1, 2 and 3 are done: config, logging, daemon lifecycle, CLI parsing, the module framework,
-the SQLite backend, the storage manager (batching, spool, outage buffer, cache), and enrichment (SNI,
-`Host`, DNS, QUIC, ECH) with the URL module's parser and privacy rules. Sensors, the pipeline that
-connects them, Postgres, the policy engine and the local API are not implemented yet. Details: `workfiles/status.md`.
+| Tests | manual | Format, lint, minimum Rust version, tests on 3 systems, SQLite and PostgreSQL |
+| Release | `v*` tag | Verify, test, build, publish |
+| Version tracking | push to `main` | Checks `Cargo.toml` against tags |
+| Bump version | manual | Next version, tag, start Release |
+| Sensor tests | manual | Sensor suite with real privileges on 3 systems |
+| Fuzz | manual | Fuzzes the packet parsers |
+| UI tests | manual | Desktop app against a mock API |
+| End-to-end | manual | Install, modes, upgrade and uninstall from release packages |

@@ -107,6 +107,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   moved to phase 11), status (coverage 91.7%), test list, test approach and diagram updated.
 - Plan and status record the first green Tests workflow on GitHub (2026-11-22); risk 9 narrowed to the
   workflows that have not run yet.
+- Readme rewritten for users: what scribe does, how it works (diagrams), privacy, configuration, status,
+  CI badges; developer details moved to the end.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
