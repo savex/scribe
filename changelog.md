@@ -63,6 +63,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Test tags: every test sits in `smoke::`, `functional::` or `integration::` (`scenario::` when the runner lands).
 - `scripts/check-test-tags.sh` fails on untagged tests; it runs in the Tests workflow.
 - `cargo-nextest` with `.config/nextest.toml`: per-test time limits, a `ci` profile with JUnit output.
+- `scribe-tests` crate (`tests/`): smoke, integration and scenario test binaries, shared helpers, and test
+  builds of `scribed` / `scribe`.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
@@ -92,6 +94,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - `built_in_registry_has_sqlite` split into a smoke and an integration test; `catches_every_fault` into 7 tests.
 - The module suite's quiet panic hook is thread-local, so parallel tests keep their panic output.
 - `CLAUDE.md`: tag and isolation rules; nextest and the tag check before committing.
+- Test layout (hybrid): 13 smoke and 5 integration tests moved to `tests/`; each crate's tests now form one
+  `tests/functional/` binary; 51 source-file tests that use only public code moved there too. 49 tests that
+  need private code stay in `src/`.
+- Tag check reads `cargo nextest list`: a test's tag is its binary (`smoke`, `functional`, …) or its module.
+- Sensor tests workflow selects `traffic_generator::` and `sensors::` inside the `functional` binary.
 
 ### Deprecated
 - `privacy.url_query`. Use `[modules.url] query`. The old key still works, with a warning, for one minor version.

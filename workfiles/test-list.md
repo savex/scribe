@@ -26,42 +26,48 @@ Each test has exactly one tag.
 | `integration` | Data passing from one module or service to another: config → storage, module host → storage manager → SQLite, CLI → API → daemon | Real modules on both sides of the boundary; doubles only beyond them |
 | `scenario` | A full story through the pipeline: a scenario file from `testdata/scenarios/` played through sensor → enrichment → modules → policy → storage → alerts | Whole pipeline in-process with `FakeSensor`, `FakeClock`, `MemoryStore` / temporary SQLite, `RecordingAlertSink` |
 
-### 2.1 How a test carries its tag
+### 2.1 Where tests live and how they carry their tag
 
-Rust has no test tags, so the tag is the **module the test lives in**: `smoke::`, `functional::`,
-`integration::` or `scenario::`, in unit test modules and in `tests/*.rs` alike.
+Rust has no test tags, so the tag comes from **where the test lives** (layout option C, hybrid):
 
-```rust
-// crates/storage-sqlite/tests/sink.rs
-mod functional {
-    #[test]
-    fn a_bad_record_rolls_back_the_whole_batch() { /* ... */ }
-}
 ```
+tests/                         crate scribe-tests: tests that cross crates
+  Cargo.toml
+  smoke/        main.rs + binaries.rs, config.rs, fixtures.rs, schema.rs, storage.rs   → tag smoke
+  integration/  main.rs + daemon.rs, storage.rs                                       → tag integration
+  scenario/     main.rs (the scenario runner arrives in phase 4)                       → tag scenario
+  support/      lib.rs: shared helpers (paths, snapshots, SQLite stores, configs)
+  bin/          scribed-under-test, scribe-under-test: the real binaries, built here so the
+                smoke tests get CARGO_BIN_EXE_* (distinct names avoid clashing in target/)
+  e2e/          install / upgrade / uninstall scripts (not Rust)
+crates/<crate>/tests/functional/   main.rs + one file per area                         → tag functional
+crates/<crate>/src/…               #[cfg(test)] mod tests { mod functional { … } }    → tag functional
+```
+
+- **Test binaries named after a tag** (`smoke`, `integration`, `scenario`, each crate's `functional`)
+  give all their tests that tag; their own paths hold no tag module.
+- **Unit tests inside source files** are only those that need private code (49 today: the config table
+  in `daemon/src/config/tests.rs`, `config/load.rs`, `core/src/units.rs`, `core/src/platform.rs`,
+  `test-support/src/packets/net.rs`). They sit in exactly one tag module, e.g.
+  `units::tests::functional::parses_sizes`.
+- New functional tests go to the crate's `tests/functional/`; new smoke, integration and scenario
+  tests go to `tests/`.
 
 | Run | Command |
 |---|---|
 | Fast run (all tags) | `cargo nextest run --workspace --all-features` |
-| One tag | `cargo nextest run --workspace --all-features -E 'test(/(^|::)smoke::/)'` |
-| Without nextest | `cargo test --workspace --all-features -- smoke::` |
+| One tag | `cargo nextest run --workspace --all-features -E 'binary(smoke) \| test(/(^\|::)smoke::/)'` |
+| Cross-crate tests only | `cargo nextest run -p scribe-tests` |
+| One crate's functional tests | `cargo nextest run -p scribe-storage-sqlite` |
+| Without nextest | `cargo test -p scribe-tests --test smoke` |
 | Live smoke (phase 10) | `SCRIBE_SMOKE_SOCKET=/run/scribe/api.sock cargo nextest run -p scribe-live-smoke` |
 
-**Runner:** `cargo-nextest` (to be added to the Tests workflow and the local check). It runs each test in
-its own process, which makes isolation stronger (no shared panic hooks, statics or environment), shows
-per-test times, and enforces the time limits in `.config/nextest.toml`:
+**Runner:** `cargo-nextest` runs each test in its own process, which makes isolation stronger (no shared
+panic hooks, statics or environment), shows per-test times, and enforces the time limits in
+`.config/nextest.toml` (warn 2 s / kill 6 s; integration and scenario tests warn 5 s / kill 10 s).
 
-```toml
-[profile.default]
-slow-timeout = { period = "2s", terminate-after = 3 }   # warn at 2 s, kill at 6 s
-fail-fast = false
-
-[profile.default.overrides]
-filter = 'test(/(^|::)(scenario|integration)::/)'
-slow-timeout = { period = "5s", terminate-after = 2 }   # warn at 5 s, kill at 10 s
-```
-
-All existing tests sit in tag modules; `scripts/check-test-tags.sh` fails on any test without exactly one
-tag (doc examples are skipped; nextest doesn't run them, so the Tests workflow runs `cargo test --doc` too).
+`scripts/check-test-tags.sh` fails on any test without exactly one tag, by binary or module (doc examples
+are not listed; the Tests workflow runs `cargo test --doc` for them).
 
 ## 3. Isolation and parallel rules
 
@@ -89,7 +95,8 @@ Every test follows these rules; review checks them.
 ## 4. Time budget
 
 **Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`): 183 tests
-(180 run, 3 ignored) plus 1 doc example, **0.6 s** wall clock; no test reaches the 2 s warning. Before
+(180 run, 3 ignored) plus 1 doc example in 21 test binaries, **0.6 s** wall clock; no test reaches the
+2 s warning. Before
 tagging, `cargo test` took 5 s, mostly in one test (`catches_every_fault`), now split into one test per
 fault with a shorter case for the slow-hook fault.
 
@@ -120,15 +127,15 @@ Columns: **ID**, **test** (current name, or planned name), **checks**, **isolati
 
 | ID | Test | Checks | Isolation | Time | Status |
 |---|---|---|---|---|---|
-| SMK-01 | `prints_its_version` (scribed, scribe) | Both binaries start and print `<name> <version>` | Child process | 0.1 s | Exists (`daemon/tests/scribed.rs`, `cli/tests/scribe.rs`) |
+| SMK-01 | `scribed_prints_its_version`, `scribe_prints_its_version` | Both binaries start and print `<name> <version>` | Child process | 0.1 s | Exists (`tests/smoke/binaries.rs`) |
 | SMK-02 | `checks_the_shipped_config` | `scribed --check-config` accepts `config/scribe.toml`; URL module enabled | Child process, reads repo | 0.1 s | Exists |
 | SMK-03 | `shipped_file_equals_built_in_defaults` | Shipped config = built-in defaults | In memory | < 10 ms | Exists |
 | SMK-04 | `runs_until_sigterm_and_stops_cleanly` | `scribed` starts, creates and migrates `state.db` / `events.db`, starts the URL module, stops on SIGTERM with exit 0 | Temp dir, child process | 0.3 s | Exists (Unix) |
 | SMK-05 | `committed_fixtures_match_generator` | Committed fixtures and fuzz seeds match the generator | Reads repo | 0.1 s | Exists |
-| SMK-06 | `one_migration_per_schema_version`, `every_schema_version_has_a_snapshot` (SQLite, Postgres) | Migrations and snapshots match `SCHEMA_VERSION` | Reads repo | < 10 ms | Exists |
+| SMK-06 | `*_has_one_migration_per_schema_version`, `every_schema_version_has_a_*` (SQLite, Postgres; `tests/smoke/schema.rs`) | Migrations and snapshots match `SCHEMA_VERSION` | Reads repo | < 10 ms | Exists |
 | SMK-07 | `built_in_modules_match_their_manifests` | Every built-in module has a valid manifest | In memory | < 10 ms | Exists |
-| SMK-08 | `definition_is_valid` (CLI) | The `scribe` command tree is consistent | In memory | < 10 ms | Exists |
-| SMK-09 | `sqlite_opens_and_reports_healthy` | A new SQLite file migrates and reports `Health::Ok` | Temp dir | 20 ms | Exists (`storage-manager/tests/manager.rs`) |
+| SMK-08 | `cli_definition_is_valid` | The `scribe` command tree is consistent | In memory | < 10 ms | Exists |
+| SMK-09 | `sqlite_opens_and_reports_healthy` | A new SQLite file migrates and reports `Health::Ok` | Temp dir | 20 ms | Exists (`tests/smoke/storage.rs`) |
 | SMK-10 | `windows_service_starts_and_stops` | `scribed` runs as a service and stops on service stop | Child process | 1 s | Phase 5 (Windows) |
 | SMK-11 | `api_answers_health` | In-process daemon on a temp socket answers `Health` | Temp socket | 0.2 s | Phase 10 |
 | SMK-12 | `cli_reaches_daemon` | `scribe daemon health` against SMK-11's daemon exits 0 | Temp socket | 0.2 s | Phase 10 |
@@ -276,9 +283,9 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | ID | Test | From → to | Checks | Isolation | Time | Status |
 |---|---|---|---|---|---|---|
 | INT-01 | `manager_publishes_through_sqlite` | Storage manager → SQLite sink | Published events read back through the sink | Temp dir | 30 ms | Exists |
-| INT-02 | `serve_creates_folders_and_stops_on_shutdown` | Config → resolve → storage manager → backends | `serve()` builds storage from settings and shuts down | Temp dir | 30 ms | Exists (`app::tests`) |
+| INT-02 | `serve_creates_folders_and_stops_on_shutdown` | Config → resolve → storage manager → backends | `serve()` builds storage from settings and shuts down | Temp dir | 30 ms | Exists (`tests/integration/daemon.rs`) |
 | INT-03 | `reads_rows_written_by_schema_1`, `reads_the_v2_snapshot` | Snapshot → migration → codec → sink | Old rows readable after migration | Temp dir | 30 ms | Exists |
-| INT-04 | `released_snapshots_migrate_to_the_latest_schema` + state reads | Snapshot → migration → state store | Seeded hosts, baselines and module state readable after migration | Temp dir | 30 ms | Exists (extend with state reads) |
+| INT-04 | `released_snapshots_migrate_to_the_latest_schema` | Snapshot → migration → state store | Seeded hosts readable after migration | Temp dir | 30 ms | Exists (`tests/integration/storage.rs`) |
 | INT-05 | `module_output_reaches_storage` | Module host → output queue → storage manager → SQLite events and `module_state` | Records, metrics and state written | Temp dir, `FakeClock` | 50 ms | Phase 2 (with `TagModule`) |
 | INT-06 | `module_state_survives_restart` | SQLite `module_state` → module host start → module | Stored state handed back at start | Temp dir | 50 ms | Phase 2 |
 | INT-07 | `config_reload_reaches_modules` | Config reload → module host → module settings | Live keys applied, restart keys reported | Temp dir | 20 ms | Phase 5 |
@@ -346,7 +353,8 @@ hour-long scenarios take milliseconds.
 
 1. ~~Add `cargo-nextest` to the Tests workflow and the local check, with `.config/nextest.toml`.~~ Done;
    the Tests workflow runs smoke first, then the whole fast run, and fails it over 120 s.
-2. ~~Move existing tests into tag modules; split `built_in_registry_has_sqlite`.~~ Done.
+2. ~~Move existing tests into tag modules; split `built_in_registry_has_sqlite`.~~ Done; then moved to the
+   hybrid layout (section 2.1): `tests/` for smoke and integration, `tests/functional/` per crate.
 3. Isolation violations (section 3): panic hook fixed; Postgres schema per test (phase 12) and the debug
    hook budget remain.
 4. ~~Check that every test sits in a tag module.~~ Done: `scripts/check-test-tags.sh`, in the Tests workflow.

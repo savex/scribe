@@ -156,17 +156,6 @@ const BAD: &[(&str, &str, usize)] = &[
     ("mode = \n", "", 1),
 ];
 
-mod smoke {
-    use super::*;
-
-    // ─── Defaults ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn shipped_file_equals_built_in_defaults() {
-        assert_eq!(parse_ok(SHIPPED), Config::default());
-    }
-}
-
 mod functional {
     use super::*;
 

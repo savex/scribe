@@ -36,23 +36,23 @@ jobs:
       # TODO(windows): install Npcap silently (needs the Npcap OEM installer) for the pcap sensor.
 
       - name: Traffic generator (no privileges)
-        run: cargo test -p scribe-sensor-conformance --test traffic_generator --locked
+        run: "cargo test -p scribe-sensor-conformance --test functional --locked -- traffic_generator::"
 
       - name: Build privileged tests
         id: build
         shell: bash
         run: |
-          bin=$(cargo test -p scribe-sensor-conformance --test sensors --no-run --locked --message-format=json \
-            | jq -r 'select(.reason == "compiler-artifact" and .target.name == "sensors" and .executable != null) | .executable')
+          bin=$(cargo test -p scribe-sensor-conformance --test functional --no-run --locked --message-format=json \
+            | jq -r 'select(.reason == "compiler-artifact" and .target.name == "functional" and .executable != null) | .executable')
           echo "bin=$bin" >> "$GITHUB_OUTPUT"
 
       - name: Run privileged tests
         shell: bash
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            "${{ steps.build.outputs.bin }}" --ignored   # runner is already an administrator
+            "${{ steps.build.outputs.bin }}" --ignored sensors::   # runner is already an administrator
           else
-            sudo "${{ steps.build.outputs.bin }}" --ignored
+            sudo "${{ steps.build.outputs.bin }}" --ignored sensors::
           fi
 
   # TODO: Linux kernel matrix (5.8, 5.15, 6.1, latest) with virtme-ng once the eBPF sensor exists.

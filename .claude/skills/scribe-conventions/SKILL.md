@@ -113,6 +113,7 @@ Also `serde_json`, `rusqlite` 0.43 (bundled SQLite, phase 1).
 | `scribe-storage-postgres` | lib | Optional backend (feature `postgres`) |
 | `scribe-storage-conformance` / `scribe-sensor-conformance` | lib | Shared test suites |
 | `scribe-test-support` | lib + bin | Test doubles, packet builders, `gen-fixtures` |
+| `scribe-tests` (`tests/`) | lib + test bins | Cross-crate smoke, integration and scenario tests; not published |
 | `scribe-policy` | lib (planned) | Modes, scoring rules, dedupe, learn time limit; no I/O |
 | `scribe-alerts` | lib (planned) | OS notifications, log, webhook |
 | `scribe-module-api` | lib | `Module`, `FlowHook`, `Source`, manifest, context, notes, records, metric samples (section 9b) |
@@ -312,7 +313,7 @@ Notes:
 | Fuzz run time | 1800 s per target | Decided (workflow default) |
 | Linux kernel matrix | 5.8, 5.15, 6.1, latest (virtme-ng / lvh) | Proposed |
 | Coverage targets | ≥ 80% for `core`, `enrich`, `storage-*`, policy engine; ≥ 60% overall | Proposed |
-| Test tags | Every test in exactly one module `smoke::`, `functional::`, `integration::` or `scenario::`; checked by `scripts/check-test-tags.sh` (doc examples excluded); smoke changes nothing outside its temp dir, live smoke is read-only | Decided |
+| Test tags and layout | Smoke, integration, scenario: binaries of the `scribe-tests` crate (`tests/smoke`, `tests/integration`, `tests/scenario`, helpers in `tests/support`, `scribed-under-test` / `scribe-under-test` bins); functional: `crates/<crate>/tests/functional/`; unit tests in `src/` only for private code, under `mod functional`. `scripts/check-test-tags.sh` (nextest list) requires exactly one tag per test; smoke changes nothing outside its temp dir, live smoke is read-only | Decided |
 | Test runner | `cargo-nextest`, process per test; `.config/nextest.toml`: warn 2 s / kill 6 s, integration and scenario warn 5 s / kill 10 s; profile `ci` writes JUnit | Decided |
 | Isolation | Own temp dir, ports (`:0`), `FakeClock`, Postgres schema per test; no `set_var`, no global panic hook swaps (thread-local quiet hook in the module suite) | Decided |
 | Fast run budget | Planned ≤ 60 s, hard limit 120 s (100% contingency) after the build; the Tests workflow fails over 120 s; 0.6 s today (183 tests) | Decided |

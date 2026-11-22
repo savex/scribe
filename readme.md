@@ -36,6 +36,7 @@ ui/                     optional Tauri UI, planned (mock API scenarios in ui/tes
 config/                 default configuration (scribe.toml, format v1 draft)
 testdata/               pcap fixtures, daemon scenarios, raw sensor records, schema snapshots
 fuzz/                   cargo-fuzz targets and seed corpus
+tests/                  cross-crate smoke, integration and scenario tests (crate scribe-tests)
 tests/e2e/              install / upgrade / uninstall tests per OS
 workfiles/              plan, diagrams, test approach, status, specification
 changelog.md            change history (Keep a Changelog format)
@@ -52,7 +53,7 @@ rules for AI assistants are in [CLAUDE.md](CLAUDE.md).
 cargo build                       # SQLite backend only
 cargo build --features postgres   # add PostgreSQL
 cargo nextest run --workspace --all-features            # fast run (or: cargo test)
-cargo nextest run --workspace -E 'test(/(^|::)smoke::/)'  # one tag: smoke, functional, integration, scenario
+cargo nextest run --workspace -E 'binary(smoke) | test(/(^|::)smoke::/)'  # one tag: smoke, functional, integration, scenario
 cargo run -p scribe-test-support --bin gen-fixtures   # regenerate testdata/pcap and fuzz seeds
 ```
 

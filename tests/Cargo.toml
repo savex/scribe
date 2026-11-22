@@ -1,0 +1,54 @@
+[package]
+name = "scribe-tests"
+description = "Cross-crate smoke, integration and scenario tests (workfiles/test-list.md)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+autobins = false
+autotests = false
+autoexamples = false
+autobenches = false
+
+# Shared helpers for the test binaries below.
+[lib]
+path = "support/lib.rs"
+
+# The real scribed and scribe, built inside this package so their tests get CARGO_BIN_EXE_*.
+# Distinct names avoid clashing with the real binaries in target/.
+[[bin]]
+name = "scribed-under-test"
+path = "bin/scribed.rs"
+
+[[bin]]
+name = "scribe-under-test"
+path = "bin/scribe.rs"
+
+# One test binary per tag; the binary name is the tag.
+[[test]]
+name = "smoke"
+path = "smoke/main.rs"
+
+[[test]]
+name = "integration"
+path = "integration/main.rs"
+
+[[test]]
+name = "scenario"
+path = "scenario/main.rs"
+
+[dependencies]
+scribe-daemon.workspace = true
+scribe-cli.workspace = true
+scribe-storage-api.workspace = true
+scribe-storage-sqlite.workspace = true
+
+[dev-dependencies]
+scribe-core.workspace = true
+scribe-storage-manager = { workspace = true, features = ["sqlite"] }
+scribe-storage-postgres.workspace = true
+scribe-storage-conformance.workspace = true
+scribe-test-support.workspace = true
+clap.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }

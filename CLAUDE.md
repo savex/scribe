@@ -17,9 +17,11 @@ commit when a decision changes.
   `changelog.md` under **Unreleased**.
 - Before committing: `cargo fmt --all`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`,
   `cargo nextest run --workspace --all-features` (or `cargo test`), `scripts/check-test-tags.sh`.
-- Every test sits in exactly one tag module: `smoke::`, `functional::`, `integration::` or `scenario::`, and
-  follows the isolation rules in `workfiles/test-list.md` (own temp dir, ports, clock; no global state).
-  The fast run must stay under 120 s.
+- Every test has exactly one tag (`workfiles/test-list.md` 2.1): smoke, integration and scenario tests go in
+  the `scribe-tests` crate (`tests/smoke`, `tests/integration`, `tests/scenario`); functional tests in the
+  crate's `tests/functional/`; only tests that need private code stay in `src/` under `mod functional`.
+  Tests follow the isolation rules there (own temp dir, ports, clock; no global state). The fast run must
+  stay under 120 s.
 - `testdata/pcap/` and `fuzz/corpus/` are generated: edit `crates/test-support/src/fixtures.rs` and run
   `cargo run -p scribe-test-support --bin gen-fixtures`. Never edit them by hand.
 - Released schema snapshots in `testdata/db/` are never edited; add a new version instead (`testdata/db/build.sh`).

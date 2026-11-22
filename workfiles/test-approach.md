@@ -243,19 +243,25 @@ instead. Only the Tests workflow, running natively on each OS, builds SQLite the
 
 ## 13. Test layout in the repo
 
+Tags and layout in detail: [test-list.md](test-list.md) section 2.1.
+
 ```
+tests/                   crate scribe-tests: cross-crate tests, one binary per tag
+  smoke/                 binaries start, shipped config, fixtures, schema / snapshots, storage opens
+  integration/           daemon serve → storage, manager → SQLite, snapshots → migration → readers
+  scenario/              scenario runner (phase 4) over testdata/scenarios/
+  support/               shared helpers; bin/ builds scribed / scribe for the smoke tests
+  e2e/                   install / upgrade / uninstall scripts per OS
 crates/
+  <crate>/tests/functional/  each crate's functional tests (one binary per crate)
+  <crate>/src/           unit tests only where private code is needed (config table, units,
+                         platform, packet checksums)
   test-support/          FakeSensor, flow() builder, FakeClock, MemoryStore / MemorySink, FaultySink,
                          RecordingAlertSink, module doubles, RecordingEmitter, packet builders,
-                         gen-fixtures; planned: MockApiServer, scenario runner
+                         gen-fixtures; planned: MockApiServer
   storage-conformance/   storage contract suite (with module data)
   sensor-conformance/    sensor contract suite + traffic generator
   module-conformance/    module contract suite (+ tests proving it catches faults)
-  storage-sqlite/tests/  conformance, schema / migrations, state, sink
-  storage-manager/tests/ registry, routing, SQLite end to end
-  daemon/tests/          scribed binary, module host
-  daemon/src/config/     config tests (bad-config table)
-  */tests/, src/         other isolated and unit tests per crate
 fuzz/                    cargo-fuzz targets (tls_client_hello, http_request) and generated corpus
 testdata/
   pcap/                  14 generated traffic fixtures with expected flows
@@ -263,5 +269,4 @@ testdata/
   scenarios/             19 daemon YAML scenarios (runner in phase 4)
   db/                    schema snapshots v1 and v2, seeds, build.sh
 ui/tests/                Vitest, Playwright, API mocks
-tests/e2e/               install / upgrade / uninstall scripts per OS
 ```

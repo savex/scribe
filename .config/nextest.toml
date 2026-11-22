@@ -1,6 +1,8 @@
 # cargo-nextest settings for the fast run (workfiles/test-list.md).
-# Each test runs in its own process; tags are the module a test sits in:
-#   cargo nextest run --workspace --all-features -E 'test(/(^|::)smoke::/)'
+# Each test runs in its own process; a test's tag is its test binary or its tag module:
+#   cargo nextest run --workspace --all-features -E 'binary(smoke) | test(/(^|::)smoke::/)'
+# Smoke, integration and scenario tests are test binaries of the scribe-tests crate (tests/);
+# functional tests are each crate's tests/functional binary, plus unit tests in functional:: modules.
 
 [profile.default]
 # Functional and smoke tests: warn at 2 s, kill at 6 s.
@@ -11,7 +13,7 @@ final-status-level = "slow"
 
 [[profile.default.overrides]]
 # Integration and scenario tests: warn at 5 s, kill at 10 s.
-filter = 'test(/(^|::)(integration|scenario)::/)'
+filter = 'binary(integration) | binary(scenario) | test(/(^|::)(integration|scenario)::/)'
 slow-timeout = { period = "5s", terminate-after = 2 }
 
 [profile.ci]
@@ -19,7 +21,7 @@ fail-fast = false
 slow-timeout = { period = "2s", terminate-after = 3 }
 
 [[profile.ci.overrides]]
-filter = 'test(/(^|::)(integration|scenario)::/)'
+filter = 'binary(integration) | binary(scenario) | test(/(^|::)(integration|scenario)::/)'
 slow-timeout = { period = "5s", terminate-after = 2 }
 
 [profile.ci.junit]

@@ -39,6 +39,7 @@ jobs:
         run: cargo run -q -p scribe-test-support --bin gen-fixtures -- --check
       - name: Version consistency
         run: scripts/version.sh check
+      - uses: taiki-e/install-action@nextest
       - name: Every test has one tag (smoke / functional / integration / scenario)
         run: scripts/check-test-tags.sh
 
@@ -75,7 +76,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
       - name: Smoke tests
-        run: cargo nextest run --workspace --all-features --locked --profile ci -E 'test(/(^|::)smoke::/)'
+        run: cargo nextest run --workspace --all-features --locked --profile ci -E 'binary(smoke) | test(/(^|::)smoke::/)'
       - name: Fast run (all tags, budget 60 s, limit 120 s)
         shell: bash
         run: |

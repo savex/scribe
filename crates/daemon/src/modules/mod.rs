@@ -58,37 +58,3 @@ pub fn builtin() -> Vec<ModuleSpec> {
     });
     specs
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    mod smoke {
-        use super::*;
-
-        #[test]
-        fn built_in_modules_match_their_manifests() {
-            for spec in builtin() {
-                let module = (spec.make)();
-                assert_eq!(module.manifest().id, spec.id);
-                module.manifest().validate().unwrap();
-            }
-            assert_eq!(
-                format!("{:?}", builtin().first().map(|s| s.id)),
-                format!("{:?}", cfg!(feature = "url").then_some("url"))
-            );
-        }
-    }
-
-    mod functional {
-        use super::*;
-
-        #[cfg(feature = "url")]
-        #[test]
-        fn url_module_declares_its_record_kind() {
-            let url = builtin().into_iter().find(|s| s.id == "url").unwrap();
-            assert_eq!(url.record_kinds(), ["url.request"]);
-            assert!(format!("{url:?}").contains("url"));
-        }
-    }
-}
