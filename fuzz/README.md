@@ -6,10 +6,10 @@ locally (commit only minimized crash reproducers, as new fixtures).
 
 | Target | Function |
 |---|---|
-| `tls_client_hello` | `scribe_enrich::tls::{detect_security, parse_sni}` |
+| `tls_client_hello` | `scribe_enrich::tls::{detect_security, parse_sni, parse_client_hello}` |
+| `dns_message` | `scribe_enrich::dns::parse_response` and `DnsCache::observe` |
+| `quic_initial` | `scribe_enrich::quic::{decrypt_initial, crypto_frames, InitialReassembler}`; input is datagrams with a 2-byte length prefix each |
 | `http_request` | `scribe_module_url::parse::request_url` (URL module) |
-
-Planned: `dns_message` (DNS answer parser), `quic_initial` (QUIC Initial SNI) once those parsers exist.
 
 ```sh
 cargo install cargo-fuzz

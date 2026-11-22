@@ -26,6 +26,20 @@ doc = false
 bench = false
 
 [[bin]]
+name = "dns_message"
+path = "fuzz_targets/dns_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "quic_initial"
+path = "fuzz_targets/quic_initial.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "http_request"
 path = "fuzz_targets/http_request.rs"
 test = false

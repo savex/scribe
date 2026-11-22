@@ -203,3 +203,45 @@ fn quic_fixtures_name_their_flows() {
         .unwrap();
     assert_eq!(split.frames.len(), 3);
 }
+
+/// Every fuzz seed runs through its parser here, so the corpus stays meaningful between fuzz runs.
+#[test]
+fn fuzz_seeds_reach_the_parsers() {
+    use scribe_enrich::dns::{parse_response, DnsError};
+    use scribe_test_support::fixtures::fuzz_seeds;
+    let seeds = fuzz_seeds();
+    let seed = |target: &str, name: &str| {
+        seeds
+            .iter()
+            .find(|(t, n, _)| *t == target && *n == name)
+            .map(|(_, _, bytes)| bytes.clone())
+            .unwrap()
+    };
+    assert_eq!(
+        parse_response(&seed("dns_message", "pointer_loop")),
+        Err(DnsError::Malformed)
+    );
+    assert_eq!(
+        parse_response(&seed("dns_message", "query")),
+        Err(DnsError::NotResponse)
+    );
+    assert_eq!(
+        parse_response(&seed("dns_message", "cname_chain"))
+            .unwrap()
+            .answers
+            .len(),
+        2
+    );
+    for name in ["rfc9001", "rfc9369", "split_hello"] {
+        let input = seed("quic_initial", name);
+        let mut r = InitialReassembler::default();
+        let mut rest = &input[..];
+        let mut last = Progress::NeedMore;
+        while rest.len() >= 2 {
+            let n = usize::from(u16::from_be_bytes([rest[0], rest[1]]));
+            last = r.push(&rest[2..2 + n]);
+            rest = &rest[2 + n..];
+        }
+        assert!(matches!(last, Progress::Hello(_)), "{name}: {last:?}");
+    }
+}

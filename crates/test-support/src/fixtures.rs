@@ -460,7 +460,103 @@ pub fn fuzz_seeds() -> Vec<(&'static str, &'static str, Vec<u8>)> {
             b"GET / HTTP/1.0\r\n\r\n".to_vec(),
         ),
         ("http_request", "binary", b"\x00\x01\x02\xff".to_vec()),
+        (
+            "dns_message",
+            "a",
+            dns::response(
+                1,
+                "seed.example.com",
+                dns::TYPE_A,
+                &[Answer::A("seed.example.com", "192.0.2.1".parse().unwrap())],
+                300,
+            ),
+        ),
+        ("dns_message", "cname_chain", dns_cname_chain()),
+        (
+            "dns_message",
+            "aaaa",
+            dns::response(
+                3,
+                "v6.example.com",
+                dns::TYPE_AAAA,
+                &[Answer::Aaaa(
+                    "v6.example.com",
+                    "2001:db8::1".parse().unwrap(),
+                )],
+                300,
+            ),
+        ),
+        (
+            "dns_message",
+            "query",
+            dns::query(4, "seed.example.com", dns::TYPE_A),
+        ),
+        ("dns_message", "pointer_loop", dns_pointer_loop()),
+        ("dns_message", "truncated", dns_cname_chain()[..20].to_vec()),
+        (
+            "quic_initial",
+            "rfc9001",
+            length_prefixed(&[quic::hex(quic::RFC9001_CLIENT_INITIAL)]),
+        ),
+        (
+            "quic_initial",
+            "rfc9369",
+            length_prefixed(&[quic::hex(quic::RFC9369_CLIENT_INITIAL)]),
+        ),
+        (
+            "quic_initial",
+            "split_hello",
+            length_prefixed(&quic::client_initials(
+                &[0x53; 8],
+                &quic_hello("seed.example.com"),
+                60,
+            )),
+        ),
+        ("quic_initial", "frames", quic::hex(quic::RFC_CRYPTO_FRAME)),
+        (
+            "quic_initial",
+            "short_header",
+            length_prefixed(&[b"\x40\x01\x02\x03".to_vec()]),
+        ),
     ]
+}
+
+fn dns_cname_chain() -> Vec<u8> {
+    dns::response(
+        2,
+        "cdn.example.com",
+        dns::TYPE_A,
+        &[
+            Answer::Cname("cdn.example.com", "edge.example.net"),
+            Answer::A("edge.example.net", "192.0.2.2".parse().unwrap()),
+        ],
+        300,
+    )
+}
+
+/// A response whose answer name points at itself: the parser must stop, not loop.
+fn dns_pointer_loop() -> Vec<u8> {
+    let mut msg = dns::response(
+        5,
+        "loop.example.com",
+        dns::TYPE_A,
+        &[Answer::A("loop.example.com", "192.0.2.5".parse().unwrap())],
+        300,
+    );
+    let at = 12 + "loop.example.com".len() + 2 + 4; // header + question name + type/class
+    msg[at] = 0xc0;
+    msg[at + 1] = at as u8;
+    msg
+}
+
+/// Datagrams joined with a 2-byte length before each (the `quic_initial` fuzz input format).
+fn length_prefixed(datagrams: &[Vec<u8>]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for d in datagrams {
+        out.extend((d.len() as u16).to_be_bytes());
+        out.extend(d);
+    }
+    out
 }
 
 /// Every generated file as (path relative to repo root, contents).

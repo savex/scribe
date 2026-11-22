@@ -100,6 +100,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 3 step 6: QUIC Initial decryption with `ring` (v1 and v2, header protection, AES-128-GCM, CRYPTO
   frame reassembly across packets); the enricher turns UDP flows with a client Initial into named QUIC flows.
   Checked against the RFC 9001 and RFC 9369 sample packets. Fixtures `quic_initial`, `quic_split_hello`.
+- Phase 3 step 7: fuzz targets `dns_message` and `quic_initial` (plus `parse_client_hello` in `tls_client_hello`),
+  their seeds in `fixtures.rs`, and a test that runs the seeds through the parsers. Fuzz workflow lists all four.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

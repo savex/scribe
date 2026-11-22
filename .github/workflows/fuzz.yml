@@ -7,7 +7,7 @@ on:
       target:
         description: "Fuzz target"
         type: choice
-        options: [all, tls_client_hello, http_request]
+        options: [all, tls_client_hello, dns_message, quic_initial, http_request]
         default: all
       seconds:
         description: "Run time per target in seconds"
@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ fromJSON(inputs.target == 'all' && '["tls_client_hello","http_request"]' || format('["{0}"]', inputs.target)) }}
+        target: ${{ fromJSON(inputs.target == 'all' && '["tls_client_hello","dns_message","quic_initial","http_request"]' || format('["{0}"]', inputs.target)) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
