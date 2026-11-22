@@ -298,10 +298,15 @@ fn built_in_registry_has_sqlite() {
     let manager = StorageManager::from_config(&registry, &config).unwrap();
     block_on(manager.migrate()).unwrap();
     assert!(path.is_file());
-    assert_eq!(
-        block_on(manager.state().health()),
-        scribe_storage_api::Health::Ok
-    );
+    assert_eq!(block_on(manager.state().health()), Health::Ok);
+
+    // Published events reach the SQLite sink and read back.
+    let event = StoredEvent::Flow(flow("192.0.2.10:443").host("api.example.com").tls().build());
+    block_on(manager.publish(&[event])).unwrap();
+    let sink = manager.sinks().next().unwrap();
+    let page = block_on(sink.query(&EventQuery::default())).unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].kind(), EventKind::Flow);
 }
 
 #[test]

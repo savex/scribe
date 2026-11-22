@@ -17,7 +17,6 @@ fn sqlite_state_store_conforms() {
 }
 
 #[test]
-#[ignore = "sqlite event sink lands in the next step"]
 fn sqlite_event_sink_conforms() {
     let dir = tempfile::tempdir().unwrap();
     let sink = SqliteSink::from_options("test", &options(dir.path(), "events.db")).unwrap();

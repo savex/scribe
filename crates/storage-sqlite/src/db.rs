@@ -55,6 +55,16 @@ impl Db {
         f(guard.as_mut().expect("opened above")).map_err(backend)
     }
 
+    /// Like [`Db::with`] for work that reports its own errors.
+    pub(crate) fn with_result<T>(&self, f: impl FnOnce(&mut Connection) -> Result<T>) -> Result<T> {
+        let mut out = None;
+        self.with(|c| {
+            out = Some(f(c));
+            Ok(())
+        })?;
+        out.expect("set above")
+    }
+
     /// The highest applied migration, 0 for an empty database.
     pub(crate) fn version(&self) -> Result<u32> {
         self.with(|c| current_version(c))

@@ -5,6 +5,7 @@
 //! in WAL mode.
 
 mod db;
+mod sink;
 mod state;
 
 use std::net::IpAddr;
@@ -17,9 +18,9 @@ use scribe_core::Clock;
 use crate::db::Db;
 
 use scribe_storage_api::{
-    not_implemented, required_option, AlertState, BackendOptions, Baseline, BaselineEntry,
-    BoxFuture, EventQuery, EventSink, Health, Host, HostDelta, HostId, HostQuery, ModuleState,
-    Page, Result, SinkCaps, StateStore, StorageFactory, StoreCaps, StoredEvent,
+    required_option, AlertState, BackendOptions, Baseline, BaselineEntry, BoxFuture, EventQuery,
+    EventSink, Health, Host, HostDelta, HostId, HostQuery, ModuleState, Page, Result, SinkCaps,
+    StateStore, StorageFactory, StoreCaps, StoredEvent,
 };
 
 pub const KIND: &str = "sqlite";
@@ -195,12 +196,12 @@ impl EventSink for SqliteSink {
         Box::pin(async move { self.db.migrate().map(|_| ()) })
     }
 
-    fn write_batch<'a>(&'a self, _batch: &'a [StoredEvent]) -> BoxFuture<'a, Result<()>> {
-        not_implemented("sqlite: write_batch")
+    fn write_batch<'a>(&'a self, batch: &'a [StoredEvent]) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move { self.db.with(|c| sink::write_batch(c, batch)) })
     }
 
-    fn query<'a>(&'a self, _query: &'a EventQuery) -> BoxFuture<'a, Result<Page<StoredEvent>>> {
-        not_implemented("sqlite: query")
+    fn query<'a>(&'a self, query: &'a EventQuery) -> BoxFuture<'a, Result<Page<StoredEvent>>> {
+        Box::pin(async move { self.db.with_result(|c| sink::query(c, query)) })
     }
 
     /// Every batch is committed when `write_batch` returns, so there is nothing to flush.

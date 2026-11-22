@@ -93,6 +93,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   are upserted; listing sorts by name and treats `%` / `_` literally. Stored times come from `Clock`. The
   `sqlite_state_store_conforms` test now runs (on a temporary file).
 
+- Phase 1 step 4: the SQLite event sink. Each batch is one transaction (a bad record rolls it back); flow, alert,
+  audit and module records go to `events`, metric samples to `metrics`. Queries merge both tables oldest first,
+  filter by kind and time (`since` inclusive, `until` exclusive), page with a total, and read schema 1 rows and
+  both snapshots. Both SQLite conformance suites now run; the storage manager publishes through SQLite end to end.
+
 ### Changed
 - Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
 
