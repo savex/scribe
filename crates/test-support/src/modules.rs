@@ -65,6 +65,7 @@ pub fn module_context(clock: &FakeClock) -> (ModuleContext, Arc<RecordingEmitter
         clock: Arc::new(clock.clone()),
         emitter: emitter.clone(),
         state: Default::default(),
+        data_dir: None,
     };
     (ctx, emitter)
 }

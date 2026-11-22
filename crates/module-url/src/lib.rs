@@ -2,26 +2,32 @@
 //! stores the URL according to `[modules.url] query`, attaches it to the flow as the `url` note,
 //! records `url.request` and counts requests per host in module state.
 //!
-//! The `hash` query mode arrives with the secrets crate (phase 3, step 5); until then it stores
-//! no query, like `strip`.
+//! `query = "hash"` replaces the query with the first 6 hex digits of its HMAC-SHA256 under a
+//! per-install key: `hash_key` (a secret reference) or, by default, `file:<data_dir>/url_hash.key`,
+//! created on first start.
 
 pub mod parse;
 pub mod privacy;
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use ring::hmac;
 use scribe_core::{ModuleRecord, Security};
 use scribe_module_api::{
     Access, Call, ConfigDoc, FlowContext, FlowHook, HookOutput, Manifest, Module, ModuleContext,
     ModuleError, ModuleHealth, RecordKind, Reload, SectionError,
 };
+use scribe_secrets::SecretRef;
 use serde::Deserialize;
 use serde_json::json;
 
 pub const ID: &str = "url";
 pub const REQUEST: &str = "url.request";
+/// The default key file in `data_dir`.
+pub const KEY_FILE: &str = "url_hash.key";
 
 /// How much of a URL's query is stored (specs 12.2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
@@ -51,12 +57,15 @@ impl Query {
 #[serde(default, deny_unknown_fields)]
 struct Section {
     query: Option<Query>,
+    hash_key: Option<String>,
 }
 
 /// The settings the module runs with.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Settings {
     pub query: Query,
+    /// Where the `hash` key lives; `None` = `file:<data_dir>/url_hash.key`.
+    pub hash_key: Option<SecretRef>,
 }
 
 /// Read `[modules.url]`, honouring the deprecated `privacy.url_query` (one minor version).
@@ -77,12 +86,19 @@ pub fn settings(doc: &ConfigDoc<'_>) -> Result<Settings, SectionError> {
         (Some(q), _) | (None, Some(q)) => q,
         (None, None) => Query::default(),
     };
-    Ok(Settings { query })
+    let hash_key = match &section.hash_key {
+        None => None,
+        Some(text) => Some(text.parse().map_err(|e: scribe_secrets::SecretError| {
+            SectionError::new(e.to_string(), doc.span_of(&["modules", ID, "hash_key"]))
+        })?),
+    };
+    Ok(Settings { query, hash_key })
 }
 
 struct Hook {
     ctx: Mutex<Option<ModuleContext>>,
     settings: Mutex<Settings>,
+    key: Mutex<Option<hmac::Key>>,
     paused: AtomicBool,
     requests: Mutex<BTreeMap<String, u64>>,
 }
@@ -96,7 +112,13 @@ impl FlowHook for Hook {
             return HookOutput::none();
         };
         let query = self.settings.lock().unwrap().query;
-        let url = privacy::apply(&request, query, None);
+        let key = self.key.lock().unwrap().clone();
+        let hash = key.map(|key| move |q: &str| short_hash(&key, q));
+        let url = privacy::apply(
+            &request,
+            query,
+            hash.as_ref().map(|h| h as &dyn Fn(&str) -> String),
+        );
         let Some(ctx) = self.ctx.lock().unwrap().clone() else {
             return HookOutput::none();
         };
@@ -143,6 +165,7 @@ impl Default for UrlModule {
             hook: Arc::new(Hook {
                 ctx: Mutex::new(None),
                 settings: Mutex::new(Settings::default()),
+                key: Mutex::new(None),
                 paused: AtomicBool::new(false),
                 requests: Mutex::new(BTreeMap::new()),
             }),
@@ -153,8 +176,49 @@ impl Default for UrlModule {
 
 impl UrlModule {
     pub fn settings(&self) -> Settings {
-        *self.hook.settings.lock().unwrap()
+        self.hook.settings.lock().unwrap().clone()
     }
+
+    /// Load (or create) the `hash` key when the mode needs it; drop it otherwise.
+    fn load_key(&self, data_dir: Option<&Path>) -> Result<(), ModuleError> {
+        let settings = self.settings();
+        let key = if settings.query == Query::Hash {
+            let r = match (settings.hash_key, data_dir) {
+                (Some(r), _) => r,
+                (None, Some(dir)) => SecretRef::File(dir.join(KEY_FILE)),
+                (None, None) => {
+                    return Err(ModuleError::Start(
+                        "query = \"hash\" needs `modules.url.hash_key` or a data_dir".into(),
+                    ))
+                }
+            };
+            let secret = scribe_secrets::read_or_create(&r, 32)
+                .map_err(|e| ModuleError::Start(format!("hash key: {e}")))?;
+            Some(hmac::Key::new(hmac::HMAC_SHA256, secret.expose()))
+        } else {
+            None
+        };
+        *self.hook.key.lock().unwrap() = key;
+        Ok(())
+    }
+
+    fn data_dir(&self) -> Option<std::path::PathBuf> {
+        self.hook
+            .ctx
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|c| c.data_dir.clone())
+    }
+}
+
+/// The first 6 hex digits of HMAC-SHA256(`key`, `query`).
+pub fn short_hash(key: &hmac::Key, query: &str) -> String {
+    let tag = hmac::sign(key, query.as_bytes());
+    tag.as_ref()[..3]
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 impl Module for UrlModule {
@@ -164,10 +228,14 @@ impl Module for UrlModule {
 
     fn configure(&mut self, doc: &ConfigDoc<'_>) -> Result<Reload, ModuleError> {
         *self.hook.settings.lock().unwrap() = settings(doc)?;
+        if self.running {
+            self.load_key(self.data_dir().as_deref())?;
+        }
         Ok(Reload::Live)
     }
 
     fn start(&mut self, ctx: ModuleContext) -> Result<(), ModuleError> {
+        self.load_key(ctx.data_dir.as_deref())?;
         let mut requests = self.hook.requests.lock().unwrap();
         requests.clear();
         for (key, value) in &ctx.state {
@@ -201,7 +269,11 @@ impl Module for UrlModule {
 
     fn effective_config(&self) -> Option<toml::Table> {
         let mut table = toml::Table::new();
-        table.insert("query".into(), self.settings().query.name().into());
+        let settings = self.settings();
+        table.insert("query".into(), settings.query.name().into());
+        if let Some(r) = settings.hash_key {
+            table.insert("hash_key".into(), r.to_string().into());
+        }
         Some(table)
     }
 

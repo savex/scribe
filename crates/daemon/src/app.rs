@@ -151,7 +151,8 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
         ),
         &ConfigDoc::new(&settings.text),
     )
-    .map_err(anyhow::Error::msg)?;
+    .map_err(anyhow::Error::msg)?
+    .with_data_dir(settings.data_dir.clone());
     let mut state = BTreeMap::new();
     for id in host.ids() {
         match storage.state().module_state(id).await {

@@ -25,6 +25,7 @@ scribe-module-conformance = { path = "crates/module-conformance" }
 scribe-module-url = { path = "crates/module-url" }
 scribe-daemon = { path = "crates/daemon" }
 scribe-cli = { path = "crates/cli" }
+scribe-secrets = { path = "crates/secrets" }
 
 # Third-party. Keep versions compatible with `rust-version` (policy: follow dependencies).
 tokio = { version = "1.54", default-features = false }
@@ -45,3 +46,4 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] }
 proptest = "1.11"
 tempfile = "3"
+ring = "0.17"

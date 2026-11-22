@@ -91,6 +91,9 @@ enabled = ["url"]
 # Applies to new data only. Details and more examples: workfiles/specs.md section 12.2.
 # Replaces `[privacy] url_query`, which is still read (with a warning) for one minor version.
 query = "redact_values"
+# Key for "hash": a secret reference (file:/absolute/path, mode 600). Default: url_hash.key in
+# data_dir, created on first start. Keychain, DPAPI and Secret Service references arrive in phase 11.
+# hash_key = "file:/var/lib/scribe/url_hash.key"
 
 
 # ─── Storage ─────────────────────────────────────────────────────────────────

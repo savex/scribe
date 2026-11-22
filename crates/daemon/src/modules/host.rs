@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 use std::panic::{self, AssertUnwindSafe};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -57,6 +58,7 @@ pub struct ModuleHost {
     slots: Vec<Slot>,
     budget: Duration,
     clock: Option<Arc<dyn Clock>>,
+    data_dir: Option<PathBuf>,
 }
 
 impl ModuleHost {
@@ -82,11 +84,18 @@ impl ModuleHost {
             slots,
             budget: HOOK_BUDGET,
             clock: None,
+            data_dir: None,
         })
     }
 
     pub fn with_budget(mut self, budget: Duration) -> Self {
         self.budget = budget;
+        self
+    }
+
+    /// The directory modules keep their files in (`data_dir`).
+    pub fn with_data_dir(mut self, dir: PathBuf) -> Self {
+        self.data_dir = Some(dir);
         self
     }
 
@@ -117,6 +126,7 @@ impl ModuleHost {
                 clock: clock.clone(),
                 emitter: emitter(id),
                 state: state.remove(id).unwrap_or_default(),
+                data_dir: self.data_dir.clone(),
             };
             let started = guarded(|| slot.module.start(ctx)).unwrap_or_else(|why| {
                 Err(ModuleError::Start(format!(

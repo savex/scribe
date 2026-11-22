@@ -243,7 +243,7 @@ Full design: `workfiles/specs.md` 12.1.1. Locally, who is calling matters more t
 | Threat lists | HTTPS, optional pinned `sha256` or `minisign` key, keep last good list, entry cap | Proposed |
 | File modes | `0600` / `0640 root:scribe-admin`; startup refused if config, `data_dir` or `file:` credential is group/other-writable | Proposed |
 | Encryption at rest | Default: file modes + full-disk encryption; optional `storage.encrypt = true` (SQLCipher + AES-256-GCM spool, key in OS secret store) | Proposed |
-| URL hash key | Kept in the OS secret store | Proposed |
+| URL hash key | `[modules.url] hash_key` secret reference; default `file:<data_dir>/url_hash.key` (32 random bytes as hex, `0600`, created on first start); HMAC-SHA256 via `ring`, first 6 hex digits; no key → the module does not start | Decided |
 | Tamper evidence | Sequence number + `prev_hmac` on audit and alert records; heartbeats to the remote sink | Proposed |
 | Remote API | None; Postgres sink for fleet view, SSH forwarding for remote control; if ever added: off by default, client certificates only | Proposed |
 | Proposed config keys | `daemon.max_hibernate`; Postgres `sslmode`, `ca`, `client_cert`, `client_key`; `[[alerts.webhooks]]` `secret`, `pin_sha256`; `[[policy.threat_lists]]` `sha256` / `minisign_key`, `max_entries`; `storage.encrypt`. Not in config v1 yet; each lands with its phase (specs 9.1.1) | Proposed |
@@ -347,7 +347,7 @@ Notes:
 | Total effort | 121.5–151.5 person-days; 95.5–120.5 remaining after phases 0, 0b, 1 and 2, 115–145 with a 20% buffer (includes the security design, +14.5 days, the module framework, +10–12 days, and the 2026-11-22 plan review, +3.5–4.5) |
 | Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 65.5–80.5 days; M2 native sensors 35.5–45.5 days; M3 production 20.5–25.5 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning; CI never run on GitHub yet |
-| Secrets | One crate over the macOS keychain, DPAPI, Secret Service and root-only `file:` references; built in phase 3 (first user: the URL `hash` key), reused by phases 11–13 | Planned |
+| Secrets | `scribe-secrets`: references `file:` (implemented: absolute path, Unix mode `0600` or stricter, owner = service account or root, no group/other-writable parent without sticky bit; created via temp file + hard link so a concurrent start keeps the first key; one trailing newline dropped), `keychain:<service>/<account>`, `dpapi:<path>`, `secret-service:<label>` (parsed, return `Unsupported` until phase 11, where the webhook secret needs them; Windows `file:` ACL checks with the installer in phase 13). `Secret` hides its bytes in `Debug` and zeroes them on drop. Modules get `ModuleContext::data_dir` for their files | Decided (file), Planned (OS stores) |
 
 ## 15. Development environment
 

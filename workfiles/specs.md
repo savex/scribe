@@ -187,7 +187,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-7 | Isolation | A slow or failing sink never blocks capture or other sinks | Implemented (writer task per sink; full queues drop and count)
 | NFR-8 | Privileges | Runs as root / SYSTEM only as long as the sensor needs; drops privileges after start | Proposed |
 | NFR-9 | API access | Local socket / named pipe only; caller identity from the OS; read calls for the `scribe` group, control calls for root / Administrators and `scribe-admin`, all control calls audited; clients verify the server (sections 6.3, 12.1.1) | Proposed |
-| NFR-10 | Secrets | Database credentials, TLS client keys, the webhook secret, the URL hash key and the optional storage key from the OS keychain, DPAPI, Secret Service or a root-only file; never in plain config; startup refused when config, `data_dir` or a `file:` credential is group / other-writable | Proposed |
+| NFR-10 | Secrets | Database credentials, TLS client keys, the webhook secret, the URL hash key and the optional storage key from the OS keychain, DPAPI, Secret Service or a root-only file; never in plain config; startup refused when config, `data_dir` or a `file:` credential is group / other-writable | Partly implemented (`scribe-secrets`: `file:` references with mode checks; OS stores in phase 11) |
 | NFR-11 | Robust parsing | Packet parsers never crash or hang on malformed input; fuzzed, crash-free for 7 runs in a row before release | Planned |
 | NFR-12 | Privacy | Store connection metadata only, never payloads; redact URL query values by default (section 12.2); data leaves the host only through sinks the admin configures | Decided (URL redaction), Proposed (rest) |
 | NFR-13 | Portability | Prebuilt binaries for `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Implemented (archives) |
@@ -559,6 +559,7 @@ Loaded and checked by `crates/daemon/src/config/` (phase 0).
 | `[[policy.threat_lists]] name`, `path` or `url`, `format`, `refresh` | — | none | Draft default |
 | `[modules] enabled` | list of compiled-in module ids | `["url"]` | Implemented (section 7.4) |
 | `[modules.url] query` | `full` \| `redact_values` \| `strip` \| `path_only` \| `hash` | `redact_values` | Implemented (values decided in section 12.2; applied from phase 3) |
+| `[modules.url] hash_key` | secret reference for the `hash` key | `file:<data_dir>/url_hash.key` (created on first start) | Implemented |
 | `[privacy] url_query` | as `[modules.url] query` | — | Deprecated alias, read with a warning for one minor version |
 | `[storage.state] kind` | `sqlite` \| `postgres` | `sqlite` | Decided |
 | `[storage.state] path` (SQLite) | path | `state.db` | Draft default |
@@ -772,7 +773,7 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 - Default: strict file modes plus full-disk encryption. Database, spool, logs and exports are created `0600` or `0640 root:scribe-admin`.
 - Like sshd's StrictModes, scribed refuses to start if the config, `data_dir` or a `file:` credential is writable by group or others.
 - Optional `storage.encrypt = true`: SQLCipher (`rusqlite` feature `bundled-sqlcipher`) and AES-256-GCM spool records (`ring`), key in the keychain / DPAPI / Secret Service (TPM-sealed where available). The daemon must open the key unattended at boot, so this protects stolen disks and backups, not a live root attacker.
-- The per-install HMAC key for `privacy.url_query = "hash"` lives in the same secret store, not as a plain file in `data_dir`.
+- The per-install HMAC key for `[modules.url] query = "hash"` is a secret reference: by default a root-only `file:` in `data_dir` (`url_hash.key`, `0600`), or `hash_key` pointing at the OS store once its backends land (phase 11).
 
 **Tamper evidence (NFR-18)**
 
@@ -828,7 +829,7 @@ the URL is kept.
 | `path_only` | First path segment kept, rest replaced by `…`; query removed | rough area of the site | most of the path |
 | `hash` | Query replaced by `?<hash:xxxxxx>`, a keyed hash of the whole query (HMAC-SHA256 with a per-install secret key, first 6 hex digits, computed with `ring`) | lets repeated requests be matched without storing values | readability; matching only works on the same install and while the key is unchanged |
 
-The `hash` key is generated on first start and stored in `data_dir` readable only by the service account (proposed: `url_hash.key`). Without it, a hash of a short value such as a user id could be reversed by trying likely values.
+The `hash` key is generated on first start (32 random bytes, stored as hex) in `data_dir/url_hash.key`, mode `0600`, owned by the service account; `[modules.url] hash_key` (a secret reference, section 9.1) names another store. The module does not start in `hash` mode when the key cannot be read or created. Without it, a hash of a short value such as a user id could be reversed by trying likely values.
 
 **Examples**
 

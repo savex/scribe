@@ -93,6 +93,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   a one-day cap and an entry limit.
 - Phase 3 step 4: `Enricher` sets security, the ECH flag and the host name (SNI, then `Host`, then the sensor's
   name, then the DNS cache); it learns from raw DNS responses or OS-decoded answers. Integration test INT-08.
+- Phase 3 step 5: `scribe-secrets` crate: secret references (`file:` implemented with owner and mode checks and
+  race-safe key creation; `keychain:`, `dpapi:`, `secret-service:` parsed, backends in phase 11).
+  URL `query = "hash"` now works: HMAC-SHA256 (ring), first 6 hex digits, key from `[modules.url] hash_key`
+  or `url_hash.key` in `data_dir`. `ModuleContext` gains `data_dir`.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

@@ -10,6 +10,7 @@ mod config;
 mod manifest;
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -62,6 +63,9 @@ pub struct ModuleContext {
     pub emitter: Arc<dyn Emitter>,
     /// This module's state as stored, read by the daemon before `start`.
     pub state: BTreeMap<String, Value>,
+    /// The daemon's `data_dir`, for files a module keeps (keys, caches); `None` in tests that
+    /// give the module no directory.
+    pub data_dir: Option<PathBuf>,
 }
 
 impl ModuleContext {
