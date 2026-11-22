@@ -76,6 +76,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - State-store outage buffer (`storage.buffer`): failed writes and all later ones wait in order, the oldest is
   dropped at the count or memory limit, replay runs with back-off; IP links follow buffered hosts; writes that
   can never succeed are dropped on replay; health is degraded while buffering.
+- Host and baseline cache (`storage.cache`): least recently used hosts evicted at the count or memory limit,
+  writes update cached entries, `clear_cache` for reset. `Storage::health` gives the worst of state store and
+  sinks (spooling or drops make a sink degraded).
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

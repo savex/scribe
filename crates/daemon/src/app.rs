@@ -16,7 +16,7 @@ use scribe_core::{Clock, Sensor, SystemClock, VERSION};
 use scribe_module_api::ConfigDoc;
 use scribe_storage_api::{StorageError, StoredEvent};
 use scribe_storage_manager::{
-    BufferLimits, Registry, RunOptions, SpoolOptions, Storage, StorageManager,
+    BufferLimits, CacheLimits, Registry, RunOptions, SpoolOptions, Storage, StorageManager,
 };
 use tracing::{error, info, warn};
 
@@ -129,6 +129,10 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
         buffer: BufferLimits {
             max_events: limits.buffer_events,
             max_memory: limits.buffer_memory,
+        },
+        cache: CacheLimits {
+            max_hosts: limits.cache_hosts,
+            max_memory: limits.cache_memory,
         },
         ..RunOptions::default()
     });

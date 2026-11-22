@@ -3,8 +3,10 @@
 //! [`StorageManager`] builds the backends from config; [`StorageManager::start`] turns it into a
 //! running [`Storage`] with one writer task per sink (batching by size and time, retention for
 //! sinks without their own, an on-disk spool with ordered replay while a sink is down). The state
-//! store sits behind an in-memory outage buffer. Still to come in phase 2: the host cache.
+//! store sits behind a host and baseline cache and an in-memory outage buffer; `health` sums it
+//! all up.
 
+mod cache;
 pub mod config;
 pub mod registry;
 mod run;
@@ -16,9 +18,10 @@ use std::sync::Arc;
 
 use scribe_storage_api::{EventSink, Result, StateStore, StoredEvent};
 
+pub use cache::{CacheLimits, CacheStatus, CachedState};
 pub use config::{BackendConfig, SinkConfig, StorageConfig};
 pub use registry::Registry;
-pub use run::{RunOptions, Storage};
+pub use run::{RunOptions, Storage, StorageHealth};
 pub use spool::{FreeSpace, SpoolOptions};
 pub use state::{BufferLimits, BufferedState, StateStatus};
 pub use writer::{SinkCounters, SinkStatus};
