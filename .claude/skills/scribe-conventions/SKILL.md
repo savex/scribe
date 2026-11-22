@@ -338,10 +338,11 @@ Notes:
 | Item | Value |
 |---|---|
 | Estimates assume | one experienced Rust developer; LOC without blanks and comments; tests counted separately |
-| Total size | ~17,500 production LOC + ~5,200 test LOC |
-| Total effort | 118–147 person-days; 98–123 remaining after phases 0, 0b and 1, 118–148 with a 20% buffer (includes the security design, +14.5 days, and the module framework, +10–12 days) |
-| Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 61.5–75.5 days; M2 native sensors 35.5–45.5 days; M3 production 21–26 days |
-| Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning |
+| Total size | ~18,000 production LOC + ~5,400 test LOC |
+| Total effort | 121.5–151.5 person-days; 101.5–127.5 remaining after phases 0, 0b and 1, 122–153 with a 20% buffer (includes the security design, +14.5 days, the module framework, +10–12 days, and the 2026-11-22 plan review, +3.5–4.5) |
+| Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 65.5–80.5 days; M2 native sensors 35.5–45.5 days; M3 production 20.5–25.5 days |
+| Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning; CI never run on GitHub yet |
+| Secrets | One crate over the macOS keychain, DPAPI, Secret Service and root-only `file:` references; built in phase 3 (first user: the URL `hash` key), reused by phases 11–13 | Planned |
 
 ## 15. Development environment
 

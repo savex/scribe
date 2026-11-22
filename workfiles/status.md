@@ -101,12 +101,16 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 
 ## What this means
 
-- **Phases 0, 0b and 1 are done.** Remaining effort: 98–123 days (118–148 with buffer); milestone M1: 44–54 days.
+- **Phases 0, 0b and 1 are done.** Remaining effort: 101.5–127.5 days (122–153 with buffer); milestone M1: 48–59 days
+  (after the 2026-11-22 plan review: secrets crate in phase 3, more phase 2 and 4 scope).
 - **The daemon has a skeleton to grow into:** each next phase plugs into `serve()` (storage manager tasks in
   phase 2, the pipeline in phase 5, which feeds `ModuleHost::on_flow`) and reads its settings from the already-checked config.
 - **Next steps** (plan milestone M1):
-  1. Phase 2: the storage manager (per-sink tasks and batching, host cache, outage buffer, spool, retention).
-  2. Phase 3: SNI, `Host` and DNS parsers against the 13 pcap fixtures, the URL module's HTTP parser (with URL redaction), then QUIC with `ring`.
+  0. Run the Tests and Release workflows on GitHub once (they have never run) and fix what they find.
+  1. Phase 2: the storage manager (per-sink tasks and batching, host cache, outage buffer, spool, retention,
+     SQLite off the async runtime, a retention call on `EventSink`).
+  2. Phase 3: SNI, `Host` and DNS parsers against the 13 pcap fixtures, the secrets crate, the URL module's HTTP
+     parser (with URL redaction), then QUIC with `ring`.
   3. Phase 4: the policy engine in `crates/policy`, against the 11 scenarios, using the config values.
   4. Apply for Apple's Network Extension entitlement (plan risk 1).
 - **Not verified here:** the Linux and Windows code paths at run time, the GitHub workflows themselves,
