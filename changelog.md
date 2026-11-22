@@ -105,6 +105,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 3 step 8: every pcap fixture runs end to end through the enricher and the URL module (INT-18); UDP
   flows are classified (QUIC long header or plaintext). Spec, skill, plan (phase 3 done; OS secret stores
   moved to phase 11), status (coverage 91.7%), test list, test approach and diagram updated.
+- Plan and status record the first green Tests workflow on GitHub (2026-11-22); risk 9 narrowed to the
+  workflows that have not run yet.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

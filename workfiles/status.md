@@ -124,7 +124,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 | Test data | **100%** | 16 pcap fixtures (2 QUIC), all checked end to end; RFC 9001 / 9369 sample packets; 19 scenarios, raw sensor samples, v1 and v2 database snapshots | Checked by the fixture, end-to-end and snapshot tests |
 | Fuzzing | **~60%** | 4 targets with seeds (`tls_client_hello`, `dns_message`, `quic_initial`, `http_request`); they compile on stable | Never run (needs Rust nightly) |
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
-| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Run locally only, not on GitHub |
+| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Tests passed on GitHub (2026-11-22, run `45072299330`); Release and the other workflows not run yet |
 
 **Overall:** 6,996 of 7,741 measurable lines covered (**90.4%**).
 
@@ -134,11 +134,11 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
   (OS secret stores moved from phase 3 to phase 11, +1–1.5 days).
 - **The daemon has a skeleton to grow into:** each next phase plugs into `serve()` (the pipeline in phase 5, which feeds `ModuleHost::on_flow`) and reads its settings from the already-checked config.
 - **Next steps** (plan milestone M1):
-  0. Run the Tests and Release workflows on GitHub once (they have never run) and fix what they find.
+  0. Run the Release workflow once (push the `v0.1.1` tag); Tests already passed on GitHub.
   1. Phase 4: the policy engine in `crates/policy`, against the 19 scenarios, using the config values.
   2. Phase 5: the pipeline, with a QUIC reassembler per UDP flow and DNS responses fed to the `Enricher`.
   3. Apply for Apple's Network Extension entitlement (plan risk 1).
-- **Not verified here:** the Linux and Windows code paths at run time, the GitHub workflows themselves,
+- **Not verified here:** the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests,
   the Postgres migration 0002 (no local Postgres; the Tests workflow loads it) and the fuzz targets (no nightly).
   Local Linux / Windows compile checks leave out crates with C code (bundled SQLite, `ring`: the daemon, `enrich`,
-  `secrets`, `module-url`, test crates); CI builds them natively.
+  `secrets`, `module-url`, test crates); the Tests workflow builds and passes them natively.
