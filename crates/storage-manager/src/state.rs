@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use scribe_storage_api::{
     AlertState, Baseline, BaselineEntry, BoxFuture, Health, Host, HostDelta, HostId, HostQuery,
-    ModuleState, Page, Result, StateStore, StorageError, StoreCaps,
+    ModuleState, Page, ProcessHost, Result, StateStore, StorageError, StoreCaps,
 };
 use serde_json::Value;
 
@@ -261,6 +261,13 @@ impl StateStore for BufferedState {
 
     fn list_hosts<'a>(&'a self, query: &'a HostQuery) -> BoxFuture<'a, Result<Page<Host>>> {
         self.inner.list_hosts(query)
+    }
+
+    fn process_hosts<'a>(
+        &'a self,
+        process: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Vec<ProcessHost>>> {
+        self.inner.process_hosts(process)
     }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {

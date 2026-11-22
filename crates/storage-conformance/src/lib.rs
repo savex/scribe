@@ -48,6 +48,8 @@ pub async fn state_store_suite(store: &dyn StateStore) {
     missing_host_is_none(store).await;
     host_counters_are_deltas(store).await;
     security_flags_accumulate(store).await;
+    unresolved_flag_is_sticky(store).await;
+    process_counters_follow_deltas(store).await;
     list_hosts_paginates(store).await;
     baseline_round_trip(store).await;
     alert_state_round_trip(store).await;
@@ -250,6 +252,73 @@ async fn security_flags_accumulate(store: &dyn StateStore) {
     );
 }
 
+async fn unresolved_flag_is_sticky(store: &dyn StateStore) {
+    let mut d = delta("ech-outer.example", 1, 0, 0);
+    d.unresolved = true;
+    store.upsert_host(&d).await.expect("ech flow");
+    d.unresolved = false;
+    store.upsert_host(&d).await.expect("named flow");
+    let host = store
+        .get_host("ech-outer.example")
+        .await
+        .expect("get")
+        .expect("host exists");
+    assert!(host.unresolved, "unresolved only ever turns on");
+    let named = delta("named.example", 1, 0, 0);
+    store.upsert_host(&named).await.expect("named");
+    let host = store
+        .get_host("named.example")
+        .await
+        .expect("get")
+        .expect("host");
+    assert!(!host.unresolved);
+}
+
+async fn process_counters_follow_deltas(store: &dyn StateStore) {
+    let mut d = delta("proc.example", 1, 1, 100);
+    d.process = Some("/usr/bin/curl".into());
+    store.upsert_host(&d).await.expect("curl 1");
+    store.upsert_host(&d).await.expect("curl 2");
+    d.process = Some("/usr/bin/wget".into());
+    d.bytes_out = 7;
+    store.upsert_host(&d).await.expect("wget");
+    d.process = None;
+    store.upsert_host(&d).await.expect("no process");
+
+    let host = store
+        .get_host("proc.example")
+        .await
+        .expect("get")
+        .expect("host");
+    assert_eq!(host.conn_count, 4, "every delta counts for the host");
+
+    let curl = store
+        .process_hosts(Some("/usr/bin/curl"))
+        .await
+        .expect("process_hosts");
+    assert_eq!(curl.len(), 1);
+    assert_eq!(
+        (
+            curl[0].host.as_str(),
+            curl[0].conn_count,
+            curl[0].req_count,
+            curl[0].bytes_out
+        ),
+        ("proc.example", 2, 2, 200)
+    );
+    let all = store.process_hosts(None).await.expect("process_hosts");
+    let procs: Vec<&str> = all
+        .iter()
+        .filter(|r| r.host == "proc.example")
+        .map(|r| r.process.as_str())
+        .collect();
+    assert_eq!(
+        procs,
+        ["/usr/bin/curl", "/usr/bin/wget"],
+        "ordered, no row without a process"
+    );
+}
+
 async fn list_hosts_paginates(store: &dyn StateStore) {
     for i in 0..5 {
         store
@@ -377,6 +446,8 @@ fn delta(name: &str, connections: u64, requests: u64, bytes_out: u64) -> HostDel
         requests,
         bytes_out,
         security: Security::Tls,
+        unresolved: false,
+        process: None,
     }
 }
 

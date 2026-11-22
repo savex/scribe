@@ -19,8 +19,8 @@ use crate::db::Db;
 
 use scribe_storage_api::{
     required_option, AlertState, BackendOptions, Baseline, BaselineEntry, BoxFuture, EventQuery,
-    EventSink, Health, Host, HostDelta, HostId, HostQuery, ModuleState, Page, Result, SinkCaps,
-    StateStore, StorageFactory, StoreCaps, StoredEvent,
+    EventSink, Health, Host, HostDelta, HostId, HostQuery, ModuleState, Page, ProcessHost, Result,
+    SinkCaps, StateStore, StorageFactory, StoreCaps, StoredEvent,
 };
 
 pub const KIND: &str = "sqlite";
@@ -30,6 +30,7 @@ pub const KIND: &str = "sqlite";
 pub const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_modules.sql"),
+    include_str!("../migrations/0003_processes.sql"),
 ];
 
 pub struct SqliteFactory;
@@ -95,7 +96,13 @@ impl StateStore for SqliteStore {
 
     fn upsert_host<'a>(&'a self, delta: &'a HostDelta) -> BoxFuture<'a, Result<HostId>> {
         let delta = delta.clone();
-        Box::pin(self.db.with(move |c| state::upsert_host(c, &delta)))
+        Box::pin(self.db.with(move |c| {
+            // Host and process + host counters change together or not at all.
+            let tx = c.transaction()?;
+            let id = state::upsert_host(&tx, &delta)?;
+            tx.commit()?;
+            Ok(id)
+        }))
     }
 
     fn get_host<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<Option<Host>>> {
@@ -111,6 +118,17 @@ impl StateStore for SqliteStore {
     fn list_hosts<'a>(&'a self, query: &'a HostQuery) -> BoxFuture<'a, Result<Page<Host>>> {
         let query = query.clone();
         Box::pin(self.db.with(move |c| state::list_hosts(c, &query)))
+    }
+
+    fn process_hosts<'a>(
+        &'a self,
+        process: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Vec<ProcessHost>>> {
+        let process = process.map(str::to_owned);
+        Box::pin(
+            self.db
+                .with(move |c| state::process_hosts(c, process.as_deref())),
+        )
     }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {

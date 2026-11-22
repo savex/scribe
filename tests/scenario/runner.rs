@@ -352,6 +352,8 @@ pub fn run(s: &Scenario) {
                 requests: u64::from(obs.event.notes.get_str("url").is_some()),
                 bytes_out: obs.event.bytes_out,
                 security: obs.event.security,
+                unresolved: obs.event.unresolved(),
+                process: obs.event.process_path.clone(),
             };
             rt.block_on(store.upsert_host(&delta)).unwrap();
         }

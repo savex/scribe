@@ -68,6 +68,8 @@ proptest! {
                 requests: req,
                 bytes_out: bytes,
                 security: sec,
+                unresolved: false,
+                process: None,
             }))
             .unwrap();
             let e = want.entry(name).or_insert(Expected { first: at, last: at, ..Default::default() });
@@ -114,6 +116,8 @@ fn many_writers_on_one_file_lose_nothing() {
                         requests: 0,
                         bytes_out: 10,
                         security: Security::Tls,
+                        unresolved: false,
+                        process: None,
                     }))
                     .unwrap();
                 }

@@ -15,7 +15,7 @@ use std::time::Duration;
 use scribe_core::Security;
 use scribe_storage_api::{
     AlertState, Baseline, BaselineEntry, BoxFuture, Health, Host, HostDelta, HostId, HostQuery,
-    ModuleState, Page, Result, StateStore, StoreCaps,
+    ModuleState, Page, ProcessHost, Result, StateStore, StoreCaps,
 };
 use serde_json::Value;
 
@@ -109,6 +109,7 @@ fn apply(host: &mut Host, d: &HostDelta) {
     host.bytes_out += d.bytes_out;
     host.tls_seen |= d.security == Security::Tls;
     host.plaintext_seen |= d.security == Security::Plaintext;
+    host.unresolved |= d.unresolved;
 }
 
 /// A [`StateStore`] with the host and baseline cache in front.
@@ -201,6 +202,13 @@ impl StateStore for CachedState {
 
     fn list_hosts<'a>(&'a self, query: &'a HostQuery) -> BoxFuture<'a, Result<Page<Host>>> {
         self.inner.list_hosts(query)
+    }
+
+    fn process_hosts<'a>(
+        &'a self,
+        process: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Vec<ProcessHost>>> {
+        self.inner.process_hosts(process)
     }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {

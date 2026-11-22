@@ -65,3 +65,38 @@ fn an_unopenable_path_is_reported() {
     assert!(err.to_string().contains("cannot open"), "{err}");
     assert!(matches!(block_on(s.health()), Health::Down(_)));
 }
+
+#[test]
+fn v2_migrates_to_v3_and_flags_ip_hosts() {
+    use scribe_storage_api::StateStore;
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(&snapshot(2, dir.path()));
+    block_on(s.migrate()).unwrap();
+    let ip = block_on(s.get_host("198.51.100.7")).unwrap().unwrap();
+    assert!(
+        ip.unresolved,
+        "IP hosts stored before v3 count as unresolved"
+    );
+    let named = block_on(s.get_host("api.example.com")).unwrap().unwrap();
+    assert!(!named.unresolved);
+    assert!(block_on(s.process_hosts(None)).unwrap().is_empty());
+}
+
+#[test]
+fn the_v3_snapshot_reads_back() {
+    use scribe_storage_api::StateStore;
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(&snapshot(3, dir.path()));
+    block_on(s.migrate()).unwrap();
+    let ech = block_on(s.get_host("public.example.com")).unwrap().unwrap();
+    assert!(ech.unresolved);
+    let curl = block_on(s.process_hosts(Some("/usr/bin/curl"))).unwrap();
+    let hosts: Vec<_> = curl
+        .iter()
+        .map(|r| (r.host.as_str(), r.conn_count, r.bytes_out))
+        .collect();
+    assert_eq!(
+        hosts,
+        [("plain.example.com", 1, 96), ("public.example.com", 1, 512)]
+    );
+}

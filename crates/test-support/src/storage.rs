@@ -7,8 +7,8 @@ use std::time::Duration;
 use scribe_core::Security;
 use scribe_storage_api::{
     AlertState, Baseline, BaselineEntry, BoxFuture, EventQuery, EventSink, Health, Host, HostDelta,
-    HostId, HostQuery, ModuleState, Page, Result, SinkCaps, StateStore, StorageError, StoreCaps,
-    StoredEvent,
+    HostId, HostQuery, ModuleState, Page, ProcessHost, Result, SinkCaps, StateStore, StorageError,
+    StoreCaps, StoredEvent,
 };
 
 /// In-memory reference [`StateStore`]. Also proves the conformance suite itself is correct.
@@ -19,6 +19,7 @@ pub struct MemoryStore {
     baselines: Mutex<HashMap<String, Vec<BaselineEntry>>>,
     alerts: Mutex<HashMap<String, AlertState>>,
     modules: Mutex<HashMap<String, ModuleState>>,
+    process_hosts: Mutex<Vec<ProcessHost>>,
 }
 
 impl MemoryStore {
@@ -57,6 +58,7 @@ impl StateStore for MemoryStore {
                         bytes_out: 0,
                         tls_seen: false,
                         plaintext_seen: false,
+                        unresolved: false,
                     });
                     hosts.len() - 1
                 }
@@ -68,7 +70,54 @@ impl StateStore for MemoryStore {
             h.bytes_out += d.bytes_out;
             h.tls_seen |= d.security == Security::Tls;
             h.plaintext_seen |= d.security == Security::Plaintext;
-            Ok(h.id)
+            h.unresolved |= d.unresolved;
+            let id = h.id;
+            drop(hosts);
+            if let Some(process) = &d.process {
+                let mut ph = self.process_hosts.lock().unwrap();
+                let row = match ph
+                    .iter()
+                    .position(|r| &r.process == process && r.host == d.name)
+                {
+                    Some(i) => &mut ph[i],
+                    None => {
+                        ph.push(ProcessHost {
+                            process: process.clone(),
+                            host: d.name.clone(),
+                            first_seen: d.seen_at,
+                            last_seen: d.seen_at,
+                            conn_count: 0,
+                            req_count: 0,
+                            bytes_out: 0,
+                        });
+                        ph.last_mut().unwrap()
+                    }
+                };
+                row.first_seen = row.first_seen.min(d.seen_at);
+                row.last_seen = row.last_seen.max(d.seen_at);
+                row.conn_count += d.connections;
+                row.req_count += d.requests;
+                row.bytes_out += d.bytes_out;
+            }
+            Ok(id)
+        })
+    }
+
+    fn process_hosts<'a>(
+        &'a self,
+        process: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Vec<ProcessHost>>> {
+        Box::pin(async move {
+            let mut rows: Vec<ProcessHost> = self
+                .process_hosts
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| process.is_none_or(|p| r.process == p))
+                .cloned()
+                .collect();
+            rows.sort_by(|a, b| (&a.process, &a.host).cmp(&(&b.process, &b.host)));
+            Ok(rows)
         })
     }
 

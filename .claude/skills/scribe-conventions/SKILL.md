@@ -139,7 +139,7 @@ external gRPC storage plugins were discussed and **deliberately left out**.
 | Backend selection | `kind = "sqlite"` / `"postgres"` in config, resolved by the registry | Decided |
 | Counter updates | Always as deltas (`n = n + excluded.n`), never read-modify-write | Decided |
 | Security flags | `tls_seen` / `plaintext_seen` only ever turn on | Decided |
-| Record schema version | `SCHEMA_VERSION = 2` (v1 rows still readable) | Decided |
+| Record schema version | `SCHEMA_VERSION = 3` (v1 and v2 rows still readable) | Decided |
 | Row layout | `scribe_storage_api::codec`: kind, module, host, schema, JSON payload per event; epoch-ms times; shared by SQLite and Postgres | Implemented |
 | SQLite backend | `rusqlite` 0.43 bundled; opened on first use, WAL, `synchronous = NORMAL`, 5 s busy timeout; migrations per transaction into `schema_migrations` + `user_version`, newer schema refused; metric samples in `metrics`, everything else in `events`; queries merge both by time (`since` inclusive, `until` exclusive) | Implemented (phase 1) |
 | SQLite timestamps | Unix epoch **milliseconds** (INTEGER); booleans as 0/1 | Decided |
@@ -273,6 +273,7 @@ Full design: `workfiles/specs.md` 7.4 (7.4.9 lists what changed from the draft).
 | Config | `[modules] enabled = ["url"]`; `[modules.<id>]` checked by the module; unknown, duplicate or not-built ids are errors; sink `events` accept `metric` and enabled modules' kinds | Implemented |
 | API / CLI | `ListModules`, `ModuleStatus`; per-module `proto/scribe/v1/modules/<id>.proto`; `scribe modules`, module subcommands behind each crate's `client` feature | Planned (phase 10) |
 | Schema | v2: migration `0002_modules.sql` (`events.module`, free `kind` with `<module>.%` check, `metrics`, `module_state`); snapshots `sqlite/v2.db`, `postgres/v2_seed.sql`; `build.sh` never rewrites an existing snapshot without `--force <version>` | Implemented |
+| Schema v3 | Migration `0003_processes.sql`: `hosts.unresolved` (sticky; IP hosts set on migration), `process_hosts (process, host)` counters updated with the host in one transaction from `HostDelta.process`; `StateStore::process_hosts`; alert payloads keep `dst_port` and `notes`; snapshots `sqlite/v3.db`, `postgres/v3_seed.sql` | Implemented (phase 5) |
 | Conformance | New modules must pass `scribe-module-conformance` (`ModuleCase` + `run_module_suite`); test doubles `TagModule`, `TicksModule`, `NoopModule`, `MisbehavingModule` (7 faults), `RecordingEmitter` in `scribe-test-support` | Implemented |
 | URL module | `scribe-module-url`: manifest (`url.request` schema 1, read call `list`, needs payload), `[modules.url] query`, deprecated `privacy.url_query` honoured (error if both disagree), hook notes the URL, records `url.request`, counts `requests.<host>` in module state; parser `parse::request_url` is a stub until phase 3 | Partly |
 

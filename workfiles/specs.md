@@ -146,7 +146,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-6 | For QUIC, read the SNI from the Initial packet (using `ring` 0.17) | Implemented (v1 and v2, ClientHello across several Initials; per-flow reassembly wired in phase 5) | RFC 9001 and RFC 9369 Appendix A packets; fixtures `quic_initial`, `quic_split_hello`; fuzz target `quic_initial` |
 | FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Partly (`FlowEvent::unresolved()`; the enricher leaves nameless flows unnamed and never drops them; tracking by IP in phases 4–5) | Scenario `hostname-unresolved`; fixture `doh` |
 | FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Implemented (request parser, all `query` modes including `hash`; wired to traffic in phase 5) | Fixture `http_plain`; module conformance |
-| FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Planned | Scenario `counters-exact`; storage conformance |
+| FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Partly (per host and per process + host since schema v3; hourly buckets not yet) | Scenario `counters-exact`; storage conformance |
 | FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Implemented in the SQLite state store (Postgres in phase 12) | Storage conformance |
 | FR-11 | Support the modes `learn`, `caution` and `alert` with the behaviour in section 8 | Implemented (`scribe-policy`; fed by the pipeline in phase 5) | Scenarios |
 | FR-12 | Support time-limited learn mode that switches to a chosen mode | Implemented (pausing the timer while hibernating arrives with phase 5) | Scenario `learn-auto-switch` |
@@ -686,6 +686,19 @@ Released snapshots are never edited, so module support is a new schema version: 
 | `module_state` (new) | module id, key, JSON value, updated at |
 | `hosts.req_count` | kept for v1 compatibility, written from the URL module's state; dropped in a later version |
 
+### 10.3.1 Schema v3 for per-process counters (implemented in phase 5)
+
+Migration `0003_processes.sql` for both backends, snapshots `testdata/db/sqlite/v3.db` and `postgres/v3_seed.sql`
+(from `seed_v3.sql`):
+
+- `hosts.unresolved`: on when the host is an IP or only an ECH outer name was seen; only turns on. The migration
+  sets it for IP hosts already stored.
+- `process_hosts (process, host)` with first / last seen, connections, requests and bytes (FR-9). `HostDelta`
+  gains `unresolved` and `process`; one upsert updates both tables in one transaction, and a delta without a
+  process counts for the host only. `StateStore::process_hosts(process)` lists them.
+- Alert rows also keep `dst_port` and the flow's `notes` (payload keys; older rows read as 0 and empty).
+- Hourly buckets (FR-9) are not stored yet.
+
 ### 10.4 SQLite backend (implemented in phase 1)
 
 | Item | Value |
@@ -694,7 +707,7 @@ Released snapshots are never edited, so module support is a new schema version: 
 | Connection | Opened on first use; WAL, `synchronous = NORMAL`, `busy_timeout` 5 s; calls are short and serialized per backend instance |
 | Migrations | Missing ones applied in order, each in its own transaction, recorded in `schema_migrations` and `user_version`; a database with a newer schema than the build is refused (`StorageError::Data`) |
 | Health | `Ok` at the latest schema, `Degraded` while a migration is pending, `Down` when the file can't be opened |
-| Hosts | One upsert per delta: counters added, `first_seen` / `last_seen` as min / max, `tls_seen` / `plaintext_seen` only turn on |
+| Hosts | One upsert per delta, in a transaction: counters added, `first_seen` / `last_seen` as min / max, `tls_seen` / `plaintext_seen` / `unresolved` only turn on; the process + host row too when the delta names a process |
 | Lists | Hosts sorted by name, filter matched literally (`%` and `_` escaped); baselines sorted by host, re-adding keeps the first entry; IP expiries only extend |
 | Events | A batch is one transaction; flow, alert, audit and module records in `events`, metric samples in `metrics`; payload layout from `scribe_storage_api::codec` |
 | Queries | Both tables merged oldest first (then events before metrics, then insertion order); `since` inclusive, `until` exclusive; `total` counts all matches |

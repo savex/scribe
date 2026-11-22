@@ -319,6 +319,8 @@ impl Pipeline {
                 requests: u64::from(event.notes.get_str("url").is_some()),
                 bytes_out: event.bytes_out,
                 security: event.security,
+                unresolved: event.unresolved(),
+                process: event.process_path.clone(),
             });
             w.events.push(StoredEvent::Flow(event.clone()));
         }

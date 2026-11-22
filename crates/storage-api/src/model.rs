@@ -7,7 +7,7 @@ use scribe_core::{FlowEvent, MetricSample, ModuleRecord, Security};
 
 /// Version of the stored record layout. Bump on incompatible changes.
 /// 2: module records, metric samples and module state (specs 10.3).
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 pub type HostId = i64;
 
@@ -22,6 +22,9 @@ pub struct Host {
     pub bytes_out: u64,
     pub tls_seen: bool,
     pub plaintext_seen: bool,
+    /// The real name is unknown: the host is an IP, or only an ECH outer name was seen (FR-7).
+    /// Only ever turns on.
+    pub unresolved: bool,
 }
 
 /// Counter increments for one host. Backends must apply these as deltas
@@ -34,6 +37,22 @@ pub struct HostDelta {
     pub requests: u64,
     pub bytes_out: u64,
     pub security: Security,
+    /// The flow had no real name (no host name, or only an ECH outer name).
+    pub unresolved: bool,
+    /// The process that made the flow: the same deltas also count per process + host (FR-9).
+    pub process: Option<String>,
+}
+
+/// Counters for one process + host pair (FR-9).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProcessHost {
+    pub process: String,
+    pub host: String,
+    pub first_seen: SystemTime,
+    pub last_seen: SystemTime,
+    pub conn_count: u64,
+    pub req_count: u64,
+    pub bytes_out: u64,
 }
 
 #[derive(Debug, Clone, Default)]

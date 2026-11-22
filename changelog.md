@@ -29,6 +29,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   (flow and alert events, host deltas, learned baseline entries, alert state) and runtime counters; QUIC flows
   wait up to 1 s for a ClientHello split over several datagrams. `FlowKind::DnsResponse` carries DNS answers;
   alert records keep the port and the flow's notes.
+- Phase 5 step 2: schema v3 (`0003_processes.sql`, SQLite and Postgres): per process + host counters
+  (`process_hosts`, `StateStore::process_hosts`) and a sticky `hosts.unresolved` flag; snapshots `v3.db`,
+  `v3_seed.sql`; two conformance cases.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

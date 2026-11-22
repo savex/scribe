@@ -27,6 +27,8 @@ fn delta(name: &str, at_secs: u64) -> HostDelta {
         requests: 0,
         bytes_out: 10,
         security: Security::Unknown,
+        unresolved: false,
+        process: None,
     }
 }
 

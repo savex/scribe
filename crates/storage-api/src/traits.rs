@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::{
     AlertState, Baseline, BaselineEntry, EventQuery, Health, Host, HostDelta, HostId, HostQuery,
-    ModuleState, Page, Result, SinkCaps, StorageError, StoreCaps, StoredEvent,
+    ModuleState, Page, ProcessHost, Result, SinkCaps, StorageError, StoreCaps, StoredEvent,
 };
 
 /// Boxed future so the traits stay object-safe without extra crates.
@@ -25,6 +25,14 @@ pub trait StateStore: Send + Sync {
     fn get_host<'a>(&'a self, name: &'a str) -> BoxFuture<'a, Result<Option<Host>>>;
     fn link_ip(&self, host: HostId, ip: IpAddr, ttl: Duration) -> BoxFuture<'_, Result<()>>;
     fn list_hosts<'a>(&'a self, query: &'a HostQuery) -> BoxFuture<'a, Result<Page<Host>>>;
+    /// Per process + host counters, for one process or all, ordered by process then host.
+    fn process_hosts<'a>(
+        &'a self,
+        process: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Vec<ProcessHost>>> {
+        let _ = process;
+        not_implemented("process_hosts")
+    }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>>;
     fn add_to_baseline<'a>(

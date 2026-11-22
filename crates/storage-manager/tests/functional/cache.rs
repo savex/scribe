@@ -16,6 +16,8 @@ fn delta(name: &str, secs: u64, security: Security) -> HostDelta {
         requests: 0,
         bytes_out: 100,
         security,
+        unresolved: false,
+        process: None,
     }
 }
 

@@ -9,7 +9,7 @@ use scribe_core::Security;
 use scribe_storage_api::codec::{from_millis, to_millis};
 use scribe_storage_api::{
     AlertState, Baseline, BaselineEntry, EntrySource, Host, HostDelta, HostId, HostQuery,
-    ModuleState, Page,
+    ModuleState, Page, ProcessHost,
 };
 
 /// SQLite integers are signed; counters beyond `i64::MAX` saturate.
@@ -21,8 +21,7 @@ fn uint(n: i64) -> u64 {
     u64::try_from(n).unwrap_or(0)
 }
 
-const HOST_COLUMNS: &str =
-    "id, name, first_seen, last_seen, conn_count, req_count, bytes_out, tls_seen, plaintext_seen";
+const HOST_COLUMNS: &str = "id, name, first_seen, last_seen, conn_count, req_count, bytes_out, tls_seen, plaintext_seen, unresolved";
 
 fn host(r: &Row<'_>) -> rusqlite::Result<Host> {
     Ok(Host {
@@ -35,14 +34,17 @@ fn host(r: &Row<'_>) -> rusqlite::Result<Host> {
         bytes_out: uint(r.get(6)?),
         tls_seen: r.get(7)?,
         plaintext_seen: r.get(8)?,
+        unresolved: r.get(9)?,
     })
 }
 
+/// Host counters and, when the delta names a process, its process + host counters.
+/// The caller runs it inside a transaction.
 pub(crate) fn upsert_host(c: &Connection, d: &HostDelta) -> rusqlite::Result<HostId> {
     let seen = to_millis(d.seen_at);
-    c.query_row(
-        "INSERT INTO hosts (name, first_seen, last_seen, conn_count, req_count, bytes_out, tls_seen, plaintext_seen)
-         VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7)
+    let id = c.query_row(
+        "INSERT INTO hosts (name, first_seen, last_seen, conn_count, req_count, bytes_out, tls_seen, plaintext_seen, unresolved)
+         VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT (name) DO UPDATE SET
              first_seen     = min(first_seen, excluded.first_seen),
              last_seen      = max(last_seen, excluded.last_seen),
@@ -50,7 +52,8 @@ pub(crate) fn upsert_host(c: &Connection, d: &HostDelta) -> rusqlite::Result<Hos
              req_count      = req_count + excluded.req_count,
              bytes_out      = bytes_out + excluded.bytes_out,
              tls_seen       = tls_seen OR excluded.tls_seen,
-             plaintext_seen = plaintext_seen OR excluded.plaintext_seen
+             plaintext_seen = plaintext_seen OR excluded.plaintext_seen,
+             unresolved     = unresolved OR excluded.unresolved
          RETURNING id",
         params![
             d.name,
@@ -60,9 +63,53 @@ pub(crate) fn upsert_host(c: &Connection, d: &HostDelta) -> rusqlite::Result<Hos
             int(d.bytes_out),
             d.security == Security::Tls,
             d.security == Security::Plaintext,
+            d.unresolved,
         ],
         |r| r.get(0),
-    )
+    )?;
+    if let Some(process) = &d.process {
+        c.execute(
+            "INSERT INTO process_hosts (process, host, first_seen, last_seen, conn_count, req_count, bytes_out)
+             VALUES (?1, ?2, ?3, ?3, ?4, ?5, ?6)
+             ON CONFLICT (process, host) DO UPDATE SET
+                 first_seen = min(first_seen, excluded.first_seen),
+                 last_seen  = max(last_seen, excluded.last_seen),
+                 conn_count = conn_count + excluded.conn_count,
+                 req_count  = req_count + excluded.req_count,
+                 bytes_out  = bytes_out + excluded.bytes_out",
+            params![
+                process,
+                d.name,
+                seen,
+                int(d.connections),
+                int(d.requests),
+                int(d.bytes_out),
+            ],
+        )?;
+    }
+    Ok(id)
+}
+
+pub(crate) fn process_hosts(
+    c: &Connection,
+    process: Option<&str>,
+) -> rusqlite::Result<Vec<ProcessHost>> {
+    let mut stmt = c.prepare(
+        "SELECT process, host, first_seen, last_seen, conn_count, req_count, bytes_out
+         FROM process_hosts WHERE ?1 IS NULL OR process = ?1 ORDER BY process, host",
+    )?;
+    let rows = stmt.query_map([process], |r| {
+        Ok(ProcessHost {
+            process: r.get(0)?,
+            host: r.get(1)?,
+            first_seen: from_millis(r.get(2)?),
+            last_seen: from_millis(r.get(3)?),
+            conn_count: uint(r.get(4)?),
+            req_count: uint(r.get(5)?),
+            bytes_out: uint(r.get(6)?),
+        })
+    })?;
+    rows.collect()
 }
 
 pub(crate) fn get_host(c: &Connection, name: &str) -> rusqlite::Result<Option<Host>> {

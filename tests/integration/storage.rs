@@ -127,6 +127,8 @@ async fn the_running_storage_writes_through_to_sqlite() {
             requests: 0,
             bytes_out: 512,
             security: flow.security,
+            unresolved: false,
+            process: None,
         })
         .await
         .unwrap();

@@ -106,6 +106,8 @@ fn delta(name: &str, bytes: u64) -> HostDelta {
         requests: 0,
         bytes_out: bytes,
         security: Security::Tls,
+        unresolved: false,
+        process: None,
     }
 }
 
