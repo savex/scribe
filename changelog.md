@@ -67,6 +67,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   builds of `scribed` / `scribe`.
 - `EventSink::delete_before` for retention (SQLite, in-memory doubles; Postgres in phase 12); the storage
   conformance suite checks it for sinks without native retention.
+- Storage manager runs: `StorageManager::start` gives a `Storage` with one writer task per sink. Batches by
+  size and time, non-blocking `publish` (full queues drop and count), hourly retention for sinks without their
+  own, per-sink counters (`sink_status`), flush and shutdown.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
@@ -103,6 +106,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Sensor tests workflow selects `traffic_generator::` and `sensors::` inside the `functional` binary.
 - SQLite runs on a worker thread per database; calls return futures that work on any executor and never
   block the async runtime.
+- `scribed` publishes module output through the running storage and drains the writers on shutdown.
 
 ### Deprecated
 - `privacy.url_query`. Use `[modules.url] query`. The old key still works, with a warning, for one minor version.

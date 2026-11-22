@@ -12,12 +12,15 @@ postgres = ["dep:scribe-storage-postgres"]
 
 [dependencies]
 scribe-storage-api.workspace = true
+scribe-core.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+tracing.workspace = true
 scribe-storage-sqlite = { workspace = true, optional = true }
 scribe-storage-postgres = { workspace = true, optional = true }
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "test-util"] }
 scribe-storage-conformance.workspace = true
 scribe-test-support.workspace = true
-scribe-core.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true

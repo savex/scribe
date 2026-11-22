@@ -781,6 +781,8 @@ dependencies = [
  "scribe-test-support",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

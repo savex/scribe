@@ -15,7 +15,7 @@ use clap::Parser;
 use scribe_core::{Clock, Sensor, SystemClock, VERSION};
 use scribe_module_api::ConfigDoc;
 use scribe_storage_api::{StorageError, StoredEvent};
-use scribe_storage_manager::{Registry, StorageManager};
+use scribe_storage_manager::{Registry, RunOptions, Storage, StorageManager};
 use tracing::{error, info, warn};
 
 use crate::config::{self, Settings};
@@ -105,15 +105,21 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
     }
 
     let registry = Registry::with_builtin();
-    let storage =
+    let manager =
         StorageManager::from_config(&registry, &settings.storage).context("cannot open storage")?;
-    match storage.migrate().await {
+    match manager.migrate().await {
         Ok(()) => info!("storage ready"),
         Err(StorageError::NotImplemented(op)) => {
             warn!("storage backend is not implemented yet ({op}); nothing will be stored")
         }
         Err(e) => return Err(e).context("storage migration failed"),
     }
+
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let storage = manager.start(RunOptions {
+        clock: clock.clone(),
+        ..RunOptions::default()
+    });
 
     let sensor = platform_sensor();
     info!(
@@ -141,8 +147,7 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
         }
     }
     let queue = OutputQueue::new(QUEUE);
-    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
-    for (id, started) in host.start(clock, |id| queue.emitter(id), state) {
+    for (id, started) in host.start(clock.clone(), |id| queue.emitter(id), state) {
         match started {
             Ok(()) => info!(module = id, "module {id} started"),
             Err(e) => warn!(module = id, "module {id} did not start: {e}"),
@@ -178,12 +183,7 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
         );
     }
 
-    for sink in storage.sinks() {
-        match sink.flush().await {
-            Ok(()) | Err(StorageError::NotImplemented(_)) => {}
-            Err(e) => warn!(sink = sink.name(), "flush failed: {e}"),
-        }
-    }
+    storage.shutdown().await;
     info!("scribed stopped");
     Ok(())
 }
@@ -195,7 +195,7 @@ struct Drain {
 }
 
 impl Drain {
-    async fn run(&mut self, queue: &OutputQueue, storage: &StorageManager) {
+    async fn run(&mut self, queue: &OutputQueue, storage: &Storage) {
         let mut events: Vec<StoredEvent> = Vec::new();
         for item in queue.take() {
             match item {
@@ -208,9 +208,7 @@ impl Drain {
             }
         }
         if !events.is_empty() {
-            if let Err(e) = storage.publish(&events).await {
-                self.warn(&e);
-            }
+            storage.publish(&events);
         }
     }
 
