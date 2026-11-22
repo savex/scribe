@@ -7,6 +7,7 @@
 //!
 //! Backends register a [`StorageFactory`] with the storage manager.
 
+pub mod codec;
 pub mod error;
 pub mod model;
 pub mod traits;

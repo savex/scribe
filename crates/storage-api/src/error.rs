@@ -12,6 +12,16 @@ pub enum StorageError {
     Config(String),
     #[error("storage backend error: {0}")]
     Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// A stored record or the schema can't be read by this version.
+    #[error("stored data cannot be read: {0}")]
+    Data(String),
+}
+
+impl StorageError {
+    /// Wrap any backend error.
+    pub fn backend(e: impl std::error::Error + Send + Sync + 'static) -> Self {
+        StorageError::Backend(Box::new(e))
+    }
 }
 
 #[cfg(test)]

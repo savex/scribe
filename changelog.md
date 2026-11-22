@@ -79,6 +79,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   (Modules section), test approach §7a, plan (phase 0b done, 101.5–127.5 days left) and status (89% product
   coverage). The Release smoke test checks that the shipped config enables the URL module.
 
+- Phase 1 step 1: `scribe_storage_api::codec`, the stored row layout shared by the SQL backends: kind, module,
+  host, schema version and JSON payload per event, epoch-millisecond timestamps; reads schema 1 flows (`url`,
+  `request`) as notes and `payload`. New `StorageError::Data` for unreadable records.
+
 ### Changed
 - Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
 
