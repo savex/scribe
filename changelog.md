@@ -102,10 +102,21 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   NFR-6; skill (schema version 2, row codec, SQLite settings, cross-check note), plan (phase 1 done, 98–123 days
   left), status (91.7% product coverage), test approach and readme.
 
+- `workfiles/diagram.md` brought up to date after phase 1: components with modules and all three conformance
+  suites, the connection flow with module hooks and outputs, the policy decision with scores and hibernation,
+  storage classes with module state and the row codec; new diagrams for the module framework, daemon run
+  states, the schema v2 tables and the local API trust boundary.
+- `workfiles/test-approach.md` brought up to date: test workflows are manual ("every run" / privileged stage
+  instead of PR / nightly), implemented tests marked, module and host-fact doubles, daemon command and module
+  scenarios, missing storage tests listed (proptest, concurrency, in-memory SQLite), the real coverage method,
+  the local cross-OS check note and the actual test layout.
+
 ### Changed
 - Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
 
 ### Fixed
+- Tests workflow: the SQLite job always runs its conformance, migration and snapshot tests (none are ignored
+  any more); the manual input now only adds the ignored Postgres conformance tests.
 - Plan totals after the `scribe daemon` change were 0.5 day too high (121 → 120.5, 111.5 → 111, M1 59 → 58.5,
   52 → 51.5); corrected in the new totals. M1 remaining after the security update was 57 instead of 56.5;
   corrected with the module framework totals. The skill's M2 and M3 figures had not been updated; now current.

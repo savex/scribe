@@ -11,7 +11,7 @@ on:
         options: [all, ubuntu, macos, windows]
         default: all
       backend_conformance:
-        description: "Also run the (ignored) SQLite / Postgres conformance tests"
+        description: "Also run the (ignored) Postgres conformance tests"
         type: boolean
         default: false
 
@@ -89,11 +89,8 @@ jobs:
             echo "$db: $(sqlite3 "$db" 'PRAGMA integrity_check; PRAGMA user_version;' | tr '\n' ' ')"
             [[ $(sqlite3 "$db" 'PRAGMA integrity_check;') == ok ]]
           done
-      - name: Conformance
-        run: |
-          args=()
-          [[ "${{ inputs.backend_conformance }}" == "true" ]] && args=(-- --ignored)
-          cargo test -p scribe-storage-sqlite --locked "${args[@]}"
+      - name: Conformance, migrations and snapshots
+        run: cargo test -p scribe-storage-sqlite --locked
 
   postgres:
     name: Postgres backend
