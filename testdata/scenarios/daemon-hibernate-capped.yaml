@@ -1,0 +1,23 @@
+name: daemon-hibernate-capped
+description: Hibernation raises a `hibernated` alert, records nothing, and is capped by max_hibernate (a 10h request ends after 4h); processing resumes on its own. Needs the run states (phase 5).
+mode: alert
+profile: default
+baseline:
+  - api.example.com
+max_hibernate: 4h
+
+events:
+  - { at: 0s,  dst: "192.0.2.10:443", host: api.example.com,  security: tls }
+  - { at: 1m,  api: { hibernate: { for: 10h } } }
+  - { at: 2m,  dst: "192.0.2.12:443", host: docs.example.com, security: tls }
+  - { at: 3h,  dst: "192.0.2.12:443", host: docs.example.com, security: tls }
+  - { at: 5h,  dst: "192.0.2.15:443", host: late.example.com, security: tls }
+
+expect:
+  run_state: running
+  alerts:
+    - { host: null, dst: null, reason: hibernated }
+    - { host: late.example.com, dst: "192.0.2.15:443", reason: unlisted_host }
+  hosts:
+    api.example.com: { connections: 1 }
+    late.example.com: { connections: 1 }

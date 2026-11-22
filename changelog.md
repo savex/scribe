@@ -50,6 +50,14 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   - "Decisions needed before a phase" table.
   - Risk 9: CI has never run on GitHub.
 - Diagrams: module framework, daemon run states, schema v2 tables, local API trust boundary.
+- `FlowEvent.ech` and `FlowEvent::unresolved()` (FR-5, FR-7); the builder gains `ech()`.
+- Fixture `http_keepalive`: two HTTP requests on one connection. Fixture expectations gain `kind`.
+- Sensor sample `linux-ebpf/http_keepalive.json`. Samples list `observations` (with client bytes) and `enriched`.
+- 8 scenarios: unusual port (2), new TLD, threat list, acknowledged alert, module signal, hibernate cap, wakeup and reset.
+- Scenario format: `api` actions (`ack`, `baseline_add`, `hibernate`, `wakeup`, `reset`), `ech`, `head_bytes`, `threat_list`, `scores`, `modules`.
+- Scenario expectations: `notes`, `unresolved`, `processes`, `signals`, `run_state`, `runtime`.
+- UI mocks: `hibernating`, `degraded-drops`, `module-failed`; statuses carry run state, counters, critical metrics, modules.
+- Spec: `--json` for `scribe hosts` and `scribe alerts`; `scribe baseline` lists entries.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
@@ -66,6 +74,15 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Plan: phases 0b and 1 done; phases 2, 3, 4 re-scoped. 101.5–127.5 days left (122–153 with buffer); M1 48–59.
 - Diagrams and test approach updated after phase 1. Test workflows are described as manual.
 - Status: 91.7% product test coverage.
+
+- DoH fixture and `hostname-unresolved` use `doh.example.net` at 198.51.100.53, not a real resolver.
+- `traffic.env` has no internet defaults; e2e scripts stop while a target is empty.
+- E2e scripts upgrade from the previous release and check data, mode, schema, config and the URL module.
+- E2e scripts check security (groups, file modes, socket dir, systemd hardening), daemon commands and uninstall data.
+- E2e scripts read `--json` output and poll with a timeout instead of sleeping.
+- `counters-exact` checks per-process counters; `caution-plaintext-known-host` checks the alert's URL note.
+- v2 snapshot rebuilt (not yet released): its flow row has `src` and `ech`.
+- Test data rules: no exceptions to documentation addresses and example names.
 
 ### Deprecated
 - `privacy.url_query`. Use `[modules.url] query`. The old key still works, with a warning, for one minor version.

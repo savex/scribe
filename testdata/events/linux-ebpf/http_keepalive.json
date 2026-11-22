@@ -1,0 +1,19 @@
+{
+  "source": "linux-ebpf",
+  "status": "draft",
+  "description": "Two HTTP/1.1 requests on one kept-alive connection: tcp_connect, then two socket-filter payload records. The second request becomes a payload observation the URL module reads.",
+  "records": [
+    {"type": "tcp_connect", "ts_ns": 1700000000000000000, "tgid": 4300, "pid": 4301, "uid": 1000, "comm": "curl", "cgroup_id": 7777, "family": 2, "saddr": "10.0.0.2", "sport": 50014, "daddr": "192.0.2.20", "dport": 80},
+    {"type": "payload", "ts_ns": 1700000000003000000, "tgid": 4300, "family": 2, "saddr": "10.0.0.2", "sport": 50014, "daddr": "192.0.2.20", "dport": 80, "payload_pcap": "../../pcap/http_keepalive.pcap", "client_segment": 1},
+    {"type": "payload", "ts_ns": 1700000000005000000, "tgid": 4300, "family": 2, "saddr": "10.0.0.2", "sport": 50014, "daddr": "192.0.2.20", "dport": 80, "payload_pcap": "../../pcap/http_keepalive.pcap", "client_segment": 2}
+  ],
+  "observations": [
+    {"pid": 4300, "process_path": "/proc/4300/exe", "proto": "tcp", "dst_ip": "192.0.2.20", "dst_port": 80, "kind": "new_flow", "head": null},
+    {"pid": 4300, "dst_ip": "192.0.2.20", "dst_port": 80, "kind": "payload", "head": {"pcap": "../../pcap/http_keepalive.pcap", "client_segment": 1}},
+    {"pid": 4300, "dst_ip": "192.0.2.20", "dst_port": 80, "kind": "payload", "head": {"pcap": "../../pcap/http_keepalive.pcap", "client_segment": 2}}
+  ],
+  "enriched": [
+    {"dst_ip": "192.0.2.20", "dst_port": 80, "hostname": "plain.example.com", "security": "plaintext", "notes": {"url": "http://plain.example.com/a?x=1"}},
+    {"dst_ip": "192.0.2.20", "dst_port": 80, "hostname": "plain.example.com", "security": "plaintext", "notes": {"url": "http://plain.example.com/b"}}
+  ]
+}

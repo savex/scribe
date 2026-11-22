@@ -28,6 +28,8 @@ pub struct ExpectedFlow {
     /// `notes.url`: what the URL module must attach.
     pub url: Option<&'static str>,
     pub ech: bool,
+    /// `new_flow`, or `payload` for a later request on the same connection.
+    pub kind: &'static str,
 }
 
 impl ExpectedFlow {
@@ -39,6 +41,7 @@ impl ExpectedFlow {
             security,
             url: None,
             ech: false,
+            kind: "new_flow",
         }
     }
 
@@ -50,6 +53,7 @@ impl ExpectedFlow {
             security: "plaintext",
             url: None,
             ech: false,
+            kind: "new_flow",
         }
     }
 }
@@ -65,14 +69,15 @@ impl Fixture {
             .iter()
             .map(|f| {
                 format!(
-                    "    {{ \"proto\": \"{}\", \"dst_ip\": \"{}\", \"dst_port\": {}, \"hostname\": {}, \"security\": \"{}\", \"notes\": {}, \"ech\": {} }}",
+                    "    {{ \"proto\": \"{}\", \"dst_ip\": \"{}\", \"dst_port\": {}, \"hostname\": {}, \"security\": \"{}\", \"notes\": {}, \"ech\": {}, \"kind\": \"{}\" }}",
                     f.proto,
                     f.dst.ip(),
                     f.dst.port(),
                     json_opt(f.hostname),
                     f.security,
                     notes_json(f.url),
-                    f.ech
+                    f.ech,
+                    f.kind
                 )
             })
             .collect();
@@ -281,6 +286,29 @@ pub fn all() -> Vec<Fixture> {
             }],
         },
         Fixture {
+            name: "http_keepalive",
+            description: "Two plaintext HTTP/1.1 GETs on one kept-alive connection: the second arrives as a payload observation with its own URL.",
+            frames: tcp_session(
+                "10.0.0.2:50014",
+                "192.0.2.20:80",
+                &[
+                    &http::get_request("plain.example.com", "/a?x=1"),
+                    &http::get_request("plain.example.com", "/b"),
+                ],
+            ),
+            expected: vec![
+                ExpectedFlow {
+                    url: Some("http://plain.example.com/a?x=1"),
+                    ..ExpectedFlow::tcp("192.0.2.20:80", Some("plain.example.com"), "plaintext")
+                },
+                ExpectedFlow {
+                    url: Some("http://plain.example.com/b"),
+                    kind: "payload",
+                    ..ExpectedFlow::tcp("192.0.2.20:80", Some("plain.example.com"), "plaintext")
+                },
+            ],
+        },
+        Fixture {
             name: "dns_cname_then_tls",
             description: "DNS A query answered through a CNAME, then TLS without SNI to the answer IP: hostname is the name that was queried.",
             frames: dns_cname,
@@ -330,9 +358,13 @@ pub fn all() -> Vec<Fixture> {
         },
         Fixture {
             name: "doh",
-            description: "TLS to a public DNS-over-HTTPS resolver; later DNS lookups from this client are invisible.",
-            frames: tcp_session("10.0.0.2:50013", "8.8.8.8:443", &[&client_hello_sni("dns.google")]),
-            expected: vec![ExpectedFlow::tcp("8.8.8.8:443", Some("dns.google"), "tls")],
+            description: "TLS to a DNS-over-HTTPS resolver (on the resolver list the test configures); later DNS lookups from this client are invisible.",
+            frames: tcp_session(
+                "10.0.0.2:50013",
+                "198.51.100.53:443",
+                &[&client_hello_sni("doh.example.net")],
+            ),
+            expected: vec![ExpectedFlow::tcp("198.51.100.53:443", Some("doh.example.net"), "tls")],
         },
     ]
 }

@@ -7,7 +7,7 @@ INSERT INTO schema_migrations (version, applied_at) VALUES (2, to_timestamp(1700
 
 INSERT INTO events (id, ts, kind, module, host, schema_version, payload) VALUES
   (5, to_timestamp(1700100001000 / 1000.0), 'flow', NULL, 'plain.example.com', 2,
-     '{"pid":100,"process_path":"/usr/bin/curl","proto":"tcp","dst_ip":"192.0.2.20","dst_port":80,"hostname":"plain.example.com","notes":{"url":"http://plain.example.com/download?id=<redacted>"},"security":"plaintext","bytes_out":96,"kind":"payload"}'),
+     '{"pid":100,"process_path":"/usr/bin/curl","proto":"tcp","src":"10.0.0.2:50005","dst_ip":"192.0.2.20","dst_port":80,"hostname":"plain.example.com","ech":false,"notes":{"url":"http://plain.example.com/download?id=<redacted>"},"security":"plaintext","bytes_out":96,"kind":"payload"}'),
   (6, to_timestamp(1700100001000 / 1000.0), 'url.request', 'url', 'plain.example.com', 1,
      '{"method":"GET","url":"http://plain.example.com/download?id=<redacted>"}');
 

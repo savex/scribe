@@ -3,13 +3,12 @@
   "status": "draft",
   "description": "Microsoft-Windows-Kernel-Network event 12 (TCPv4 connection attempted).",
   "records": [
-    { "provider": "Microsoft-Windows-Kernel-Network", "provider_guid": "{7DD42A49-5329-4832-8DFD-43D979153A88}",
-      "event_id": 12, "timestamp": "2023-11-14T22:13:20.000Z", "process_id": 6120,
-      "properties": { "PID": 6120, "size": 0, "daddr": "192.0.2.10", "saddr": "10.0.0.2",
-                      "dport": 443, "sport": 50001, "connid": 0, "seqnum": 0 } }
+    {"provider": "Microsoft-Windows-Kernel-Network", "provider_guid": "{7DD42A49-5329-4832-8DFD-43D979153A88}", "event_id": 12, "timestamp": "2023-11-14T22:13:20.000Z", "process_id": 6120, "properties": {"PID": 6120, "size": 0, "daddr": "192.0.2.10", "saddr": "10.0.0.2", "dport": 443, "sport": 50001, "connid": 0, "seqnum": 0}}
   ],
-  "expected": [
-    { "pid": 6120, "process_path": "C:\\Program Files\\Example\\app.exe", "proto": "tcp",
-      "dst_ip": "192.0.2.10", "dst_port": 443, "kind": "new_flow" }
+  "observations": [
+    {"pid": 6120, "process_path": "C:\\Program Files\\Example\\app.exe", "proto": "tcp", "dst_ip": "192.0.2.10", "dst_port": 443, "kind": "new_flow", "head": null}
+  ],
+  "enriched": [
+    {"dst_ip": "192.0.2.10", "dst_port": 443, "hostname": null, "security": "unknown"}
   ]
 }

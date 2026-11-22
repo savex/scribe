@@ -2,6 +2,6 @@
   "fixture": "http_plain.pcap",
   "description": "Plaintext HTTP/1.1 GET: full URL is visible.",
   "expected_flows": [
-    { "proto": "tcp", "dst_ip": "192.0.2.20", "dst_port": 80, "hostname": "plain.example.com", "security": "plaintext", "notes": { "url": "http://plain.example.com/download?id=42" }, "ech": false }
+    { "proto": "tcp", "dst_ip": "192.0.2.20", "dst_port": 80, "hostname": "plain.example.com", "security": "plaintext", "notes": { "url": "http://plain.example.com/download?id=42" }, "ech": false, "kind": "new_flow" }
   ]
 }

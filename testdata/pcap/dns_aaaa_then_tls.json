@@ -2,7 +2,7 @@
   "fixture": "dns_aaaa_then_tls.pcap",
   "description": "DNS AAAA over IPv6, then TLS without SNI to the answer IP.",
   "expected_flows": [
-    { "proto": "udp", "dst_ip": "2001:db8::53", "dst_port": 53, "hostname": null, "security": "plaintext", "notes": {}, "ech": false },
-    { "proto": "tcp", "dst_ip": "2001:db8::50", "dst_port": 443, "hostname": "v6.example.com", "security": "tls", "notes": {}, "ech": false }
+    { "proto": "udp", "dst_ip": "2001:db8::53", "dst_port": 53, "hostname": null, "security": "plaintext", "notes": {}, "ech": false, "kind": "new_flow" },
+    { "proto": "tcp", "dst_ip": "2001:db8::50", "dst_port": 443, "hostname": "v6.example.com", "security": "tls", "notes": {}, "ech": false, "kind": "new_flow" }
   ]
 }

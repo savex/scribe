@@ -1,0 +1,12 @@
+name: caution-new-tld-quiet
+description: In caution mode a new top-level domain (20) from a new process (25) scores 45, just below the threshold, so it stays quiet. TLDs of baseline hosts count as seen.
+mode: caution
+profile: default
+baseline:
+  - api.example.com
+
+events:
+  - { at: 0s, dst: "192.0.2.14:443", host: shop.example.net, security: tls, process: /usr/bin/fetch, pid: 500 }
+
+expect:
+  alerts: []

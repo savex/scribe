@@ -1,15 +1,15 @@
 name: counters-exact
-description: Connection, request and byte counters are exact per host, including interleaved flows to the same host.
+description: Connection, request and byte counters are exact per host and per process, including interleaved flows to the same host. Request counts need the URL parser (phase 3).
 mode: learn
 profile: default
 baseline: []
 
 events:
-  - { at: 0s, dst: "192.0.2.20:80",  host: plain.example.com, security: plaintext, bytes: 100 }
+  - { at: 0s, dst: "192.0.2.20:80",  host: plain.example.com, security: plaintext, bytes: 100, process: /usr/bin/curl }
   - { at: 0s, dst: "192.0.2.20:80",  host: plain.example.com, kind: request, url: "http://plain.example.com/a", bytes: 50 }
-  - { at: 1s, dst: "192.0.2.10:443", host: api.example.com,   security: tls, bytes: 512 }
+  - { at: 1s, dst: "192.0.2.10:443", host: api.example.com,   security: tls, bytes: 512, process: /usr/bin/curl }
   - { at: 1s, dst: "192.0.2.20:80",  host: plain.example.com, kind: request, url: "http://plain.example.com/b", bytes: 50 }
-  - { at: 2s, dst: "192.0.2.10:443", host: api.example.com,   security: tls, bytes: 1024 }
+  - { at: 2s, dst: "192.0.2.10:443", host: api.example.com,   security: tls, bytes: 1024, process: /usr/bin/wget }
   - { at: 3s, dst: "192.0.2.20:80",  host: plain.example.com, kind: close }
 
 expect:
@@ -17,3 +17,6 @@ expect:
   hosts:
     plain.example.com: { connections: 1, requests: 2, bytes: 200, tls_seen: false, plaintext_seen: true }
     api.example.com:   { connections: 2, requests: 0, bytes: 1536, tls_seen: true, plaintext_seen: false }
+  processes:
+    /usr/bin/curl: { plain.example.com: { connections: 1 }, api.example.com: { connections: 1, bytes: 512 } }
+    /usr/bin/wget: { api.example.com: { connections: 1, bytes: 1024 } }

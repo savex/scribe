@@ -1,0 +1,15 @@
+name: module-signal-scored
+description: A module signal is scored like any other signal. For an unlisted host, new process (25) + new TLD (20) stay below 50; the `tag.large_head` signal (60, from `scores`) lifts it over and names the alert. Uses the test module `tag`, which signals for heads over 1 KiB.
+mode: caution
+profile: default
+baseline: []
+modules: [url, tag]
+scores: { "tag.large_head": 60 }
+
+events:
+  - { at: 0s, dst: "192.0.2.21:443", host: upload.example.com, security: tls, process: /usr/bin/curl, pid: 100, head_bytes: 2048 }
+
+expect:
+  signals: [tag.large_head]
+  alerts:
+    - { host: upload.example.com, dst: "192.0.2.21:443", reason: tag.large_head }

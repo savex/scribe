@@ -3,12 +3,12 @@
   "status": "draft",
   "description": "udp_sendmsg kprobe record for a DNS query over IPv6.",
   "records": [
-    { "type": "udp_sendmsg", "ts_ns": 1700000000000000000, "tgid": 515, "pid": 515, "uid": 101,
-      "comm": "systemd-resolve", "cgroup_id": 12, "family": 10,
-      "saddr": "fd00::2", "sport": 53002, "daddr": "2001:db8::53", "dport": 53, "len": 32 }
+    {"type": "udp_sendmsg", "ts_ns": 1700000000000000000, "tgid": 515, "pid": 515, "uid": 101, "comm": "systemd-resolve", "cgroup_id": 12, "family": 10, "saddr": "fd00::2", "sport": 53002, "daddr": "2001:db8::53", "dport": 53, "len": 32}
   ],
-  "expected": [
-    { "pid": 515, "proto": "udp", "dst_ip": "2001:db8::53", "dst_port": 53, "bytes_out": 32,
-      "security": "plaintext", "kind": "new_flow" }
+  "observations": [
+    {"pid": 515, "proto": "udp", "dst_ip": "2001:db8::53", "dst_port": 53, "bytes_out": 32, "kind": "new_flow", "head": null}
+  ],
+  "enriched": [
+    {"dst_ip": "2001:db8::53", "dst_port": 53, "security": "plaintext"}
   ]
 }

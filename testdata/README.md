@@ -2,8 +2,9 @@
 
 All data here is generated in the lab or written by hand. **Never commit traffic captured
 from a real user.** Addresses come from documentation ranges (192.0.2.0/24, 198.51.100.0/24,
-2001:db8::/32) and names use `example.com` / `example.net`, except where a real public
-service is the point of the test (`doh` uses 8.8.8.8 / dns.google).
+2001:db8::/32) and names use `example.com` / `example.net`, with no exceptions. Real services
+are stood in for by documentation addresses (the DoH resolver is `doh.example.net` at
+198.51.100.53, put on the resolver list by the test).
 
 | Folder | Contents | Produced by | Used by |
 |---|---|---|---|

@@ -1,7 +1,8 @@
 # Raw sensor records
 
-Input for the decoding half of each native sensor: the raw record the OS hands us, and the
-`FlowEvent` fields the decoder must produce. Decoding tests need no privileges.
+Input for the decoding half of each native sensor: the raw records the OS hands us, the
+`Observation`s the decoder must produce, and what enrichment and modules add on top. Decoding tests
+need no privileges.
 
 **Status: draft.** The record layouts follow the planned designs (eBPF struct, ETW provider
 fields, XPC message). Replace them with records captured in lab VMs once each sensor exists.
@@ -14,6 +15,15 @@ File layout:
   "status": "draft",
   "description": "...",
   "records": [ ... raw records, in arrival order ... ],
-  "expected": [ ... FlowEvent fields; omitted fields are not checked ... ]
+  "observations": [ ... decoder output: FlowEvent fields plus "head" ... ],
+  "enriched": [ ... after enrichment and modules: hostname, security, ech, notes ... ]
 }
 ```
+
+- Omitted fields are not checked.
+- `head` is `null` (no client bytes) or `{ "pcap": "<fixture>", "client_segment": n }`: the n-th client
+  payload segment of that pcap fixture, cut to `HEAD_MAX` (4 KiB). Windows ETW gives no payload, so its
+  heads are `null` until Npcap is used (plan phase 8).
+- The decoder sets only what the OS reports. Host names from SNI, `Host` or DNS appear in `enriched`;
+  the macOS Network Extension is the exception, since the OS hands over `remote_hostname` itself.
+- `http_keepalive.json` covers the second request on a kept-alive connection (a `payload` observation).

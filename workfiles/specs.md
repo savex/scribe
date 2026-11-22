@@ -142,9 +142,9 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-2 | Attribute each flow to its process (pid and path) where the sensor allows; the pcap fallback reports no process | Stub | Sensor conformance (`expect_process_info`) |
 | FR-3 | Find the host name in this order: TLS SNI, HTTP `Host` header, DNS cache (IP → queried name, CNAME chains map back to the queried name) | Partly (DNS cache) | pcap fixtures `tls13_sni_ipv4`, `http_plain`, `dns_cname_then_tls`, `dns_aaaa_then_tls` |
 | FR-4 | Classify each flow as `tls`, `quic`, `plaintext` or `unknown` from its first bytes, never from the port | Partly (TCP) | Unit tests in `enrich`; fixtures |
-| FR-5 | For ECH, record the outer public name and flag the flow `ech` | Planned | Fixture `tls_ech` |
+| FR-5 | For ECH, record the outer public name and flag the flow `ech` | Partly (`FlowEvent.ech` stored; detection in phase 3) | Fixture `tls_ech` |
 | FR-6 | For QUIC, read the SNI from the Initial packet (using `ring` 0.17) | Planned | Fixture to be checked against RFC 9001 Appendix A |
-| FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Planned | Scenario `hostname-unresolved`; fixture `doh` |
+| FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Partly (`FlowEvent::unresolved()`: no name or ECH outer name only; tracking in phases 3–5) | Scenario `hostname-unresolved`; fixture `doh` |
 | FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Planned | Fixture `http_plain`; module conformance |
 | FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Planned | Scenario `counters-exact`; storage conformance |
 | FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Implemented in the SQLite state store (Postgres in phase 12) | Storage conformance |
@@ -222,10 +222,11 @@ Talks to `scribed` through the local API.
 |---|---|---|
 | `scribe version`, `--version`, `-V` | Print `scribe <version>` | Implemented |
 | `scribe status` | Short form of `scribe daemon status` (section 6.2.1) | Stub |
-| `scribe hosts` | Tracked hosts with counters and flags | Stub |
+| `scribe hosts [--json]` | Tracked hosts with counters and flags (`unresolved`, `ech`) | Stub |
 | `scribe mode <learn\|caution\|alert>` | Switch mode | Stub (mode name checking works) |
-| `scribe alerts` | List alerts | Planned |
+| `scribe alerts [--json]` | List alerts, with their notes (e.g. the URL) | Planned |
 | `scribe alerts ack <id>` | Acknowledge an alert | Planned |
+| `scribe baseline [--json]` | List the active profile's baseline | Planned |
 | `scribe baseline add\|rm <host>` | Edit the active profile's baseline | Planned |
 | `scribe export` | Dump hosts and baseline | Stub |
 | `scribe daemon <command>` | Inspect and control the running daemon (section 6.2.1) | Planned |
@@ -318,7 +319,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | C | API split: `scribe-api-proto` (generated types), server inside `scribed`, client crate for CLI and UI | Smallest client; server code lives with the daemon it serves | Generated code in its own crate; more crates than A |
 | D | Everything inside `crates/daemon` as modules | No new crates | Daemon grows large; scenario tests can't run the policy engine without the whole daemon |
 
-**Decision:** option A. It keeps the policy engine free of I/O, so the 11 scenarios can drive it directly with the test doubles, and the CLI and UI link only the API client. Options B–D are kept for the record.
+**Decision:** option A. It keeps the policy engine free of I/O, so the scenarios can drive it directly with the test doubles, and the CLI and UI link only the API client. Options B–D are kept for the record.
 
 ### 7.3 Test and support modules (implemented)
 
@@ -644,6 +645,7 @@ These keys come from section 12.1.1 (the module keys landed in phase 0b and are 
 | `proto` | `tcp`, `udp` or `quic` |
 | `src`, `dst_ip`, `dst_port` | Endpoints |
 | `hostname` | From SNI, HTTP Host or DNS correlation |
+| `ech` | The ClientHello used ECH: `hostname` is only the outer public name; `unresolved()` is true for these and for flows with no name |
 | `notes` | Values from modules, keyed by module id; the URL module writes `notes.url` (replaced `url` in phase 0b) |
 | `security` | `tls`, `quic`, `plaintext` or `unknown` |
 | `bytes_out` | Bytes sent |
@@ -904,8 +906,8 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 
 | Area | Test assets | Ready |
 |---|---|---|
-| Parsing and enrichment (FR-3 – FR-8) | 13 pcap fixtures with expected flows, fuzz targets | Yes, except QUIC |
-| Policy and modes (FR-11 – FR-15) | 11 daemon scenarios with `FakeSensor`, `MemoryStore`, `FakeClock` | Yes (runner planned) |
+| Parsing and enrichment (FR-3 – FR-8) | 14 pcap fixtures with expected flows (incl. a kept-alive connection), raw sensor samples, fuzz targets | Yes, except QUIC |
+| Policy and modes (FR-11 – FR-15) | 19 daemon scenarios (incl. hibernation, reset, acknowledge, module signals) with `FakeSensor`, `MemoryStore`, `FakeClock` | Yes (runner planned) |
 | Storage (FR-9, FR-10, FR-17 – FR-19) | Storage conformance suite, schema snapshots, `FaultySink` | Yes |
 | Capture (FR-1, FR-2) | Sensor conformance suite and traffic generator, draft raw records | Yes |
 | API and UI (FR-20) | Mock API scenarios | Partly |

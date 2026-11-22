@@ -1,0 +1,13 @@
+name: caution-threat-list
+description: A host on a configured threat list scores 100 and alerts in caution mode, even over TLS on port 443.
+mode: caution
+profile: default
+baseline: []
+threat_list: [evil.example.net]
+
+events:
+  - { at: 0s, dst: "198.51.100.66:443", host: evil.example.net, security: tls, process: /usr/bin/curl, pid: 100 }
+
+expect:
+  alerts:
+    - { host: evil.example.net, dst: "198.51.100.66:443", reason: threat_list }

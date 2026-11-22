@@ -2,6 +2,6 @@
   "fixture": "tls_ech.pcap",
   "description": "ClientHello with encrypted_client_hello: only the outer public name is visible.",
   "expected_flows": [
-    { "proto": "tcp", "dst_ip": "192.0.2.12", "dst_port": 443, "hostname": "public.example.com", "security": "tls", "notes": {}, "ech": true }
+    { "proto": "tcp", "dst_ip": "192.0.2.12", "dst_port": 443, "hostname": "public.example.com", "security": "tls", "notes": {}, "ech": true, "kind": "new_flow" }
   ]
 }

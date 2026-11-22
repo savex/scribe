@@ -3,7 +3,7 @@
 //!
 //! Payloads by kind (schema 2):
 //! - `flow`: `pid`, `process_path`, `proto`, `src`, `dst_ip`, `dst_port`, `hostname`, `notes`,
-//!   `security`, `bytes_out`, `kind` (`new_flow` | `payload` | `close`). Schema 1 rows carry `url`
+//!   `security`, `bytes_out`, `kind` (`new_flow` | `payload` | `close`), `ech`. Schema 1 rows carry `url`
 //!   instead of `notes` and may lack `src`; [`decode`] converts them.
 //! - `alert`: `dst_ip`, `process_path`, `score`, `reason` (host in the row).
 //! - `audit`: `message`.
@@ -62,6 +62,7 @@ pub fn encode(event: &StoredEvent) -> Row {
                 "dst_ip": f.dst_ip.to_string(),
                 "dst_port": f.dst_port,
                 "hostname": f.hostname,
+                "ech": f.ech,
                 "notes": f.notes,
                 "security": security_name(f.security),
                 "bytes_out": f.bytes_out,
@@ -158,6 +159,7 @@ pub fn decode(row: Row) -> Result<StoredEvent, StorageError> {
                     .and_then(|n| u16::try_from(n).ok())
                     .ok_or_else(|| bad("`dst_port` is not a port"))?,
                 hostname: opt_text("hostname").or_else(|| row.host.clone()),
+                ech: p.get("ech").and_then(Value::as_bool).unwrap_or(false),
                 notes,
                 security: match text("security") {
                     Some("tls") => Security::Tls,
@@ -269,6 +271,7 @@ mod tests {
             dst_ip: "192.0.2.20".parse().unwrap(),
             dst_port: 80,
             hostname: Some("plain.example.com".into()),
+            ech: true,
             notes,
             security: Security::Plaintext,
             bytes_out: 96,
@@ -323,6 +326,7 @@ mod tests {
                 want.kind
             )
         );
+        assert!(f.ech, "ech round-trips");
 
         let alert = AlertRecord {
             ts: ts(),

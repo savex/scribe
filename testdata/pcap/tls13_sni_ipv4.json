@@ -2,6 +2,6 @@
   "fixture": "tls13_sni_ipv4.pcap",
   "description": "TLS 1.3 ClientHello with SNI over IPv4.",
   "expected_flows": [
-    { "proto": "tcp", "dst_ip": "192.0.2.10", "dst_port": 443, "hostname": "api.example.com", "security": "tls", "notes": {}, "ech": false }
+    { "proto": "tcp", "dst_ip": "192.0.2.10", "dst_port": 443, "hostname": "api.example.com", "security": "tls", "notes": {}, "ech": false, "kind": "new_flow" }
   ]
 }

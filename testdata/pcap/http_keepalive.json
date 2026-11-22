@@ -1,0 +1,8 @@
+{
+  "fixture": "http_keepalive.pcap",
+  "description": "Two plaintext HTTP/1.1 GETs on one kept-alive connection: the second arrives as a payload observation with its own URL.",
+  "expected_flows": [
+    { "proto": "tcp", "dst_ip": "192.0.2.20", "dst_port": 80, "hostname": "plain.example.com", "security": "plaintext", "notes": { "url": "http://plain.example.com/a?x=1" }, "ech": false, "kind": "new_flow" },
+    { "proto": "tcp", "dst_ip": "192.0.2.20", "dst_port": 80, "hostname": "plain.example.com", "security": "plaintext", "notes": { "url": "http://plain.example.com/b" }, "ech": false, "kind": "payload" }
+  ]
+}

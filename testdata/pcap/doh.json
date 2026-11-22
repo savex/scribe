@@ -1,7 +1,7 @@
 {
   "fixture": "doh.pcap",
-  "description": "TLS to a public DNS-over-HTTPS resolver; later DNS lookups from this client are invisible.",
+  "description": "TLS to a DNS-over-HTTPS resolver (on the resolver list the test configures); later DNS lookups from this client are invisible.",
   "expected_flows": [
-    { "proto": "tcp", "dst_ip": "8.8.8.8", "dst_port": 443, "hostname": "dns.google", "security": "tls", "notes": {}, "ech": false }
+    { "proto": "tcp", "dst_ip": "198.51.100.53", "dst_port": 443, "hostname": "doh.example.net", "security": "tls", "notes": {}, "ech": false, "kind": "new_flow" }
   ]
 }

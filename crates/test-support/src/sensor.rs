@@ -85,6 +85,7 @@ pub fn flow(dst: &str) -> FlowBuilder {
             dst_ip: dst.ip(),
             dst_port: dst.port(),
             hostname: None,
+            ech: false,
             notes: Notes::new(),
             security: Security::Unknown,
             bytes_out: 0,
@@ -145,6 +146,13 @@ impl FlowBuilder {
 
     pub fn bytes(mut self, bytes_out: u64) -> Self {
         self.event.bytes_out = bytes_out;
+        self
+    }
+
+    /// TLS with Encrypted Client Hello: `host` is the outer public name.
+    pub fn ech(mut self) -> Self {
+        self.event.security = Security::Tls;
+        self.event.ech = true;
         self
     }
 

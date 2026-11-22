@@ -3,20 +3,14 @@
   "status": "draft",
   "description": "XPC message from ScribeExtension for a new outbound TCP flow (NEFilterSocketFlow) with its first outbound bytes.",
   "records": [
-    { "message": "flow", "flow_id": "6F1D2C3B-0000-4000-8000-000000000001",
-      "ts": "2023-11-14T22:13:20.000Z", "pid": 812,
-      "process_path": "/Applications/Example.app/Contents/MacOS/Example",
-      "signing_id": "com.example.app", "team_id": "ABCDE12345",
-      "protocol": "tcp", "direction": "outbound",
-      "local_endpoint": "10.0.0.2:50001", "remote_endpoint": "192.0.2.10:443",
-      "remote_hostname": "api.example.com",
-      "first_bytes_pcap": "../../pcap/tls13_sni_ipv4.pcap" },
-    { "message": "flow_closed", "flow_id": "6F1D2C3B-0000-4000-8000-000000000001",
-      "ts": "2023-11-14T22:13:21.000Z", "bytes_out": 517, "bytes_in": 4096 }
+    {"message": "flow", "flow_id": "6F1D2C3B-0000-4000-8000-000000000001", "ts": "2023-11-14T22:13:20.000Z", "pid": 812, "process_path": "/Applications/Example.app/Contents/MacOS/Example", "signing_id": "com.example.app", "team_id": "ABCDE12345", "protocol": "tcp", "direction": "outbound", "local_endpoint": "10.0.0.2:50001", "remote_endpoint": "192.0.2.10:443", "remote_hostname": "api.example.com", "first_bytes_pcap": "../../pcap/tls13_sni_ipv4.pcap"},
+    {"message": "flow_closed", "flow_id": "6F1D2C3B-0000-4000-8000-000000000001", "ts": "2023-11-14T22:13:21.000Z", "bytes_out": 517, "bytes_in": 4096}
   ],
-  "expected": [
-    { "pid": 812, "process_path": "/Applications/Example.app/Contents/MacOS/Example", "proto": "tcp",
-      "dst_ip": "192.0.2.10", "dst_port": 443, "hostname": "api.example.com", "security": "tls", "kind": "new_flow" },
-    { "dst_ip": "192.0.2.10", "dst_port": 443, "bytes_out": 517, "kind": "close" }
+  "observations": [
+    {"pid": 812, "process_path": "/Applications/Example.app/Contents/MacOS/Example", "proto": "tcp", "dst_ip": "192.0.2.10", "dst_port": 443, "hostname": "api.example.com", "kind": "new_flow", "head": {"pcap": "../../pcap/tls13_sni_ipv4.pcap", "client_segment": 1}},
+    {"dst_ip": "192.0.2.10", "dst_port": 443, "bytes_out": 517, "kind": "close", "head": null}
+  ],
+  "enriched": [
+    {"dst_ip": "192.0.2.10", "dst_port": 443, "hostname": "api.example.com", "security": "tls", "ech": false}
   ]
 }

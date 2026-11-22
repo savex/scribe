@@ -1,5 +1,5 @@
 name: caution-plaintext-known-host
-description: In caution mode plaintext traffic alerts even when the host is on the baseline; TLS to the same host does not.
+description: In caution mode plaintext traffic alerts even when the host is on the baseline; TLS to the same host does not. The alert carries the URL note (needs the URL parser, phase 3).
 mode: caution
 profile: default
 baseline:
@@ -12,6 +12,6 @@ events:
 
 expect:
   alerts:
-    - { host: plain.example.com, dst: "192.0.2.20:80", reason: plaintext }
+    - { host: plain.example.com, dst: "192.0.2.20:80", reason: plaintext, notes: { url: "http://plain.example.com/download?id=<redacted>" } }
   hosts:
     plain.example.com: { connections: 2, requests: 1, tls_seen: true, plaintext_seen: true }

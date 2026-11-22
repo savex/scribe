@@ -2,6 +2,6 @@
   "fixture": "raw_ip_odd_port.pcap",
   "description": "Binary plaintext to an IP with no DNS lookup, on an unusual port.",
   "expected_flows": [
-    { "proto": "tcp", "dst_ip": "198.51.100.7", "dst_port": 8443, "hostname": null, "security": "plaintext", "notes": {}, "ech": false }
+    { "proto": "tcp", "dst_ip": "198.51.100.7", "dst_port": 8443, "hostname": null, "security": "plaintext", "notes": {}, "ech": false, "kind": "new_flow" }
   ]
 }

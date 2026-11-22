@@ -3,15 +3,13 @@
   "status": "draft",
   "description": "Microsoft-Windows-DNS-Client event 3008 (query completed) feeding the DNS cache, then a connect to the answer IP.",
   "records": [
-    { "provider": "Microsoft-Windows-DNS-Client", "provider_guid": "{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}",
-      "event_id": 3008, "timestamp": "2023-11-14T22:13:20.000Z", "process_id": 6120,
-      "properties": { "QueryName": "cdn.example.com", "QueryType": 1, "QueryOptions": 0,
-                      "QueryStatus": 0, "QueryResults": "type: 5 edge.example.net;192.0.2.50;" } },
-    { "provider": "Microsoft-Windows-Kernel-Network", "event_id": 12,
-      "timestamp": "2023-11-14T22:13:20.005Z", "process_id": 6120,
-      "properties": { "PID": 6120, "daddr": "192.0.2.50", "saddr": "10.0.0.2", "dport": 443, "sport": 50006 } }
+    {"provider": "Microsoft-Windows-DNS-Client", "provider_guid": "{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}", "event_id": 3008, "timestamp": "2023-11-14T22:13:20.000Z", "process_id": 6120, "properties": {"QueryName": "cdn.example.com", "QueryType": 1, "QueryOptions": 0, "QueryStatus": 0, "QueryResults": "type: 5 edge.example.net;192.0.2.50;"}},
+    {"provider": "Microsoft-Windows-Kernel-Network", "event_id": 12, "timestamp": "2023-11-14T22:13:20.005Z", "process_id": 6120, "properties": {"PID": 6120, "daddr": "192.0.2.50", "saddr": "10.0.0.2", "dport": 443, "sport": 50006}}
   ],
-  "expected": [
-    { "pid": 6120, "proto": "tcp", "dst_ip": "192.0.2.50", "dst_port": 443, "hostname": "cdn.example.com" }
+  "observations": [
+    {"pid": 6120, "proto": "tcp", "dst_ip": "192.0.2.50", "dst_port": 443, "kind": "new_flow", "head": null}
+  ],
+  "enriched": [
+    {"dst_ip": "192.0.2.50", "dst_port": 443, "hostname": "cdn.example.com"}
   ]
 }

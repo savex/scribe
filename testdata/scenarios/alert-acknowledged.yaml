@@ -1,0 +1,17 @@
+name: alert-acknowledged
+description: An acknowledged alert stays silent for the same host and process, even after the dedupe window; another process still alerts.
+mode: alert
+profile: default
+baseline: []
+dedupe_window: 10m
+
+events:
+  - { at: 0s,  dst: "192.0.2.12:443", host: docs.example.com, security: tls, process: /usr/bin/curl, pid: 100 }
+  - { at: 1m,  api: { ack: 0 } }
+  - { at: 20m, dst: "192.0.2.12:443", host: docs.example.com, security: tls, process: /usr/bin/curl, pid: 101 }
+  - { at: 21m, dst: "192.0.2.12:443", host: docs.example.com, security: tls, process: /usr/bin/wget, pid: 102 }
+
+expect:
+  alerts:
+    - { host: docs.example.com, dst: "192.0.2.12:443", process: /usr/bin/curl, reason: unlisted_host }
+    - { host: docs.example.com, dst: "192.0.2.12:443", process: /usr/bin/wget, reason: unlisted_host }

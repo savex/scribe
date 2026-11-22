@@ -1,0 +1,23 @@
+name: daemon-wakeup-and-reset
+description: Wakeup resumes processing with the same mode and baseline; reset clears runtime counters but never stored host counters. Needs the run states (phase 5).
+mode: caution
+profile: default
+baseline:
+  - api.example.com
+
+events:
+  - { at: 0s,  dst: "192.0.2.10:443", host: api.example.com, security: tls }
+  - { at: 1m,  api: { hibernate: { for: 1h } } }
+  - { at: 2m,  dst: "192.0.2.10:443", host: api.example.com, security: tls }
+  - { at: 3m,  api: { wakeup: true } }
+  - { at: 4m,  dst: "192.0.2.10:443", host: api.example.com, security: tls }
+  - { at: 5m,  api: { reset: [counters, caches] } }
+
+expect:
+  mode: caution
+  run_state: running
+  alerts:
+    - { host: null, dst: null, reason: hibernated }
+  hosts:
+    api.example.com: { connections: 2 }
+  runtime: { flows: 0 }

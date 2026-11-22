@@ -1,0 +1,13 @@
+name: caution-unusual-port-known-process
+description: In caution mode an unusual port alone scores 30, below the threshold of 50, so a known process reaching a new host on port 8080 raises no alert.
+mode: caution
+profile: default
+baseline:
+  - api.example.com
+
+events:
+  - { at: 0s, dst: "192.0.2.10:443",  host: api.example.com,  security: tls, process: /usr/bin/curl, pid: 100 }
+  - { at: 1s, dst: "192.0.2.13:8080", host: tools.example.com, security: tls, process: /usr/bin/curl, pid: 101 }
+
+expect:
+  alerts: []

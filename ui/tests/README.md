@@ -26,3 +26,10 @@ Each JSON file sets the mock's responses. Field names follow the planned API mes
 | `alert-burst.json` | 100 alerts per second for 10 s: list stays responsive, notifications grouped |
 | `daemon-restart.json` | Stream drops and reconnects while the UI is open |
 | `version-mismatch.json` | Daemon API newer than the UI: upgrade message |
+| `hibernating.json` | Daemon hibernating on purpose: banner with the planned end, `hibernated` alert, wakeup action |
+| `degraded-drops.json` | Degraded daemon: fallback sensor, spooling sink, drops; critical metrics listed first |
+| `module-failed.json` | A module switched off after a fault; the rest keeps working |
+
+Status messages carry the run state, live counters, critical metrics and a per-module section
+(`scribe daemon status`, specs 6.2.1); alerts carry module notes (the URL for plaintext alerts), and
+hosts carry `unresolved` and `ech`.

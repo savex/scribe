@@ -92,7 +92,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 | `storage-conformance` | **100%** | Suite every storage backend must pass, with module data | **98%** (311/319) |
 | `sensor-conformance` | **100%** | Suite every sensor must pass (checks client bytes), plus the traffic generator | **41%** (86/210); the runner needs a real sensor |
 | `module-conformance` | **100%** | Suite every module must pass | **85%** (236/279) |
-| Test data | **100%** | 13 pcap fixtures (expecting `notes.url`), 11 scenarios, raw sensor samples, v1 and v2 database snapshots | Checked by the fixture and snapshot tests |
+| Test data | **100%** | 14 pcap fixtures (expecting `notes.url`, `ech` and `kind`), 19 scenarios, raw sensor samples, v1 and v2 database snapshots | Checked by the fixture and snapshot tests |
 | Fuzzing | **~30%** | 2 targets with seeds (`http_request` now targets the URL module) | Never run (needs Rust nightly) |
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
 | CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Run locally only, not on GitHub |
@@ -109,9 +109,9 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
   0. Run the Tests and Release workflows on GitHub once (they have never run) and fix what they find.
   1. Phase 2: the storage manager (per-sink tasks and batching, host cache, outage buffer, spool, retention,
      SQLite off the async runtime, a retention call on `EventSink`).
-  2. Phase 3: SNI, `Host` and DNS parsers against the 13 pcap fixtures, the secrets crate, the URL module's HTTP
+  2. Phase 3: SNI, `Host` and DNS parsers against the 14 pcap fixtures, the secrets crate, the URL module's HTTP
      parser (with URL redaction), then QUIC with `ring`.
-  3. Phase 4: the policy engine in `crates/policy`, against the 11 scenarios, using the config values.
+  3. Phase 4: the policy engine in `crates/policy`, against the 19 scenarios, using the config values.
   4. Apply for Apple's Network Extension entitlement (plan risk 1).
 - **Not verified here:** the Linux and Windows code paths at run time, the GitHub workflows themselves,
   the Postgres migration 0002 (no local Postgres; the Tests workflow loads it) and the fuzz targets (no nightly).
