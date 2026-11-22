@@ -1,6 +1,6 @@
 # Implementation plan for scribe
 
-*Last updated 2026-11-22, after phase 4 (commits `71a0568`…`1e052fc`); before that after phase 3 (commits `5a2ce1b`…`568ccb9`), phase 2 (commits `6122243`…`d24cfef`), phase 1 (commit `4216ebc`) and a plan review: secrets crate added to phase 3, phase 2 and 4 scope completed, CI risk and pending decisions added. Progress details: [status.md](status.md).
+*Last updated 2026-11-22, after phase 4 (commits `9c36205`…`ef17bee`); before that after phase 3 (commits `5a2ce1b`…`568ccb9`), phase 2 (commits `6122243`…`d24cfef`), phase 1 (commit `4216ebc`) and a plan review: secrets crate added to phase 3, phase 2 and 4 scope completed, CI risk and pending decisions added. Progress details: [status.md](status.md).
 Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md).*
 
 **Assumptions**

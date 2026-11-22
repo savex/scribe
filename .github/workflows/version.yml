@@ -33,12 +33,16 @@ jobs:
             echo "|---|---|"
             echo "| This commit | \`$current\` |"
             echo "| Cargo.toml | \`$cargo\` |"
-            echo "| Latest release tag | \`${tag:-none}\` |"
+            echo "| Latest release tag (highest) | \`${tag:-none}\` |"
+            echo "| changelog.md | \`$(scripts/version.sh changelog-version)\` |"
             echo "| Commits since release | $since |"
             echo "| Next patch / minor / major | \`$(scripts/version.sh next patch)\` / \`$(scripts/version.sh next minor)\` / \`$(scripts/version.sh next major)\` |"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n $tag && "v$cargo" != "$tag" ]]; then
-            echo "::notice::Cargo.toml is $cargo but the latest tag is $tag; run the 'Bump version' workflow to release it."
+          if ! report=$(scripts/version.sh versions); then
+            while IFS= read -r line; do
+              [[ $line == "out of sync:"* ]] && echo "::warning title=Versions out of sync::${line#out of sync: }"
+            done <<< "$report"
+            echo "Bump version continues from the highest: $(scripts/version.sh highest)." >> "$GITHUB_STEP_SUMMARY"
           fi
           echo "$current" > version.txt
 

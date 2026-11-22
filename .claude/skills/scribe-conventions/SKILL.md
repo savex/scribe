@@ -282,10 +282,13 @@ Full design: `workfiles/specs.md` 7.4 (7.4.9 lists what changed from the draft).
 |---|---|---|
 | Source of truth | Git tags `vMAJOR.MINOR.PATCH[-PRERELEASE]` | Decided |
 | `Cargo.toml` version | Always equals the latest release tag | Decided |
+| Latest version | The **highest** `v*` tag by SemVer precedence (`0.1.0-alpha.1` < `0.1.0` < `0.1.1`), not the nearest one; the next version builds on the highest of that tag, `Cargo.toml` and the newest `changelog.md` section, so unpushed or unfetched tags can't send it backwards; a version that isn't newer is refused | Decided (`scripts/version.sh highest` / `next` / `newer`) |
+| Sync check | `scripts/version.sh versions` compares tag, `Cargo.toml` and `changelog.md`; Bump version, Version tracking and Tests warn when they differ | Decided |
+| Changelog on release | Bump version turns Unreleased into `## [X.Y.Z] - date` and updates the links (`scripts/version.sh changelog`) | Decided |
 | Binary version | `1.2.0` on a tag, `1.2.0+3.gabc1234` after 3 commits, `<cargo>+g<sha>` with no tag; no dirty marker | Decided (`crates/core/build.rs`) |
 | Override | `SCRIBE_VERSION` env var (release builds) | Decided |
 | Bump after a pre-release | Same-level bump finalizes it (`2.0.0-rc.1` + major → `2.0.0`) | Decided (`scripts/version.sh`) |
-| First release | Run **Bump version** with `minor` → `v0.1.0` | Decided |
+| First releases | `v0.1.1` (2026-11-08, tag only local until pushed) and `v0.1.0-alpha.1` (2026-11-22, Bump version started from 0.0.0 because no tag was on GitHub) | Recorded |
 | Releases come from | Tags on `main` only | Decided |
 | Release targets | `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Decided |
 | Release assets | `scribe-<version>-<target>.tar.gz` (`.zip` on Windows) + `SHA256SUMS` | Decided |

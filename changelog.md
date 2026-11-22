@@ -11,6 +11,39 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
+  and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
+- Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module
+  signals, learn timer, dedupe per host + process from the last alert, acknowledgement, alert updates when a
+  repeat brings new notes. `Alert` now carries the flow's notes.
+- Phase 4 step 3: `[policy.scores]` takes module signal scores (`"<module>.<reason>" = 0–100`, module must be
+  enabled; checked with line numbers). `scribed` builds the policy from its settings, reads the baseline and
+  loads threat lists from files at start (a missing file stops it; `url` lists wait for phase 11).
+- Phase 4 step 4: scenario runner (`tests/scenario`, YAML via `serde_yaml_ng`): one test per scenario file,
+  played through `ModuleHost`, `Policy` and `MemoryStore`; 16 of 19 pass, 3 wait for phase 5 run states and
+  per-process counters (ignored with the reason).
+- Phase 4 step 5: the runner refuses bad scenario files with the line (SCN-26). Spec (rules settled in 8.3,
+  FR-11–15), skill, plan (phase 4 done, rate limits to phase 11), status (coverage 92.1%), test list, test
+  approach, scenario README and readme updated.
+
+### Changed
+- Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),
+  warns when they differ, refuses a version that is not newer, and turns Unreleased into the release section.
+  `scripts/version.sh` gains `versions`, `highest`, `nearest-tag`, `changelog-version`, `newer`, `compare` and
+  `changelog`; `latest-tag` is now the highest tag, not the nearest. Tests run `scripts/test-version.sh`.
+
+### Fixed
+- Changelog: the `0.1.0-alpha.1` release had no section (the workflow did not write one).
+- Plan and status cited phase 4 commit ids from before the rebase onto the release commit.
+- `Cargo.lock` listed `scribe-policy` at 0.1.1 after the rebase onto the release; `--locked` builds failed.
+
+## [0.1.0-alpha.1] - 2026-11-22
+
+Released by Bump version (tag `v0.1.0-alpha.1` on `24550a2`). The workflow started from `0.0.0` because the
+`v0.1.1` tag was never pushed, so this version sorts below 0.1.1. Phases 0b to 3, the storage manager and
+enrichment.
+
+### Added
 - Module framework (phase 0b):
   - `scribe-module-api` crate: `Module`, `Manifest`, `FlowHook`, `Source`, `Emitter`, `ModuleContext`.
   - `ConfigDoc` reads `[modules.<id>]` and keeps exact error lines.
@@ -109,20 +142,6 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   workflows that have not run yet.
 - Readme rewritten for users: what scribe does, how it works (diagrams), privacy, configuration, status,
   CI badges; developer details moved to the end.
-- Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
-  and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
-- Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module
-  signals, learn timer, dedupe per host + process from the last alert, acknowledgement, alert updates when a
-  repeat brings new notes. `Alert` now carries the flow's notes.
-- Phase 4 step 3: `[policy.scores]` takes module signal scores (`"<module>.<reason>" = 0–100`, module must be
-  enabled; checked with line numbers). `scribed` builds the policy from its settings, reads the baseline and
-  loads threat lists from files at start (a missing file stops it; `url` lists wait for phase 11).
-- Phase 4 step 4: scenario runner (`tests/scenario`, YAML via `serde_yaml_ng`): one test per scenario file,
-  played through `ModuleHost`, `Policy` and `MemoryStore`; 16 of 19 pass, 3 wait for phase 5 run states and
-  per-process counters (ignored with the reason).
-- Phase 4 step 5: the runner refuses bad scenario files with the line (SCN-26). Spec (rules settled in 8.3,
-  FR-11–15), skill, plan (phase 4 done, rate limits to phase 11), status (coverage 92.1%), test list, test
-  approach, scenario README and readme updated.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
@@ -212,5 +231,6 @@ design documents and phase 0.
 ### Removed
 - `config/scribe.example.toml`, replaced by `config/scribe.toml`.
 
-[Unreleased]: https://github.com/savex/scribe/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/savex/scribe/compare/v0.1.0-alpha.1...HEAD
+[0.1.0-alpha.1]: https://github.com/savex/scribe/releases/tag/v0.1.0-alpha.1
 [0.1.1]: https://github.com/savex/scribe/releases/tag/v0.1.1

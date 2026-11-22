@@ -249,9 +249,11 @@ Rules for AI assistants: [CLAUDE.md](CLAUDE.md).
 
 Versions come from git tags (`v1.2.0`, `v1.3.0-rc.1`). `scribe --version` shows the nearest tag,
 for example `1.2.0+3.gabc1234` three commits after `v1.2.0`.
-Use [`scripts/version.sh`](scripts/version.sh) to check versions.
+Use [`scripts/version.sh`](scripts/version.sh) to check versions; `scripts/version.sh versions` shows whether
+the latest tag, `Cargo.toml` and `changelog.md` agree.
 
-To release, run the **Bump version** workflow. It tags `main` and starts **Release**, which builds
+To release, run the **Bump version** workflow. It picks the next version after the highest one it knows,
+writes it to `Cargo.toml` and `changelog.md`, tags `main` and starts **Release**, which builds
 Linux, macOS and Windows binaries and publishes a GitHub Release.
 
 ### CI workflows
@@ -261,7 +263,7 @@ Linux, macOS and Windows binaries and publishes a GitHub Release.
 | Tests | manual | Format, lint, minimum Rust version, tests on 3 systems, SQLite and PostgreSQL |
 | Release | `v*` tag | Verify, test, build, publish |
 | Version tracking | push to `main` | Checks `Cargo.toml` against tags |
-| Bump version | manual | Next version, tag, start Release |
+| Bump version | manual | Next version, changelog section, tag, start Release |
 | Sensor tests | manual | Sensor suite with real privileges on 3 systems |
 | Fuzz | manual | Fuzzes the packet parsers |
 | UI tests | manual | Desktop app against a mock API |

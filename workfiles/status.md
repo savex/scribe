@@ -1,6 +1,6 @@
 # scribe readiness by module
 
-As of the end of **phase 4** (2026-11-22, commits `71a0568`…`1e052fc` plus the docs commit), scribe still
+As of the end of **phase 4** (2026-11-22, commits `9c36205`…`ef17bee` plus the docs commit), scribe still
 doesn't capture traffic, but **the decision side is complete**: the `scribe-policy` engine applies the three
 modes, scores unlisted hosts with the built-in and module signals and threat lists, deduplicates and
 acknowledges alerts, and ends learn mode on time. 16 of the 19 daemon scenarios now run and pass; the other
@@ -21,11 +21,11 @@ acknowledges alerts, and ends learn mode on time. 16 of the 19 daemon scenarios 
 
 | Step | Commit | Result |
 |---|---|---|
-| 1. Signals | `71a0568` | `scribe-policy`: raw IP, TLD, Shannon entropy, usual ports; threat lists in three formats with CIDR |
-| 2. Engine | `b585dad` | `Policy::decide`: mode table, scoring, reason order, learn timer, dedupe from the last alert, acknowledgement, notes on alerts |
-| 3. Config | `4accd1f` | Module signal scores in `[policy.scores]` with line numbers; `scribed` builds the policy and loads threat list files |
-| 4. Scenarios | `1e052fc` | Scenario runner, one test per file: 16 pass, 3 wait for phase 5 |
-| 5. Docs | this commit | Bad scenario files refused with their line (SCN-26); spec, skill, plan, status, test list, test approach, readme |
+| 1. Signals | `9c36205` | `scribe-policy`: raw IP, TLD, Shannon entropy, usual ports; threat lists in three formats with CIDR |
+| 2. Engine | `7646b71` | `Policy::decide`: mode table, scoring, reason order, learn timer, dedupe from the last alert, acknowledgement, notes on alerts |
+| 3. Config | `34eadd8` | Module signal scores in `[policy.scores]` with line numbers; `scribed` builds the policy and loads threat list files |
+| 4. Scenarios | `ef17bee` | Scenario runner, one test per file: 16 pass, 3 wait for phase 5 |
+| 5. Docs | `424ce91` | Bad scenario files refused with their line (SCN-26); spec, skill, plan, status, test list, test approach, readme |
 
 ## Phase 3 delivered (one commit per step)
 

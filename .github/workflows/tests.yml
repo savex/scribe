@@ -38,7 +38,10 @@ jobs:
       - name: Fixtures match generator
         run: cargo run -q -p scribe-test-support --bin gen-fixtures -- --check
       - name: Version consistency
-        run: scripts/version.sh check
+        run: |
+          scripts/version.sh check
+          scripts/version.sh versions || echo "::warning::tag, Cargo.toml and changelog.md versions differ (see above)"
+          scripts/test-version.sh
       - uses: taiki-e/install-action@nextest
       - name: Every test has one tag (smoke / functional / integration / scenario)
         run: scripts/check-test-tags.sh

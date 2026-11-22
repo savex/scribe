@@ -1,5 +1,7 @@
-# Manual: picks the next version from the latest tag, writes it to Cargo.toml / Cargo.lock,
-# commits "Release vX.Y.Z" to main, tags it and starts the Release workflow.
+# Manual: picks the next version after the highest one known (latest tag, Cargo.toml, changelog.md),
+# writes it to Cargo.toml / Cargo.lock, turns the changelog's Unreleased section into it, commits
+# "Release vX.Y.Z" to main, tags it and starts the Release workflow. Warns when the three versions
+# disagree and refuses a version that isn't newer than all of them.
 name: Bump version
 
 on:
@@ -15,7 +17,7 @@ on:
         type: string
         required: false
       version:
-        description: "Explicit version instead of a bump, e.g. 1.0.0"
+        description: "Explicit version instead of a bump, e.g. 1.0.0 (must be newer than every known version)"
         type: string
         required: false
       dry_run:
@@ -44,6 +46,26 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Fetch every tag
+        run: git fetch --tags --force origin
+
+      - name: Compare tag, Cargo.toml and changelog versions
+        run: |
+          report=$(scripts/version.sh versions) && synced=1 || synced=""
+          echo "$report"
+          {
+            echo "### Versions before the bump"
+            echo '```'
+            echo "$report"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [[ -z $synced ]]; then
+            while IFS= read -r line; do
+              [[ $line == "out of sync:"* ]] && echo "::warning title=Versions out of sync::${line#out of sync: }"
+            done <<< "$report"
+            echo "The next version is worked out from the highest of them: $(scripts/version.sh highest)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Work out the version
         id: version
         env:
@@ -53,19 +75,22 @@ jobs:
         run: |
           if [[ -n "$INPUT_VERSION" ]]; then
             version=${INPUT_VERSION#v}
-            scripts/version.sh validate "$version"
           else
-            version=$(scripts/version.sh next "$INPUT_BUMP" "$INPUT_PRE")
+            version=$(scripts/version.sh next "$INPUT_BUMP" "$INPUT_PRE") \
+              || { echo "::error::cannot work out the next version"; exit 1; }
           fi
-          git rev-parse -q --verify "refs/tags/v$version" >/dev/null \
-            && { echo "::error::tag v$version already exists"; exit 1; }
-          echo "Latest tag: $(scripts/version.sh latest-tag) -> new version: $version"
+          scripts/version.sh newer "$version" || { echo "::error::$version is not newer than $(scripts/version.sh highest) or is already tagged"; exit 1; }
+          git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null \
+            && { echo "::error::tag v$version already exists on origin"; exit 1; }
+          echo "Highest known: $(scripts/version.sh highest) -> new version: $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Update Cargo.toml and Cargo.lock
+      - name: Update Cargo.toml, Cargo.lock and changelog.md
         run: |
           scripts/version.sh set "${{ steps.version.outputs.version }}"
+          scripts/version.sh changelog "${{ steps.version.outputs.version }}"
           cargo check --workspace --locked --quiet
+          scripts/version.sh versions || true
           git diff
 
       - name: Commit and tag

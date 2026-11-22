@@ -276,7 +276,7 @@ Tauri app talking only to the local API; **Planned** (not in the 14 phases). Tes
 | Entry point | Purpose |
 |---|---|
 | `cargo run -p scribe-test-support --bin gen-fixtures [-- --check]` | Regenerate or check pcap fixtures and fuzz seeds |
-| `scripts/version.sh` | Show, compute, set and check versions |
+| `scripts/version.sh` | Show, compute, set and check versions: highest tag by SemVer, sync report (`versions`), next version after the highest known, changelog release section; tested by `scripts/test-version.sh` |
 | `testdata/db/build.sh` | Rebuild schema snapshots |
 | GitHub workflows | Release and Version tracking (automatic); Bump version, Tests, Sensor tests, Fuzz, UI tests, End-to-end (manual) |
 | VSCodium tasks and launch configs | Build, test, debug, local CI run |
