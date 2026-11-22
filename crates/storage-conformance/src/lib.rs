@@ -146,6 +146,49 @@ pub async fn event_sink_suite(sink: &dyn EventSink) {
         .await
         .expect("query limited");
     assert_eq!(limited.items.len(), 1, "limit");
+
+    if !sink.capabilities().native_retention {
+        retention_removes_old_events(sink).await;
+    }
+}
+
+/// Events and metric samples older than the cutoff go; newer ones stay.
+async fn retention_removes_old_events(sink: &dyn EventSink) {
+    let old = now() - Duration::from_secs(10 * 86_400);
+    let mut stale = vec![
+        audit_event("old audit"),
+        metric_event("kperf.tcp_retrans", 1.0),
+    ];
+    for e in &mut stale {
+        match e {
+            StoredEvent::Audit(a) => a.ts = old,
+            StoredEvent::Metric(m) => m.ts = old,
+            _ => unreachable!(),
+        }
+    }
+    sink.write_batch(&stale).await.expect("write old events");
+    let before = sink
+        .query(&EventQuery::default())
+        .await
+        .expect("query")
+        .items
+        .len();
+
+    let removed = sink
+        .delete_before(now() - Duration::from_secs(86_400))
+        .await
+        .expect("delete_before");
+    assert_eq!(removed, 2, "both old records are removed");
+    let after = sink
+        .query(&EventQuery::default())
+        .await
+        .expect("query")
+        .items;
+    assert_eq!(after.len(), before - 2, "newer events stay");
+    assert!(
+        after.iter().all(|e| e.ts() > old),
+        "nothing older than the cutoff remains"
+    );
 }
 
 async fn migrate_is_idempotent(store: &dyn StateStore) {

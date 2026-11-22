@@ -161,6 +161,10 @@ impl EventSink for PostgresSink {
         not_implemented("postgres: migrate")
     }
 
+    fn delete_before(&self, _cutoff: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
+        not_implemented("postgres: delete_before")
+    }
+
     fn write_batch<'a>(&'a self, _batch: &'a [StoredEvent]) -> BoxFuture<'a, Result<()>> {
         not_implemented("postgres: write_batch")
     }

@@ -204,6 +204,11 @@ impl EventSink for SqliteSink {
         Box::pin(async move { self.db.with_result(|c| sink::query(c, query)) })
     }
 
+    fn delete_before(&self, cutoff: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
+        let cutoff = scribe_storage_api::codec::to_millis(cutoff);
+        Box::pin(async move { self.db.with(|c| sink::delete_before(c, cutoff)) })
+    }
+
     /// Every batch is committed when `write_batch` returns, so there is nothing to flush.
     fn flush(&self) -> BoxFuture<'_, Result<()>> {
         Box::pin(async { Ok(()) })

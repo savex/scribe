@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::net::IpAddr;
 use std::pin::Pin;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use crate::{
     AlertState, Baseline, BaselineEntry, EventQuery, Health, Host, HostDelta, HostId, HostQuery,
@@ -64,6 +64,12 @@ pub trait EventSink: Send + Sync {
 
     fn flush(&self) -> BoxFuture<'_, Result<()>>;
     fn health(&self) -> BoxFuture<'_, Health>;
+
+    /// Delete events and metric samples older than `cutoff`; returns how many were removed. The
+    /// storage manager calls it for sinks without native retention (`SinkCaps::native_retention`).
+    fn delete_before(&self, _cutoff: SystemTime) -> BoxFuture<'_, Result<u64>> {
+        Box::pin(async { Err(StorageError::Unsupported("delete_before")) })
+    }
 }
 
 /// Entry point of a storage backend. A backend may provide a state store, a sink, or both.

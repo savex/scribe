@@ -7,6 +7,15 @@ use scribe_storage_api::codec::{decode, encode, from_millis, to_millis, Row};
 use scribe_storage_api::{EventKind, EventQuery, Page, StorageError, StoredEvent, SCHEMA_VERSION};
 use serde_json::Value;
 
+/// Delete events and metric samples older than `cutoff` (epoch ms) in one transaction.
+pub(crate) fn delete_before(c: &mut Connection, cutoff: i64) -> rusqlite::Result<u64> {
+    let tx = c.transaction()?;
+    let events = tx.execute("DELETE FROM events WHERE ts < ?1", [cutoff])?;
+    let metrics = tx.execute("DELETE FROM metrics WHERE ts < ?1", [cutoff])?;
+    tx.commit()?;
+    Ok((events + metrics) as u64)
+}
+
 pub(crate) fn write_batch(c: &mut Connection, batch: &[StoredEvent]) -> rusqlite::Result<()> {
     let tx = c.transaction()?;
     {

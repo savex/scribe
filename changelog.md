@@ -65,6 +65,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - `cargo-nextest` with `.config/nextest.toml`: per-test time limits, a `ci` profile with JUnit output.
 - `scribe-tests` crate (`tests/`): smoke, integration and scenario test binaries, shared helpers, and test
   builds of `scribed` / `scribe`.
+- `EventSink::delete_before` for retention (SQLite, in-memory doubles; Postgres in phase 12); the storage
+  conformance suite checks it for sinks without native retention.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

@@ -254,6 +254,15 @@ impl EventSink for MemorySink {
     fn health(&self) -> BoxFuture<'_, Health> {
         Box::pin(async { Health::Ok })
     }
+
+    fn delete_before(&self, cutoff: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
+        Box::pin(async move {
+            let mut events = self.events.lock().unwrap();
+            let before = events.len();
+            events.retain(|e| e.ts() >= cutoff);
+            Ok((before - events.len()) as u64)
+        })
+    }
 }
 
 /// Wraps a sink and fails or slows down writes on command, for outage and backpressure tests.
@@ -335,5 +344,9 @@ impl<S: EventSink> EventSink for FaultySink<S> {
             return Box::pin(async { Health::Down("injected failure".into()) });
         }
         self.inner.health()
+    }
+
+    fn delete_before(&self, cutoff: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
+        self.inner.delete_before(cutoff)
     }
 }
