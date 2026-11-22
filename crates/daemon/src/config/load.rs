@@ -239,6 +239,7 @@ pub fn validate(
     }
 
     let enabled = check_modules(config, text, source, ctx)?;
+    check_module_scores(config, text, source, &enabled)?;
     let known: Vec<&str> = EventKind::CORE
         .iter()
         .map(EventKind::name)
@@ -347,6 +348,53 @@ fn check_modules(
         }
     }
     Ok(enabled)
+}
+
+/// `[policy.scores]` keys beyond the built-in signals must be `"<module>.<reason>"` for an
+/// enabled module.
+fn check_module_scores(
+    config: &Config,
+    text: &str,
+    source: &Source,
+    enabled: &[ModuleSpec],
+) -> Result<(), ConfigError> {
+    let doc = ConfigDoc::new(text);
+    for key in config.policy.scores.modules.keys() {
+        let span = doc
+            .span_of(&["policy", "scores", key])
+            .or_else(|| doc.span_of(&["policy", "scores"]))
+            .unwrap_or(0..0);
+        let at = |message: String| ConfigError::at(source, text, span.clone(), message);
+        let Some((module, reason)) = key.split_once('.') else {
+            return Err(at(format!(
+                "unknown signal \"{key}\" in [policy.scores]: built-in signals are raw_ip, unusual_port, high_entropy, new_tld, new_process, threat_list; module signals are written \"<module>.<reason>\" in quotes"
+            )));
+        };
+        if reason.is_empty() {
+            return Err(at(format!(
+                "signal \"{key}\" has no reason after the module id"
+            )));
+        }
+        if !enabled.iter().any(|m| m.id == module) {
+            return Err(at(format!(
+                "signal \"{key}\": module \"{module}\" is not enabled (modules.enabled), so it never sends this signal"
+            )));
+        }
+        match config.policy.scores.modules[key].as_integer() {
+            Some(v) if (0..=100).contains(&v) => {}
+            Some(v) => {
+                return Err(at(format!(
+                    "score {v} is out of range: must be between 0 and 100"
+                )))
+            }
+            None => {
+                return Err(at(format!(
+                    "signal \"{key}\": the score must be a whole number between 0 and 100"
+                )))
+            }
+        }
+    }
+    Ok(())
 }
 
 fn check_backend(backend: &Backend, what: &str, ctx: &Context) -> Result<(), String> {

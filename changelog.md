@@ -114,6 +114,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module
   signals, learn timer, dedupe per host + process from the last alert, acknowledgement, alert updates when a
   repeat brings new notes. `Alert` now carries the flow's notes.
+- Phase 4 step 3: `[policy.scores]` takes module signal scores (`"<module>.<reason>" = 0–100`, module must be
+  enabled; checked with line numbers). `scribed` builds the policy from its settings, reads the baseline and
+  loads threat lists from files at start (a missing file stops it; `url` lists wait for phase 11).
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

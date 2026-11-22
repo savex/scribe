@@ -49,6 +49,9 @@ high_entropy = 50         # random-looking (DGA-style) domain label
 new_tld = 20              # top-level domain never seen before
 new_process = 25          # process that never made a connection before
 threat_list = 100         # host or IP found in a threat list
+# Module signals are scored here too, by their namespaced reason in quotes; a signal with no
+# score counts 0. The module must be enabled in [modules]. Example:
+# "url.credentials_in_query" = 40
 
 [policy.usual_ports]
 tcp = [22, 53, 80, 443, 465, 587, 853, 993, 995]

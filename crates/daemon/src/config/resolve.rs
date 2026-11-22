@@ -8,6 +8,7 @@ use scribe_core::platform::{self, DefaultPaths};
 use scribe_core::units::human_bytes;
 use scribe_core::{Mode, SizeLimit};
 use scribe_module_api::ConfigDoc;
+use scribe_policy::{PolicyConfig, Scores, ThreatFormat, UsualPorts};
 use scribe_storage_api::{BackendOptions, EventKind};
 use scribe_storage_manager::{BackendConfig, SinkConfig, StorageConfig};
 use toml::Spanned;
@@ -267,6 +268,60 @@ fn backend_config(b: &Backend, abs: &dyn Fn(&Path) -> PathBuf) -> BackendConfig 
 }
 
 impl Settings {
+    /// What the policy engine needs (`mode` and `[policy]`).
+    pub fn policy_config(&self) -> PolicyConfig {
+        let p = &self.config.policy;
+        let s = &p.scores;
+        PolicyConfig {
+            mode: self.mode,
+            learn_for: p.learn_for.map(|d| d.get()),
+            then: p.then.into(),
+            dedupe_window: p.dedupe_window.get(),
+            threshold: p.threshold.0,
+            scores: Scores {
+                raw_ip: s.raw_ip.0,
+                unusual_port: s.unusual_port.0,
+                high_entropy: s.high_entropy.0,
+                new_tld: s.new_tld.0,
+                new_process: s.new_process.0,
+                threat_list: s.threat_list.0,
+                modules: s
+                    .modules
+                    .iter()
+                    .filter_map(|(k, v)| Some((k.clone(), u8::try_from(v.as_integer()?).ok()?)))
+                    .collect(),
+            },
+            usual_ports: UsualPorts {
+                tcp: p.usual_ports.tcp.iter().map(|p| p.get()).collect(),
+                udp: p.usual_ports.udp.iter().map(|p| p.get()).collect(),
+            },
+            entropy_min_length: p.entropy.min_label_length.get() as usize,
+            entropy_min_bits: *p.entropy.min_bits_per_char.get_ref(),
+        }
+    }
+
+    /// Threat lists to read from files, with absolute paths. Lists with a `url` are downloaded
+    /// from phase 11 on; until then they are skipped (returned in the second list).
+    pub fn threat_files(&self) -> (Vec<(String, PathBuf, ThreatFormat)>, Vec<String>) {
+        let mut files = Vec::new();
+        let mut skipped = Vec::new();
+        for list in &self.config.policy.threat_lists {
+            let list = list.get_ref();
+            let format = match list.format {
+                super::model::ThreatFormat::Domains => ThreatFormat::Domains,
+                super::model::ThreatFormat::Hosts => ThreatFormat::Hosts,
+                super::model::ThreatFormat::Ips => ThreatFormat::Ips,
+            };
+            match &list.path {
+                Some(path) => {
+                    files.push((list.name.clone(), absolute(&self.data_dir, path), format))
+                }
+                None => skipped.push(list.name.clone()),
+            }
+        }
+        (files, skipped)
+    }
+
     /// The config as scribed will use it: data_dir, log file and every path made absolute.
     pub fn effective(&self) -> Config {
         let abs = |p: &Path| absolute(&self.data_dir, p);

@@ -112,8 +112,12 @@ impl<'de> Deserialize<'de> for Score {
     }
 }
 
+/// Built-in signal scores, plus module signals by their namespaced reason, written with quotes:
+/// `"url.credentials_in_query" = 40`. The loader checks that every other key names a signal of an
+/// enabled module and holds a score from 0 to 100 (`flatten` loses spans, so the loader checks
+/// these values itself to report the right line).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, default)]
+#[serde(default)]
 pub struct Scores {
     pub raw_ip: Score,
     pub unusual_port: Score,
@@ -121,6 +125,8 @@ pub struct Scores {
     pub new_tld: Score,
     pub new_process: Score,
     pub threat_list: Score,
+    #[serde(flatten)]
+    pub modules: BTreeMap<String, toml::Value>,
 }
 
 impl Default for Scores {
@@ -132,6 +138,7 @@ impl Default for Scores {
             new_tld: Score(20),
             new_process: Score(25),
             threat_list: Score(100),
+            modules: BTreeMap::new(),
         }
     }
 }

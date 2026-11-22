@@ -79,6 +79,11 @@ const BAD: &[(&str, &str, usize)] = &[
     ("[policy]\ndedupe_window = \"0s\"\n", "must be greater than zero", 2),
     ("[policy]\nthreshold = 101\n", "must be between 0 and 100", 2),
     ("[policy.scores]\nraw_ip = -5\n", "must be between 0 and 100", 2),
+    ("[policy.scores]\nbogus = 5\n", "unknown signal \"bogus\" in [policy.scores]", 2),
+    ("[policy.scores]\n\"tag.large_head\" = 60\n", "module \"tag\" is not enabled", 2),
+    ("[policy.scores]\n\"url.\" = 60\n", "has no reason after the module id", 2),
+    ("[policy.scores]\n\"url.x\" = 101\n", "must be between 0 and 100", 2),
+    ("[policy.scores]\n\"url.x\" = \"high\"\n", "must be a whole number", 2),
     ("[policy.usual_ports]\ntcp = [80, 0]\n", "nonzero", 2),
     ("[policy.entropy]\nmin_bits_per_char = 9.0\n", "min_bits_per_char 9 is out of range", 2),
     (
@@ -608,5 +613,52 @@ mod functional {
         assert!(s.summary().iter().any(|l| l == "modules: url"));
         let off = resolve_text("[modules]\nenabled = []\n");
         assert!(off.summary().iter().any(|l| l == "modules: none"));
+    }
+
+    // ─── Policy settings ────────────────────────────────────────────────────────
+
+    #[test]
+    fn policy_config_follows_the_policy_section() {
+        let s = resolve_text(
+        "mode = \"caution\"\n[policy]\nlearn_for = \"7d\"\nthen = \"alert\"\nthreshold = 40\n[policy.scores]\nraw_ip = 0\n\"url.credentials_in_query\" = 45\n[policy.usual_ports]\ntcp = [443]\n",
+    );
+        let p = s.policy_config();
+        assert_eq!(p.mode, scribe_core::Mode::Caution);
+        assert_eq!(
+            p.learn_for,
+            Some(std::time::Duration::from_secs(7 * 86_400))
+        );
+        assert_eq!(p.then, scribe_core::Mode::Alert);
+        assert_eq!(p.threshold, 40);
+        assert_eq!(p.scores.raw_ip, 0);
+        assert_eq!(p.scores.unusual_port, 30);
+        assert_eq!(p.scores.modules.get("url.credentials_in_query"), Some(&45));
+        assert_eq!(p.usual_ports.tcp, vec![443]);
+        assert_eq!(p.usual_ports.udp, vec![53, 123, 443, 853, 5353]);
+        assert_eq!((p.entropy_min_length, p.entropy_min_bits), (10, 3.5));
+        assert!(s
+            .effective_toml()
+            .contains("\"url.credentials_in_query\" = 45"));
+    }
+
+    #[test]
+    fn default_policy_config_matches_the_engine_defaults() {
+        assert_eq!(
+            resolve_text("").policy_config(),
+            scribe_policy::PolicyConfig::default()
+        );
+    }
+
+    #[test]
+    fn threat_files_are_made_absolute_and_url_lists_are_set_aside() {
+        let s = resolve_text(
+        "data_dir = \"/var/lib/scribe\"\n[[policy.threat_lists]]\nname = \"local\"\npath = \"threats/d.txt\"\nformat = \"domains\"\n[[policy.threat_lists]]\nname = \"remote\"\nurl = \"https://example.com/h\"\nformat = \"hosts\"\nrefresh = \"24h\"\n",
+    );
+        let (files, skipped) = s.threat_files();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0, "local");
+        assert_eq!(files[0].1, PathBuf::from("/var/lib/scribe/threats/d.txt"));
+        assert_eq!(files[0].2, scribe_policy::ThreatFormat::Domains);
+        assert_eq!(skipped, vec!["remote".to_owned()]);
     }
 }

@@ -14,6 +14,7 @@ use anyhow::Context as _;
 use clap::Parser;
 use scribe_core::{Clock, Sensor, SystemClock, VERSION};
 use scribe_module_api::ConfigDoc;
+use scribe_policy::{Policy, ThreatSet};
 use scribe_storage_api::{StorageError, StoredEvent};
 use scribe_storage_manager::{
     BufferLimits, CacheLimits, Registry, RunOptions, SpoolOptions, Storage, StorageManager,
@@ -171,6 +172,29 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
         }
     }
 
+    let threats = load_threats(&settings)?;
+    let baseline = match storage.state().baseline(&settings.profile).await {
+        Ok(b) => b.entries.into_iter().map(|e| e.host).collect(),
+        Err(StorageError::NotImplemented(_)) => Vec::new(),
+        Err(e) => {
+            warn!(
+                "cannot read the baseline of profile \"{}\": {e}",
+                settings.profile
+            );
+            Vec::new()
+        }
+    };
+    let listed = baseline.len();
+    let policy = Policy::new(settings.policy_config(), clock.clone())
+        .with_baseline(baseline)
+        .with_threats(threats);
+    info!(
+        mode = %policy.mode(),
+        profile = %settings.profile,
+        baseline = listed,
+        "policy ready (the capture pipeline feeds it from plan phase 5)"
+    );
+
     info!("scribed started; waiting for a stop signal");
     // Until the capture pipeline arrives (plan phase 5), only sources run; their output is
     // written once a second.
@@ -269,4 +293,28 @@ fn platform_sensor() -> Box<dyn Sensor> {
     // macOS: flows arrive from the Network Extension over XPC; pcap until that exists.
     #[cfg(not(any(target_os = "linux", windows)))]
     return Box::new(scribe_sensor_pcap::PcapSensor { interface: None });
+}
+
+/// Read the threat lists that are files (relative paths are under `data_dir`). A list that can't
+/// be read stops scribed: running without it would silently weaken caution mode. Lists with a
+/// `url` are downloaded from plan phase 11 on and are skipped with a warning until then.
+pub fn load_threats(settings: &Settings) -> anyhow::Result<ThreatSet> {
+    let (files, skipped) = settings.threat_files();
+    let mut set = ThreatSet::default();
+    for (name, path, format) in files {
+        let text = std::fs::read_to_string(&path).with_context(|| {
+            format!("cannot read threat list \"{name}\" from {}", path.display())
+        })?;
+        let report = set.load(format, &text);
+        info!(
+            list = %name,
+            entries = report.added,
+            skipped_lines = report.skipped,
+            "threat list loaded"
+        );
+    }
+    for name in skipped {
+        warn!(list = %name, "threat list downloads arrive in plan phase 11; list \"{name}\" is not used yet");
+    }
+    Ok(set)
 }

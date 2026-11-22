@@ -22,6 +22,7 @@ url = ["dep:scribe-module-url"]
 [dependencies]
 scribe-core.workspace = true
 scribe-enrich.workspace = true
+scribe-policy.workspace = true
 scribe-storage-api.workspace = true
 scribe-storage-manager.workspace = true
 scribe-module-api.workspace = true

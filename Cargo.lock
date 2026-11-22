@@ -685,6 +685,7 @@ dependencies = [
  "scribe-enrich",
  "scribe-module-api",
  "scribe-module-url",
+ "scribe-policy",
  "scribe-sensor-linux",
  "scribe-sensor-pcap",
  "scribe-sensor-windows",
