@@ -95,7 +95,7 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 `tracing-subscriber`, `tracing-appender`, `tracing-journald` (Linux), `tracing-oslog` (macOS), `fs4`,
 `libc` (macOS), `windows-sys` (Windows); tests: `proptest`, `tempfile`.
 
-Also `serde_json`, `rusqlite` 0.43 (bundled SQLite, phase 1).
+Also `serde_json`, `rusqlite` 0.43 (bundled SQLite, phase 1); the storage manager uses Tokio (`rt`, `sync`, `time`) and `tracing` (phase 2).
 
 **Planned libraries** (add when implementing): `tokio-postgres` + `deadpool`, `aya`,
 `windows`, `pcap`, `tonic` (gRPC), `libfuzzer-sys`, `ring` 0.17 (decided, see table above).
@@ -142,12 +142,12 @@ external gRPC storage plugins were discussed and **deliberately left out**.
 | Event payloads | JSON text (SQLite) / JSONB (Postgres) | Decided |
 | SQLite `max_batch` | 1000 | Decided |
 | Postgres `max_batch` | 5000 | Decided |
-| Sink write batching | Per sink, own task: `batch_max_events = 500`, `batch_max_wait = "1s"` | Draft default |
-| Host cache | In-memory LRU in front of the state store: `storage.cache.max_hosts = 50000`, `max_memory = "32MiB"` | Draft default |
-| State store outage | In-memory buffer of the latest events (`storage.buffer`: `max_events = 50000`, `max_memory = "32MiB"`); on overflow drop the oldest to add the newest; drops counted; replayed in order | Decided (sizes draft default) |
-| Spool | On-disk, per sink outage, replayed in order (`storage.spool`: `dir = "spool"`, `max_size = "512MiB"`, `min_free_disk = "5%"`); oldest dropped at a limit, drops counted | Draft default |
+| Sink write batching | Writer task per sink: `batch_max_events = 500` (capped by `max_batch`), `batch_max_wait = "1s"`; queue 1,024 messages, full queue drops and counts | Implemented (phase 2) |
+| Host cache | LRU in front of the state store (`CachedState`): `storage.cache.max_hosts = 50000`, `max_memory = "32MiB"`; baselines cached per profile; `clear_cache` | Implemented (phase 2) |
+| State store outage | `BufferedState`: backend / config errors start buffering; writes kept in order within `storage.buffer` (`max_events = 50000`, `max_memory = "32MiB"`), oldest dropped and counted; replay with back-off 1 s → 60 s; `Data` errors are not buffered | Implemented (phase 2) |
+| Spool | `<spool dir>/<sink>/<seq>.jsonl` (stored rows, 4 MiB segments), ordered at-least-once replay with back-off 1 s → 60 s; shared `max_size = "512MiB"`, `min_free_disk = "5%"`; oldest dropped and counted; replayed after restart | Implemented (phase 2) |
 | Size values | Absolute (`32MiB`, 1024-based) or percentage: memory = % of RAM, disk = % of the volume; resolved at startup and logged; absolute by default for predictable memory (NFR: < 100 MB) | Draft default |
-| Retention | Per sink, e.g. `30d`; enforced by the manager when the backend can't | Proposed |
+| Retention | Per sink, e.g. `30d`; hourly `EventSink::delete_before` for sinks without native retention | Implemented (phase 2) |
 | Credentials | OS keychain (macOS), DPAPI (Windows), Secret Service (Linux) or a root-only file; never plain config | Proposed |
 | Migrations | Files in `crates/storage-*/migrations/`, idempotent (`IF NOT EXISTS`); a snapshot per released schema in `testdata/db/`, never edited afterwards | Decided |
 
@@ -344,7 +344,7 @@ Notes:
 |---|---|
 | Estimates assume | one experienced Rust developer; LOC without blanks and comments; tests counted separately |
 | Total size | ~18,000 production LOC + ~5,400 test LOC |
-| Total effort | 121.5–151.5 person-days; 101.5–127.5 remaining after phases 0, 0b and 1, 122–153 with a 20% buffer (includes the security design, +14.5 days, the module framework, +10–12 days, and the 2026-11-22 plan review, +3.5–4.5) |
+| Total effort | 121.5–151.5 person-days; 95.5–120.5 remaining after phases 0, 0b, 1 and 2, 115–145 with a 20% buffer (includes the security design, +14.5 days, the module framework, +10–12 days, and the 2026-11-22 plan review, +3.5–4.5) |
 | Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 65.5–80.5 days; M2 native sensors 35.5–45.5 days; M3 production 20.5–25.5 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning; CI never run on GitHub yet |
 | Secrets | One crate over the macOS keychain, DPAPI, Secret Service and root-only `file:` references; built in phase 3 (first user: the URL `hash` key), reused by phases 11–13 | Planned |

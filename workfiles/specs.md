@@ -1,6 +1,6 @@
 # scribe specification
 
-*Version 0.9 (draft), 2026-11-22: SQLite backend implemented (phase 1). 0.8: module framework implemented (phase 0b); section 7.4 records what was built and five refinements (7.4.9). 0.7: adds the module framework (section 7.4) with URL tracking as the first module and kernel metrics as the example of a later one. 0.6: security design carried into the daemon commands, API, run states, config keys, verification and open questions. 0.5: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
+*Version 0.10 (draft), 2026-11-22: storage manager implemented (phase 2, section 10.5). 0.9: SQLite backend implemented (phase 1). 0.8: module framework implemented (phase 0b); section 7.4 records what was built and five refinements (7.4.9). 0.7: adds the module framework (section 7.4) with URL tracking as the first module and kernel metrics as the example of a later one. 0.6: security design carried into the daemon commands, API, run states, config keys, verification and open questions. 0.5: adds the security design for every interaction (section 12.1, all Proposed). 0.4: adds the `scribe daemon` subcommands (status, health, reset, hibernate, wakeup) and the daemon run states. 0.3: all open questions answered; phase 0 (config, logging, daemon lifecycle, CLI parsing) implemented.*
 Built from [plan.md](plan.md), [diagram.md](diagram.md), [status.md](status.md) and the
 [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md). When they disagree,
 the code and the skill win; update this document in the same commit.
@@ -154,15 +154,15 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-14 | Score unlisted hosts with the non-ordinary rules and report the reason | Planned | Caution scenarios |
 | FR-15 | Deduplicate alerts per host + process within a window; support acknowledging | Planned | Scenario `alert-dedupe-window` |
 | FR-16 | Deliver alerts as OS notifications, log entries and optional webhook calls | Planned | `RecordingAlertSink` in daemon tests |
-| FR-17 | Store state in exactly one state store and events in zero or more event sinks, each subscribed to event kinds | Partly (routing tested, SQLite state store and sink implemented; per-sink tasks in phase 2) | Storage conformance; manager tests (planned) |
+| FR-17 | Store state in exactly one state store and events in zero or more event sinks, each subscribed to event kinds | Implemented (state store behind cache and outage buffer; sinks by subscribed kind through writer tasks) | Storage conformance; manager tests (planned) |
 | FR-18 | Provide SQLite (default) and PostgreSQL (feature `postgres`) backends | Partly (SQLite implemented and conformant; PostgreSQL in phase 12) | Storage conformance; Tests workflow |
-| FR-19 | Spool events when a sink fails and replay them in order; enforce per-sink retention | Planned | `FaultySink` tests (planned) |
+| FR-19 | Spool events when a sink fails and replay them in order; enforce per-sink retention | Implemented (spool and ordered replay, retention via `delete_before`) | `FaultySink` tests (planned) |
 | FR-20 | Expose a local API for the CLI and UI, including runtime mode changes | Planned | API tests with `MockApiServer` (planned) |
 | FR-21 | Provide the CLI commands in section 6.2 | Partly (all commands parsed; only `version` works until the API exists) | `scribe-cli` unit and binary tests |
 | FR-22 | Load and validate a TOML config file; report errors with line numbers | Implemented | `scribe-daemon` config tests; shipped file equals built-in defaults |
 | FR-23 | Report the version from the nearest git tag (`scribe --version`, `scribed --version`) | Implemented | Release workflow smoke check |
 | FR-24 | Export hosts and baselines | Planned | — |
-| FR-25 | While the state store is unavailable, keep the latest events in a bounded in-memory buffer; when full, drop the oldest to add the newest; count drops; replay in order on recovery | Planned | `FaultySink`-style state-store tests (planned) |
+| FR-25 | While the state store is unavailable, keep the latest events in a bounded in-memory buffer; when full, drop the oldest to add the newest; count drops; replay in order on recovery | Implemented (`BufferedState`) | `FaultySink`-style state-store tests (planned) |
 | FR-26 | Store plaintext URLs according to `[modules.url] query` (formerly `privacy.url_query`); always remove user info (`user:password@`) | Planned | Unit tests (planned); fixture `http_plain` |
 | FR-27 | `scribe daemon status` shows the run state, live counters and critical metrics (section 6.2.1); `scribe status` is its short form | Planned | API tests; CLI output tests with `MockApiServer` |
 | FR-28 | `scribe daemon health` reports healthy / degraded / unhealthy with reasons, exits `0` / `1`, and answers within its timeout; also over `grpc.health.v1` | Planned | Daemon tests with `FaultySink` and a stopped `FakeSensor`; mock `daemon-down` |
@@ -183,8 +183,8 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-3 | Memory | Daemon < 100 MB; the default cache (32 MiB) and buffer (32 MiB) budgets fit inside it | Proposed |
 | NFR-4 | Latency | Flow to database p99 < 1 s; sensor reports each flow within 1 s | Proposed (1 s sensor deadline is decided) |
 | NFR-5 | Stability | 24 h soak with flat memory, no handle leaks, empty spool | Proposed |
-| NFR-6 | Durability | Restart keeps hosts, counters, baselines and mode; sink outages lose no events within the spool cap | Partly (hosts, counters, baselines and module state survive a restart in SQLite; mode and spool in phases 2 and 5)
-| NFR-7 | Isolation | A slow or failing sink never blocks capture or other sinks | Planned |
+| NFR-6 | Durability | Restart keeps hosts, counters, baselines and mode; sink outages lose no events within the spool cap | Partly (state, counters, baselines and module state survive restarts in SQLite; the spool survives restarts; mode in phase 5)
+| NFR-7 | Isolation | A slow or failing sink never blocks capture or other sinks | Implemented (writer task per sink; full queues drop and count)
 | NFR-8 | Privileges | Runs as root / SYSTEM only as long as the sensor needs; drops privileges after start | Proposed |
 | NFR-9 | API access | Local socket / named pipe only; caller identity from the OS; read calls for the `scribe` group, control calls for root / Administrators and `scribe-admin`, all control calls audited; clients verify the server (sections 6.3, 12.1.1) | Proposed |
 | NFR-10 | Secrets | Database credentials, TLS client keys, the webhook secret, the URL hash key and the optional storage key from the OS keychain, DPAPI, Secret Service or a root-only file; never in plain config; startup refused when config, `data_dir` or a `file:` credential is group / other-writable | Proposed |
@@ -301,7 +301,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | pcap sensor | `crates/sensor-pcap` | Fallback capture on every OS, no process info | core | Stub |
 | macOS extension | `macos/ScribeExtension` | Network Extension + XPC bridge | — | Planned |
 | Storage API | `crates/storage-api` | `StateStore`, `EventSink`, `StorageFactory`, data model, errors | core | Implemented (interfaces) |
-| Storage manager | `crates/storage-manager` | Backend registry, routing to sinks; later host cache, batching, spool, retention | storage-api, backends | Partly (registry, routing) |
+| Storage manager | `crates/storage-manager` | Backend registry, routing to sinks; later host cache, batching, spool, retention | storage-api, backends | Implemented (registry, writer tasks, spool, outage buffer, host cache, health)
 | SQLite backend | `crates/storage-sqlite` | Default state store and event sink | storage-api | Implemented (schemas v1–v2, both conformance suites)
 | PostgreSQL backend | `crates/storage-postgres` | Optional state store and event sink | storage-api | Stub (schema v1 done) |
 | Policy engine | `crates/policy` (`scribe-policy`), no I/O | Modes, scoring rules, dedupe, learn time limit | core, storage-api | Planned |
@@ -474,8 +474,8 @@ The default mode is `learn`. Hosts added to the baseline in learn mode stay list
 | Situation | Behaviour | Status |
 |---|---|---|
 | Native sensor unavailable (old kernel, extension not approved) | Fall back to the pcap sensor; status reports no process info | Planned |
-| Event sink down | Spool to disk (`storage.spool`), replay in order; when `max_size` or `min_free_disk` is reached drop the oldest and count drops | Draft default |
-| State store unavailable | Keep the latest events in an in-memory buffer (`storage.buffer`); when full, drop the oldest to add the newest; count drops, report unhealthy, replay in order on recovery (FR-25) | Decided |
+| Event sink down | Spool to disk (`storage.spool`), replay in order; when `max_size` or `min_free_disk` is reached drop the oldest and count drops | Implemented (phase 2) |
+| State store unavailable | Keep the latest events in an in-memory buffer (`storage.buffer`); when full, drop the oldest to add the newest; count drops, report unhealthy, replay in order on recovery (FR-25) | Implemented (phase 2) |
 | Hostname hidden (ECH, DoH) | Track by IP or outer name, flag it | Planned |
 | Invalid config | At start: refuse to start, report the error and line (Implemented). On reload: keep the running config, report the error and line (Planned) | Partly |
 
@@ -689,6 +689,19 @@ Released snapshots are never edited, so module support is a new schema version: 
 | Queries | Both tables merged oldest first (then events before metrics, then insertion order); `since` inclusive, `until` exclusive; `total` counts all matches |
 | Old rows | Schema 1 flows (`url`, `request`) are read as `notes.url` and `payload` |
 | Files | `state.db` and `events.db` in `data_dir` by default; state and sink may share one file |
+
+### 10.5 Storage manager (implemented in phase 2)
+
+| Item | Value |
+|---|---|
+| Lifecycle | `StorageManager::from_config` builds the backends; `start(RunOptions)` returns a running `Storage` on the Tokio runtime; `shutdown` writes what is queued, gives buffered state writes a last replay and flushes every sink |
+| Writer tasks | One per sink. `publish` never waits: events go to each subscribed sink's queue (1,024 messages); a full queue drops that sink's share and counts it (NFR-7). Batches are written at `batch_max_events` (capped by the sink's `max_batch`) or after `batch_max_wait` |
+| Spool | `<spool dir>/<sink>/<seq>.jsonl`, one stored row per line, 4 MiB segments. A failed batch and every later one go to the spool, so order holds; replay oldest first with back-off 1 s doubling to 60 s; at-least-once. All spools share `max_size` and `min_free_disk`; at a limit the sink's oldest segments are dropped (counted), or the new batch if nothing older is left. Replayed at start after a restart |
+| Retention | Hourly `EventSink::delete_before(now − retention)` for sinks without native retention |
+| State outage buffer | Backend or config errors start buffering; that write and all later ones wait in order within `storage.buffer` (oldest dropped, counted); replay with back-off. Buffered `upsert_host` returns id 0; a following `link_ip(0, …)` is linked by name on replay. `Data` errors go back to the caller, or are dropped on replay |
+| Host cache | LRU of hosts within `storage.cache` (`max_hosts`, `max_memory`), plus each profile's baseline; writes update cached entries; `clear_cache` for `reset --caches` |
+| Health | `Storage::health`: the state store (degraded while buffering), each sink (degraded while spooling or after drops) and the worst of them; `sink_status`, `state_status`, `cache_status` give the counters for `scribe daemon status` |
+| Time | Batching and retry waits use the runtime's monotonic clock (tested with paused Tokio time); retention cutoffs use `Clock` |
 
 ## 11. Platform support
 

@@ -118,6 +118,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - SQLite runs on a worker thread per database; calls return futures that work on any executor and never
   block the async runtime.
 - `scribed` publishes module output through the running storage and drains the writers on shutdown.
+- Documents after phase 2: spec 0.10 (10.5 storage manager; FR-17, FR-19, FR-25, NFR-7 implemented), skill,
+  plan (95.5–120.5 days left, M1 42–52), status (90.2% product coverage), test list and test approach.
 
 ### Deprecated
 - `privacy.url_query`. Use `[modules.url] query`. The old key still works, with a warning, for one minor version.

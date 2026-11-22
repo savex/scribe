@@ -158,13 +158,13 @@ The test runner loads the scenario, plays the events through the pipeline, and c
 | Test | How | When |
 |---|---|---|
 | **Conformance suite** (`crates/storage-conformance`) | The same suite runs against `MemoryStore`, SQLite and Postgres; covers module records, metric samples, flow notes and module state. **Implemented** for `MemoryStore` and SQLite; Postgres in phase 12 | every run |
-| SQLite | **Implemented:** fresh temporary file per test; ordering, literal filters, first / last seen, IP expiry and module state with `FakeClock`, reopening, time windows, a bad batch rolled back, state and sink sharing one file (`crates/storage-sqlite/tests/`). **Missing:** an in-memory database variant | every run |
+| SQLite | **Implemented:** fresh temporary file per test; ordering, literal filters, first / last seen, IP expiry and module state with `FakeClock`, reopening, time windows, a bad batch rolled back, state and sink sharing one file (`crates/storage-sqlite/tests/`). an in-memory variant of both suites | every run |
 | Postgres | Postgres service container in the Tests workflow (`SCRIBE_TEST_POSTGRES_URL`), a fresh database per run; today it loads migrations 0001 and 0002 twice and both seeds | every run (phase 12 for the backend) |
 | Migrations | **Implemented for SQLite:** each released snapshot (`testdata/db/sqlite/v1.db`, `v2.db`) migrates to the latest schema and its rows read back (v1 flows as `notes.url`); a second `migrate` changes nothing; a newer schema is refused; one migration and one snapshot per schema version | every run |
-| Property tests (`proptest`) | Random sequences of host updates: stored counters equal the sum of the updates; flags only turn on, never off. **Missing** (proptest is used only in `core` today); add with phase 2 | every run |
-| Concurrency | Many tasks update the same host at once, including over two connections to one SQLite file; no lost updates, no `database is locked` within the busy timeout. **Missing**; add with phase 2 | every run |
-| Failure injection | `FaultySink` / a broken connection / disk full: errors reported, no corruption, manager spools. Routing errors implemented; spool and disk-full in phase 2 | every run |
-| Storage manager | With `MemoryStore` + `FaultySink`: batching by size and time, a failing sink doesn't affect others, spool replays in order, retention removes old events. **Implemented:** registry, routing by kind (module kinds included), error propagation, SQLite end to end. The rest in phase 2 | every run |
+| Property tests (`proptest`) | Random sequences of host updates: stored counters equal the sum of the updates; flags only turn on, never off. **Implemented** for SQLite (`counters.rs`) | every run |
+| Concurrency | Many tasks update the same host at once, including over two connections to one SQLite file; no lost updates, no `database is locked` within the busy timeout. **Implemented** (four threads, one file) | every run |
+| Failure injection | `FaultySink` / a broken connection / disk full: errors reported, no corruption, manager spools. **Implemented** (spool, disk-full and size limits, poison writes) | every run |
+| Storage manager | With `MemoryStore` + `FaultySink`: batching by size and time, a failing sink doesn't affect others, spool replays in order, retention removes old events. **Implemented:** registry, routing, batching, isolation, full queues, spool and replay, retention, outage buffer, host cache, SQLite end to end (paused Tokio time) | every run |
 | Volume | 10M events, 100k hosts: write rate, query time, database size | privileged stage / before release |
 
 **Adding a new storage backend:** it must pass the whole conformance suite before it can be registered in `Registry::with_builtin`.

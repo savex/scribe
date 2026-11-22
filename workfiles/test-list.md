@@ -106,10 +106,10 @@ limit). Compile time is not included.
 | Tag | Tests now | Tests planned (M3) | Planned wall time | Per-test limit (warn / kill) |
 |---|---|---|---|---|
 | `smoke` | 13 | ~20 (+ 6 live) | ≤ 5 s | 2 s / 6 s |
-| `functional` | 165 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
-| `integration` | 5 | ~25 | ≤ 15 s | 5 s / 10 s |
+| `functional` | 196 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
+| `integration` | 6 | ~25 | ≤ 15 s | 5 s / 10 s |
 | `scenario` | 0 | 26 | ≤ 10 s | 5 s / 10 s |
-| **Total** | **183** | **~400** | **≤ 60 s** (limit 120 s) | |
+| **Total** | **215** | **~400** | **≤ 60 s** (limit 120 s) | |
 
 **How the budget holds:** runs are parallel, so wall time ≈ the longer of (total test time ÷ cores) and
 the slowest single test. With ~400 tests averaging under 0.5 s and no test over 10 s, a 4-core CI runner
@@ -244,18 +244,18 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-S03 | `sqlite_state_store_conforms`, `sqlite_event_sink_conforms`, `state_and_sink_can_share_a_file` | SQLite passes both suites | Temp dir | 30 ms | Exists |
 | FUN-S04 | `schema.rs` (4) | New file, both snapshots migrate, newer schema refused, unopenable path | Temp dir | 30 ms | Exists |
 | FUN-S05 | `state.rs` (5), `sink.rs` (4) | Seen times, literal filters, baselines, clock use, reopen; time windows, rollback, schema 1 and v2 rows | Temp dir | 50 ms | Exists |
-| FUN-S06 | `counters_are_sums` (proptest) | Random update sequences: counters equal the sums, flags only turn on | Temp dir | 0.5 s | Phase 2 |
-| FUN-S07 | `many_writers_one_host` | Many tasks and two connections to one file: no lost updates, no lock errors | Temp dir | 0.3 s | Phase 2 |
-| FUN-S08 | `sqlite_in_memory_conforms` | Both suites on an in-memory database | In memory | 20 ms | Phase 2 |
-| FUN-S09 | `retention_removes_old_events` | The `EventSink` retention call, both backends | Temp dir | 20 ms | Phase 2 |
+| FUN-S06 | `counters_are_sums` (proptest, 24 cases) | Random update sequences: counters equal the sums, seen times min / max, flags only turn on | Temp dir | 0.1 s | Exists |
+| FUN-S07 | `many_writers_on_one_file_lose_nothing` | Four threads with their own connections to one file: no lost updates | Temp dir | 0.1 s | Exists |
+| FUN-S08 | `sqlite_in_memory_*_conforms` | Both suites on an in-memory database | In memory | 20 ms | Exists |
+| FUN-S09 | conformance `retention_removes_old_events` | The `EventSink` retention call (SQLite now, Postgres in phase 12) | Temp dir | 20 ms | Exists |
 | FUN-S10 | `postgres_*_conforms` | Postgres passes both suites | Own schema | 0.5 s | Phase 12 (needs `SCRIBE_TEST_POSTGRES_URL`) |
 | FUN-S11 | `postgres_tls_rules` | `sslmode` rules, `verify-full` default | In memory | < 10 ms | Phase 12 |
 | FUN-SM01 | `manager.rs` registry and routing tests (9) | Registry kinds and roles, routing by kind, errors | In memory | < 10 ms | Exists |
-| FUN-SM02 | `batches_by_size_and_time` | Per-sink batching with `FakeClock` | In memory | < 10 ms | Phase 2 |
-| FUN-SM03 | `failing_sink_isolated` | A failing `FaultySink` doesn't delay other sinks | In memory | 20 ms | Phase 2 |
-| FUN-SM04 | `spool_replays_in_order` | Spool and replay; oldest dropped at limits, drops counted | Temp dir | 50 ms | Phase 2 |
-| FUN-SM05 | `state_outage_buffer` | Buffer while the state store is down; oldest dropped; replay | In memory | 20 ms | Phase 2 |
-| FUN-SM06 | `host_cache_limits` | LRU by host count and memory; re-read on miss | In memory | 20 ms | Phase 2 |
+| FUN-SM02 | `writer.rs` (6) | Batching by size and time, slow sink isolated, full queue drops, hourly retention, shutdown (paused Tokio time) | In memory | < 10 ms | Exists |
+| FUN-SM03 | `a_slow_sink_does_not_hold_up_others` | A slow sink doesn't delay other sinks | In memory | < 10 ms | Exists |
+| FUN-SM04 | `spool.rs` (8) | Spool, ordered replay, back-off, size and disk limits, restart, shared budget | Temp dir | 50 ms | Exists |
+| FUN-SM05 | `state.rs` (7) | Outage buffer: order, count and memory limits, links by name, poison writes, health | In memory | < 10 ms | Exists |
+| FUN-SM06 | `cache.rs` (5) | LRU by host count and memory, write-through updates, baselines, clear | In memory | < 10 ms | Exists |
 
 **Policy and alerts**
 
@@ -282,12 +282,12 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 
 | ID | Test | From → to | Checks | Isolation | Time | Status |
 |---|---|---|---|---|---|---|
-| INT-01 | `manager_publishes_through_sqlite` | Storage manager → SQLite sink | Published events read back through the sink | Temp dir | 30 ms | Exists |
+| INT-01 | `manager_publishes_through_sqlite`, `the_running_storage_writes_through_to_sqlite` | Storage manager (direct and running: writers, spool, buffer, cache) → SQLite | Published events and host writes read back from the files | Temp dir | 30 ms | Exists |
 | INT-02 | `serve_creates_folders_and_stops_on_shutdown` | Config → resolve → storage manager → backends | `serve()` builds storage from settings and shuts down | Temp dir | 30 ms | Exists (`tests/integration/daemon.rs`) |
 | INT-03 | `reads_rows_written_by_schema_1`, `reads_the_v2_snapshot` | Snapshot → migration → codec → sink | Old rows readable after migration | Temp dir | 30 ms | Exists |
 | INT-04 | `released_snapshots_migrate_to_the_latest_schema` | Snapshot → migration → state store | Seeded hosts readable after migration | Temp dir | 30 ms | Exists (`tests/integration/storage.rs`) |
-| INT-05 | `module_output_reaches_storage` | Module host → output queue → storage manager → SQLite events and `module_state` | Records, metrics and state written | Temp dir, `FakeClock` | 50 ms | Phase 2 (with `TagModule`) |
-| INT-06 | `module_state_survives_restart` | SQLite `module_state` → module host start → module | Stored state handed back at start | Temp dir | 50 ms | Phase 2 |
+| INT-05 | `module_output_reaches_storage` | Module host → output queue → storage manager → SQLite events and `module_state` | Records, metrics and state written | Temp dir, `FakeClock` | 50 ms | Phase 5 (with `TagModule`) |
+| INT-06 | `module_state_survives_restart` | SQLite `module_state` → module host start → module | Stored state handed back at start | Temp dir | 50 ms | Phase 5 |
 | INT-07 | `config_reload_reaches_modules` | Config reload → module host → module settings | Live keys applied, restart keys reported | Temp dir | 20 ms | Phase 5 |
 | INT-08 | `dns_answer_names_a_later_flow` | Enrichment DNS cache → TLS flow without SNI | `dns_cname_then_tls`, `dns_aaaa_then_tls` hostnames | Reads fixtures | 20 ms | Phase 3 |
 | INT-09 | `pcap_to_enriched_flows` | pcap decoder → enrichment → URL module | Each fixture's full JSON expectation incl. `notes.url`, `ech` | Reads fixtures | 0.1 s | Phase 6 |

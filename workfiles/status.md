@@ -1,20 +1,34 @@
 # scribe readiness by module
 
-As of the end of **phase 1** (2026-11-22, commits `22d009f`…`29a5b88` plus the docs commit), scribe still
-doesn't capture traffic or apply the modes, but it **stores**: the SQLite backend keeps hosts, counters,
-baselines, alert and module state, and every kind of event, and passes both storage conformance suites.
-`scribed` creates and migrates `state.db` and `events.db`; the released v1 and v2 snapshots migrate and
-read back. Product code test coverage rose from 89% to 91.7%.
+As of the end of **phase 2** (2026-11-22, commits `6122243`…`d24cfef` plus the docs commit), scribe still
+doesn't capture traffic or apply the modes, but its **storage is complete for M1**: a writer task per sink
+with batching and retention, an on-disk spool with ordered replay while a sink is down, an in-memory
+buffer while the state store is down, a host and baseline cache, and one health result. SQLite runs on its
+own worker thread. Product code coverage is 90.2% (the earlier 91.7% counted unit tests inside source
+files, most of which now live in `tests/`).
 
 **How this was measured**
 - **Completion** is an estimate against each module's scope in [plan.md](plan.md).
 - **Coverage** is line coverage from `cargo test --workspace --all-features` alone, measured with LLVM
-  source-based coverage (rustup `llvm-tools`) on macOS. 171 tests passed and 4 were skipped (Postgres
+  source-based coverage (rustup `llvm-tools`) on macOS. 212 tests passed and 4 were skipped (Postgres
   conformance needs a database; sensor conformance needs privileges).
 - Unit tests written inside source files (`#[cfg(test)]` modules) count as covered lines, which raises
   the percentages of `core`, `daemon` and `cli` somewhat. `crates/daemon/src/config/tests.rs` and
   `tests/` folders are excluded.
 - Linux- and Windows-only code (memory lookup, journald) is compile-checked from macOS but only runs in CI.
+
+## Phase 2 delivered (one commit per step)
+
+| Step | Commit | Result |
+|---|---|---|
+| 1. Retention call | `6122243` | `EventSink::delete_before`; SQLite and doubles; conformance case |
+| 2. SQLite worker | `d8e4447` | A worker thread per database; `Reply` futures work on any executor |
+| 3. Writer tasks | `d04aa80` | `Storage`: writer per sink, batching by size and time, non-blocking `publish`, retention, counters, shutdown |
+| 4. Spool | `fa298ce` | On-disk spool, ordered replay with back-off, shared size and free-disk limits, replay after restart |
+| 5. Outage buffer | `59ae1da` | `BufferedState`: ordered buffer within limits, replay, links by name, `Data` errors not buffered |
+| 6. Cache and health | `3dbfade` | LRU host cache and baseline cache; `Storage::health` |
+| 7. Missing tests | `d24cfef` | In-memory SQLite suites, counter property test, concurrent writers, running-storage integration test |
+| 8. Docs | this commit | Spec 0.10 (10.5), skill, plan, status, test list, test approach, changelog |
 
 ## Phase 1 delivered (one commit per step)
 
@@ -65,9 +79,9 @@ earlier edit (`111411c`); they are restored.
 | `core` | 0, 0b | **~95%** | Flow event with module notes, `Observation`, modes, sensor interface, clock, alert interface, module data types, `VERSION`, units, platform defaults | Grows as later phases need shared types | **97%** (455/471) |
 | `module-api` | 0b | **~95%** | `Module`, `Manifest` checks, `FlowHook`, `Source`, `Emitter`, `ModuleContext`, `ConfigDoc`, `Signal`, `Reload` | API service hooks (phase 10), `ProbeHost` (native sensors) | **99%** (303/307) |
 | `module-url` | 0b, 3, 10 | **~35%** | Manifest, `[modules.url] query` with the deprecated alias, flow hook, request counters; passes the module suite | Request parser and URL privacy rules (phase 3), `scribe url` (phase 10) | **86%** (139/161) |
-| `storage-api` | 0b, 1–2 | **~95%** | Interfaces with module records, metric samples and module state, `EventKind` names, schema version 2, shared row codec | Grows with phase 2 (health details, retention calls) | **94%** (469/501) |
-| `storage-manager` | 2 | **~20%** | Registry, routing by kind (module kinds too), per-sink retention and batching settings | Host cache, state-store outage buffer, per-sink batching tasks, spool and replay, retention, health | **100%** (110/110) |
-| `storage-sqlite` | 1 | **100%** | Migration runner, every state store and event sink method, WAL, health; passes both conformance suites; reads both snapshots | Retention deletes come with the manager (phase 2) | **93%** (540/580) |
+| `storage-api` | 0b, 1–2 | **100%** | Interfaces with module data, `EventKind`, schema version 2, row codec, `delete_before` | Grows with later phases | **91%** (260/285) |
+| `storage-manager` | 2 | **100%** | Registry, writer task per sink, batching, retention, spool and replay, outage buffer, host cache, health | Wiring into `daemon status` (phase 10) | **90%** (977/1082) |
+| `storage-sqlite` | 1, 2 | **100%** | Migration runner, every state store and event sink method incl. retention, worker thread, health; passes both suites on file and in memory | — | **94%** (624/666) |
 | `storage-postgres` | 12 | **~15%** | v1 and v2 migrations and seeds, factory, stubs | All of it | **3%** (3/112). Conformance tests skipped. |
 | `enrich` | 3 | **~10%** | TLS / plaintext detection, DNS cache, `Host` header stub; `ring` chosen for QUIC | SNI, `Host`, DNS answers, QUIC | **38%** (16/42) |
 | Policy engine (`crates/policy`) | 4 | **0% code, design done** | Location, scores, threshold, ports and entropy rule decided; module signals defined | All code | n/a |
@@ -81,7 +95,8 @@ earlier edit (`111411c`); they are restored.
 | UI (Tauri) | later | **0%** | Test folders and mock API data | Everything | n/a |
 | Packaging | 13 | **~15%** | Release archives with checksums; release smoke test runs both binaries and checks the shipped config and the URL module | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing | n/a |
 
-**Product total:** 3,643 of 3,972 measurable lines covered (**91.7%**), up from 89% after phase 0b.
+**Product total:** 3,913 of 4,338 measurable lines covered (**90.2%**). Not comparable with earlier figures: 51 unit
+tests moved out of source files, so test code no longer counts as covered product lines.
 The coverage targets in the test approach (≥ 80% for `core` and the daemon config) are met.
 
 ## Test infrastructure, CI and data
@@ -97,22 +112,19 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
 | CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Run locally only, not on GitHub |
 
-**Overall:** 5,503 of 6,139 measurable lines covered (**89.6%**).
+**Overall:** 5,865 of 6,598 measurable lines covered (**88.9%**).
 
 ## What this means
 
-- **Phases 0, 0b and 1 are done.** Remaining effort: 101.5–127.5 days (122–153 with buffer); milestone M1: 48–59 days
+- **Phases 0, 0b, 1 and 2 are done.** Remaining effort: 95.5–120.5 days (115–145 with buffer); milestone M1: 42–52 days.
   (after the 2026-11-22 plan review: secrets crate in phase 3, more phase 2 and 4 scope).
-- **The daemon has a skeleton to grow into:** each next phase plugs into `serve()` (storage manager tasks in
-  phase 2, the pipeline in phase 5, which feeds `ModuleHost::on_flow`) and reads its settings from the already-checked config.
+- **The daemon has a skeleton to grow into:** each next phase plugs into `serve()` (the pipeline in phase 5, which feeds `ModuleHost::on_flow`) and reads its settings from the already-checked config.
 - **Next steps** (plan milestone M1):
   0. Run the Tests and Release workflows on GitHub once (they have never run) and fix what they find.
-  1. Phase 2: the storage manager (per-sink tasks and batching, host cache, outage buffer, spool, retention,
-     SQLite off the async runtime, a retention call on `EventSink`).
-  2. Phase 3: SNI, `Host` and DNS parsers against the 14 pcap fixtures, the secrets crate, the URL module's HTTP
+  1. Phase 3: SNI, `Host` and DNS parsers against the 14 pcap fixtures, the secrets crate, the URL module's HTTP
      parser (with URL redaction), then QUIC with `ring`.
-  3. Phase 4: the policy engine in `crates/policy`, against the 19 scenarios, using the config values.
-  4. Apply for Apple's Network Extension entitlement (plan risk 1).
+  2. Phase 4: the policy engine in `crates/policy`, against the 19 scenarios, using the config values.
+  3. Apply for Apple's Network Extension entitlement (plan risk 1).
 - **Not verified here:** the Linux and Windows code paths at run time, the GitHub workflows themselves,
   the Postgres migration 0002 (no local Postgres; the Tests workflow loads it) and the fuzz targets (no nightly).
   Local Linux / Windows compile checks leave out bundled SQLite (it needs a C cross compiler); CI builds it natively.
