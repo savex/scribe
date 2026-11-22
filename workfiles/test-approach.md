@@ -1,7 +1,9 @@
 # Test approach for scribe
 
 *Last updated 2026-11-22, after phase 1. "Implemented" marks tests that exist; everything else is the plan for
-the phase named. Coverage and counts: [status.md](status.md).*
+the phase named. Coverage and counts: [status.md](status.md). The catalogue of fast tests, their tags
+(`smoke`, `functional`, `integration`, `scenario`), isolation rules and the 1–2 minute budget:
+[test-list.md](test-list.md).*
 
 ## 1. Goals
 
@@ -218,7 +220,7 @@ locally (`CLAUDE.md`).
 | Stage | Where | Contents | Time budget |
 |---|---|---|---|
 | **Local pre-commit** | Developer machine | `cargo fmt`, `clippy -D warnings`, all tests, the minimum Rust version (1.89), fixture check; clippy for the other two OSes (see the note below) | < 5 min |
-| **Tests** (manual) | Linux, macOS, Windows runners | The same, natively on each OS; Postgres service container loading migrations and seeds; optional ignored conformance tests; `cargo deny` / `cargo audit` (planned) | < 15 min |
+| **Tests** (manual) | Linux, macOS, Windows runners | Tag check; smoke, then the whole fast run with `cargo-nextest` (fails over 120 s); doc examples; natively on each OS; Postgres service container loading migrations and seeds; optional ignored conformance tests; `cargo deny` / `cargo audit` (planned) | < 15 min |
 | **Sensor tests** (manual) | Privileged runners, Linux kernel matrix | Sensor conformance per OS, integration tests | < 2 h |
 | **Fuzz** (manual) | Linux, nightly Rust | Every fuzz target for 30 min | < 2 h |
 | **UI tests** (manual) | Linux, Windows | Vitest and Playwright against the mock API (skips until the UI exists) | < 15 min |

@@ -207,14 +207,18 @@ impl TcpFlow {
 mod tests {
     use super::*;
 
-    #[test]
-    fn ipv4_header_checksum_verifies_to_zero() {
-        let frame = udp_frame(
-            "10.0.0.2:5000".parse().unwrap(),
-            "192.0.2.1:53".parse().unwrap(),
-            b"x",
-            true,
-        );
-        assert_eq!(checksum(&frame[14..34]), 0);
+    mod functional {
+        use super::*;
+
+        #[test]
+        fn ipv4_header_checksum_verifies_to_zero() {
+            let frame = udp_frame(
+                "10.0.0.2:5000".parse().unwrap(),
+                "192.0.2.1:53".parse().unwrap(),
+                b"x",
+                true,
+            );
+            assert_eq!(checksum(&frame[14..34]), 0);
+        }
     }
 }

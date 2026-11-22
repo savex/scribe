@@ -13,32 +13,40 @@ fn run(args: &[&str]) -> (Option<i32>, String, String) {
     )
 }
 
-#[test]
-fn prints_its_version() {
-    let expected = format!("scribe {}\n", scribe_core::VERSION);
-    for args in [&["--version"][..], &["-V"], &["version"]] {
-        let (code, stdout, _) = run(args);
-        assert_eq!(code, Some(0), "{args:?}");
-        assert_eq!(stdout, expected, "{args:?}");
+mod smoke {
+    use super::*;
+
+    #[test]
+    fn prints_its_version() {
+        let expected = format!("scribe {}\n", scribe_core::VERSION);
+        for args in [&["--version"][..], &["-V"], &["version"]] {
+            let (code, stdout, _) = run(args);
+            assert_eq!(code, Some(0), "{args:?}");
+            assert_eq!(stdout, expected, "{args:?}");
+        }
     }
 }
 
-#[test]
-fn commands_report_they_are_not_implemented_yet() {
-    let (code, _, stderr) = run(&["mode", "caution"]);
-    assert_eq!(code, Some(1));
-    assert!(
-        stderr.contains("scribe mode caution: not implemented yet"),
-        "{stderr}"
-    );
-}
+mod functional {
+    use super::*;
 
-#[test]
-fn usage_errors_exit_with_2() {
-    for args in [&[][..], &["frobnicate"], &["mode", "paranoid"]] {
-        let (code, _, stderr) = run(args);
-        assert_eq!(code, Some(2), "{args:?}: {stderr}");
+    #[test]
+    fn commands_report_they_are_not_implemented_yet() {
+        let (code, _, stderr) = run(&["mode", "caution"]);
+        assert_eq!(code, Some(1));
+        assert!(
+            stderr.contains("scribe mode caution: not implemented yet"),
+            "{stderr}"
+        );
     }
-    let (_, _, stderr) = run(&["mode", "paranoid"]);
-    assert!(stderr.contains("unknown mode 'paranoid'"), "{stderr}");
+
+    #[test]
+    fn usage_errors_exit_with_2() {
+        for args in [&[][..], &["frobnicate"], &["mode", "paranoid"]] {
+            let (code, _, stderr) = run(args);
+            assert_eq!(code, Some(2), "{args:?}: {stderr}");
+        }
+        let (_, _, stderr) = run(&["mode", "paranoid"]);
+        assert!(stderr.contains("unknown mode 'paranoid'"), "{stderr}");
+    }
 }

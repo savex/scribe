@@ -20,63 +20,71 @@ fn snapshot(version: u32, dir: &Path) -> PathBuf {
     dst
 }
 
-#[test]
-fn a_new_file_gets_every_migration() {
-    let dir = tempfile::tempdir().unwrap();
-    let s = store(&dir.path().join("state.db"));
-    assert_eq!(s.schema_version().unwrap(), 0);
-    assert!(matches!(block_on(s.health()), Health::Degraded(_)));
-    block_on(s.migrate()).unwrap();
-    assert_eq!(s.schema_version().unwrap(), SCHEMA_VERSION);
-    block_on(s.migrate()).unwrap();
-    assert_eq!(s.schema_version().unwrap(), SCHEMA_VERSION);
-    assert_eq!(block_on(s.health()), Health::Ok);
+fn rusqlite_open(path: &Path) -> rusqlite::Connection {
+    rusqlite::Connection::open(path).unwrap()
 }
 
-#[test]
-fn released_snapshots_migrate_to_the_latest_schema() {
-    for version in 1..=SCHEMA_VERSION {
+mod functional {
+    use super::*;
+
+    #[test]
+    fn a_new_file_gets_every_migration() {
         let dir = tempfile::tempdir().unwrap();
-        let s = store(&snapshot(version, dir.path()));
-        assert_eq!(s.schema_version().unwrap(), version);
-        block_on(s.migrate()).unwrap_or_else(|e| panic!("v{version}: {e}"));
-        assert_eq!(
-            s.schema_version().unwrap(),
-            SCHEMA_VERSION,
-            "from v{version}"
+        let s = store(&dir.path().join("state.db"));
+        assert_eq!(s.schema_version().unwrap(), 0);
+        assert!(matches!(block_on(s.health()), Health::Degraded(_)));
+        block_on(s.migrate()).unwrap();
+        assert_eq!(s.schema_version().unwrap(), SCHEMA_VERSION);
+        block_on(s.migrate()).unwrap();
+        assert_eq!(s.schema_version().unwrap(), SCHEMA_VERSION);
+        assert_eq!(block_on(s.health()), Health::Ok);
+    }
+
+    #[test]
+    fn refuses_a_database_from_a_newer_scribed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = snapshot(SCHEMA_VERSION, dir.path());
+        let conn = rusqlite_open(&path);
+        conn.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (99, 0)",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+        let err = block_on(store(&path).migrate()).unwrap_err();
+        assert!(matches!(err, StorageError::Data(_)), "{err}");
+        assert!(
+            err.to_string()
+                .contains("schema version 99, newer than this scribed reads"),
+            "{err}"
         );
+    }
+
+    #[test]
+    fn an_unopenable_path_is_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = store(&dir.path().join("missing-dir").join("state.db"));
+        let err = block_on(s.migrate()).unwrap_err();
+        assert!(err.to_string().contains("cannot open"), "{err}");
+        assert!(matches!(block_on(s.health()), Health::Down(_)));
     }
 }
 
-#[test]
-fn refuses_a_database_from_a_newer_scribed() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = snapshot(SCHEMA_VERSION, dir.path());
-    let conn = rusqlite_open(&path);
-    conn.execute(
-        "INSERT INTO schema_migrations (version, applied_at) VALUES (99, 0)",
-        [],
-    )
-    .unwrap();
-    drop(conn);
-    let err = block_on(store(&path).migrate()).unwrap_err();
-    assert!(matches!(err, StorageError::Data(_)), "{err}");
-    assert!(
-        err.to_string()
-            .contains("schema version 99, newer than this scribed reads"),
-        "{err}"
-    );
-}
+mod integration {
+    use super::*;
 
-#[test]
-fn an_unopenable_path_is_reported() {
-    let dir = tempfile::tempdir().unwrap();
-    let s = store(&dir.path().join("missing-dir").join("state.db"));
-    let err = block_on(s.migrate()).unwrap_err();
-    assert!(err.to_string().contains("cannot open"), "{err}");
-    assert!(matches!(block_on(s.health()), Health::Down(_)));
-}
-
-fn rusqlite_open(path: &Path) -> rusqlite::Connection {
-    rusqlite::Connection::open(path).unwrap()
+    #[test]
+    fn released_snapshots_migrate_to_the_latest_schema() {
+        for version in 1..=SCHEMA_VERSION {
+            let dir = tempfile::tempdir().unwrap();
+            let s = store(&snapshot(version, dir.path()));
+            assert_eq!(s.schema_version().unwrap(), version);
+            block_on(s.migrate()).unwrap_or_else(|e| panic!("v{version}: {e}"));
+            assert_eq!(
+                s.schema_version().unwrap(),
+                SCHEMA_VERSION,
+                "from v{version}"
+            );
+        }
+    }
 }

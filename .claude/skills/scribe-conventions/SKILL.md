@@ -312,6 +312,10 @@ Notes:
 | Fuzz run time | 1800 s per target | Decided (workflow default) |
 | Linux kernel matrix | 5.8, 5.15, 6.1, latest (virtme-ng / lvh) | Proposed |
 | Coverage targets | ≥ 80% for `core`, `enrich`, `storage-*`, policy engine; ≥ 60% overall | Proposed |
+| Test tags | Every test in exactly one module `smoke::`, `functional::`, `integration::` or `scenario::`; checked by `scripts/check-test-tags.sh` (doc examples excluded); smoke changes nothing outside its temp dir, live smoke is read-only | Decided |
+| Test runner | `cargo-nextest`, process per test; `.config/nextest.toml`: warn 2 s / kill 6 s, integration and scenario warn 5 s / kill 10 s; profile `ci` writes JUnit | Decided |
+| Isolation | Own temp dir, ports (`:0`), `FakeClock`, Postgres schema per test; no `set_var`, no global panic hook swaps (thread-local quiet hook in the module suite) | Decided |
+| Fast run budget | Planned ≤ 60 s, hard limit 120 s (100% contingency) after the build; the Tests workflow fails over 120 s; 0.6 s today (183 tests) | Decided |
 | CI time budgets | every-PR stage < 15 min, nightly-equivalent < 2 h, pre-release 1–2 days | Proposed |
 | Release exit criteria | all scenarios and sensor conformance pass on every OS; no open crash / data-loss bugs; 7 crash-free fuzz runs in a row | Proposed |
 

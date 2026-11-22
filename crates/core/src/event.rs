@@ -110,16 +110,20 @@ mod tests {
         }
     }
 
-    #[test]
-    fn unresolved_means_no_name_or_only_an_ech_outer_name() {
-        assert!(!event(Some("api.example.com"), false).unresolved());
-        assert!(event(None, false).unresolved());
-        assert!(event(Some("public.example.com"), true).unresolved());
-    }
+    mod functional {
+        use super::*;
 
-    #[test]
-    fn observations_cut_payload_to_head_max() {
-        let obs = Observation::from(event(None, false)).with_head(&[7; HEAD_MAX + 1]);
-        assert_eq!(obs.head.unwrap().len(), HEAD_MAX);
+        #[test]
+        fn unresolved_means_no_name_or_only_an_ech_outer_name() {
+            assert!(!event(Some("api.example.com"), false).unresolved());
+            assert!(event(None, false).unresolved());
+            assert!(event(Some("public.example.com"), true).unresolved());
+        }
+
+        #[test]
+        fn observations_cut_payload_to_head_max() {
+            let obs = Observation::from(event(None, false)).with_head(&[7; HEAD_MAX + 1]);
+            assert_eq!(obs.head.unwrap().len(), HEAD_MAX);
+        }
     }
 }

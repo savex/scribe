@@ -186,72 +186,76 @@ mod imp {
 mod tests {
     use super::*;
 
-    #[test]
-    fn linux_defaults() {
-        let p = DefaultPaths::for_os(Os::Linux, Path::new("/usr/bin/scribed"));
-        assert_eq!(p.config_file, Path::new("/etc/scribe/scribe.toml"));
-        assert_eq!(p.data_dir, Path::new("/var/lib/scribe"));
-        assert_eq!(p.log_file, Path::new("/var/log/scribe/scribed.log"));
-    }
+    mod functional {
+        use super::*;
 
-    #[test]
-    fn macos_defaults() {
-        let p = DefaultPaths::for_os(Os::MacOs, Path::new("/usr/local/bin/scribed"));
-        assert_eq!(
-            p.config_file,
-            Path::new("/Library/Application Support/scribe/scribe.toml")
-        );
-        assert_eq!(p.data_dir, Path::new("/Library/Application Support/scribe"));
-        assert_eq!(p.log_file, Path::new("/var/log/scribe/scribed.log"));
-    }
+        #[test]
+        fn linux_defaults() {
+            let p = DefaultPaths::for_os(Os::Linux, Path::new("/usr/bin/scribed"));
+            assert_eq!(p.config_file, Path::new("/etc/scribe/scribe.toml"));
+            assert_eq!(p.data_dir, Path::new("/var/lib/scribe"));
+            assert_eq!(p.log_file, Path::new("/var/log/scribe/scribed.log"));
+        }
 
-    #[test]
-    fn windows_defaults_sit_next_to_the_program() {
-        // Separators are the host's; the rule under test is "relative to the program's folder".
-        let exe = Path::new("/opt/scribe/scribed.exe");
-        let p = DefaultPaths::for_os(Os::Windows, exe);
-        assert_eq!(p.config_file, Path::new("/opt/scribe").join("scribe.toml"));
-        assert_eq!(p.data_dir, Path::new("/opt/scribe").join("data"));
-        assert_eq!(
-            p.log_file,
-            Path::new("/opt/scribe").join("logs").join("scribed.log")
-        );
-    }
+        #[test]
+        fn macos_defaults() {
+            let p = DefaultPaths::for_os(Os::MacOs, Path::new("/usr/local/bin/scribed"));
+            assert_eq!(
+                p.config_file,
+                Path::new("/Library/Application Support/scribe/scribe.toml")
+            );
+            assert_eq!(p.data_dir, Path::new("/Library/Application Support/scribe"));
+            assert_eq!(p.log_file, Path::new("/var/log/scribe/scribed.log"));
+        }
 
-    #[test]
-    fn current_matches_this_os() {
-        let current = DefaultPaths::current().unwrap();
-        let exe = std::env::current_exe().unwrap();
-        assert_eq!(current, DefaultPaths::for_os(Os::current(), &exe));
-    }
+        #[test]
+        fn windows_defaults_sit_next_to_the_program() {
+            // Separators are the host's; the rule under test is "relative to the program's folder".
+            let exe = Path::new("/opt/scribe/scribed.exe");
+            let p = DefaultPaths::for_os(Os::Windows, exe);
+            assert_eq!(p.config_file, Path::new("/opt/scribe").join("scribe.toml"));
+            assert_eq!(p.data_dir, Path::new("/opt/scribe").join("data"));
+            assert_eq!(
+                p.log_file,
+                Path::new("/opt/scribe").join("logs").join("scribed.log")
+            );
+        }
 
-    #[test]
-    fn reads_total_memory() {
-        let bytes = total_memory().unwrap();
-        assert!(bytes > 256 << 20, "implausible RAM size {bytes}");
-    }
+        #[test]
+        fn current_matches_this_os() {
+            let current = DefaultPaths::current().unwrap();
+            let exe = std::env::current_exe().unwrap();
+            assert_eq!(current, DefaultPaths::for_os(Os::current(), &exe));
+        }
 
-    #[test]
-    fn measures_volumes_including_missing_paths() {
-        let dir = std::env::temp_dir();
-        let space = volume_space(&dir).unwrap();
-        assert!(space.total > 0 && space.available <= space.total);
+        #[test]
+        fn reads_total_memory() {
+            let bytes = total_memory().unwrap();
+            assert!(bytes > 256 << 20, "implausible RAM size {bytes}");
+        }
 
-        let missing = dir.join("scribe-does-not-exist").join("spool");
-        assert_eq!(volume_space(&missing).unwrap().total, space.total);
-    }
+        #[test]
+        fn measures_volumes_including_missing_paths() {
+            let dir = std::env::temp_dir();
+            let space = volume_space(&dir).unwrap();
+            assert!(space.total > 0 && space.available <= space.total);
 
-    #[test]
-    fn relative_paths_without_an_existing_parent_fail() {
-        let err = volume_space(Path::new("no-such-folder-for-scribe")).unwrap_err();
-        assert_eq!(err.kind(), io::ErrorKind::NotFound);
-    }
+            let missing = dir.join("scribe-does-not-exist").join("spool");
+            assert_eq!(volume_space(&missing).unwrap().total, space.total);
+        }
 
-    #[test]
-    fn parses_meminfo() {
-        let sample = "MemTotal:       16314356 kB\nMemFree:          151416 kB\n";
-        assert_eq!(parse_meminfo(sample), Some(16_314_356 * 1024));
-        assert_eq!(parse_meminfo("MemFree: 1 kB\n"), None);
-        assert_eq!(parse_meminfo("MemTotal: lots kB\n"), None);
+        #[test]
+        fn relative_paths_without_an_existing_parent_fail() {
+            let err = volume_space(Path::new("no-such-folder-for-scribe")).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        }
+
+        #[test]
+        fn parses_meminfo() {
+            let sample = "MemTotal:       16314356 kB\nMemFree:          151416 kB\n";
+            assert_eq!(parse_meminfo(sample), Some(16_314_356 * 1024));
+            assert_eq!(parse_meminfo("MemFree: 1 kB\n"), None);
+            assert_eq!(parse_meminfo("MemTotal: lots kB\n"), None);
+        }
     }
 }

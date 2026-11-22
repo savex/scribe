@@ -4,8 +4,10 @@
 //! [`run_module_suite`]. The suite collects every failure instead of stopping at the first one.
 //! A module must pass it before it can be registered in the daemon's `ModuleRegistry`.
 
+use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::panic::{self, AssertUnwindSafe};
+use std::sync::Once;
 use std::time::{Duration, Instant};
 
 use scribe_core::{Observation, HEAD_MAX};
@@ -253,12 +255,27 @@ fn context(obs: &Observation) -> FlowContext<'_> {
     }
 }
 
-/// Run `f`, catching a panic without printing it.
+thread_local! {
+    /// Set while this thread runs code whose panics are expected.
+    static QUIET: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Run `f`, catching a panic without printing it. The panic hook is installed once and stays
+/// quiet only on the thread that asked, so tests running in parallel keep their own panic output
+/// (workfiles/test-list.md, rule I-4).
 fn quietly<T>(f: impl FnOnce() -> T) -> Result<T, String> {
-    let previous = panic::take_hook();
-    panic::set_hook(Box::new(|_| {}));
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let previous = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            if !QUIET.with(Cell::get) {
+                previous(info);
+            }
+        }));
+    });
+    QUIET.with(|q| q.set(true));
     let result = panic::catch_unwind(AssertUnwindSafe(f));
-    panic::set_hook(previous);
+    QUIET.with(|q| q.set(false));
     result.map_err(|p| {
         p.downcast_ref::<&str>()
             .map(|s| s.to_string())

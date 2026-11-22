@@ -43,178 +43,186 @@ fn assert_exit(output: &Output, code: i32) {
     );
 }
 
-#[test]
-fn prints_its_version() {
-    for flag in ["--version", "-V"] {
-        let out = scribed(&[flag]).output().unwrap();
-        assert_exit(&out, 0);
-        assert_eq!(
-            text(&out.stdout),
-            format!("scribed {}\n", scribe_core::VERSION)
-        );
-    }
-}
+mod smoke {
+    use super::*;
 
-/// The shipped file configures the URL module, so it needs a build with it.
-#[cfg(feature = "url")]
-#[test]
-fn checks_the_shipped_config() {
-    let out = scribed(&[
-        "--check-config",
-        "--config",
-        shipped_config().to_str().unwrap(),
-    ])
-    .output()
-    .unwrap();
-    assert_exit(&out, 0);
-    let stdout = text(&out.stdout);
-    assert!(
-        stdout.starts_with("# Effective scribed configuration"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("mode = \"learn\""), "{stdout}");
-    assert!(
-        stdout.contains("[modules]\nenabled = [\"url\"]"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("[modules.url]\nquery = \"redact_values\""),
-        "{stdout}"
-    );
-}
-
-#[cfg(feature = "url")]
-#[test]
-fn warns_about_the_deprecated_url_query() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = write_config(dir.path(), "[privacy]\nurl_query = \"strip\"");
-    let out = scribed(&["--check-config", "--config", path.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert_exit(&out, 0);
-    let stdout = text(&out.stdout);
-    assert!(
-        stdout.contains("# warning: privacy.url_query is deprecated"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("query = \"strip\""), "{stdout}");
-}
-
-#[test]
-fn rejects_an_unknown_module() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = write_config(dir.path(), "[modules]\nenabled = [\"kperf\"]");
-    let out = scribed(&["--check-config", "--config", path.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert_exit(&out, 2);
-    let stderr = text(&out.stderr);
-    assert!(stderr.contains("module \"kperf\" is not built"), "{stderr}");
-    assert!(stderr.contains("line 3"), "{stderr}");
-}
-
-#[test]
-fn rejects_a_bad_config_with_its_line() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("bad.toml");
-    std::fs::write(&path, "mode = \"learn\"\nthreshold = 70\n").unwrap();
-    let out = scribed(&["--check-config", "--config", path.to_str().unwrap()])
-        .output()
-        .unwrap();
-    assert_exit(&out, 2);
-    let stderr = text(&out.stderr);
-    assert!(stderr.contains("line 2"), "{stderr}");
-    assert!(stderr.contains("unknown field `threshold`"), "{stderr}");
-}
-
-#[test]
-fn a_named_config_must_exist() {
-    let out = scribed(&["--config", "/nonexistent/scribe.toml"])
-        .output()
-        .unwrap();
-    assert_exit(&out, 2);
-    assert!(text(&out.stderr).contains("named by --config"));
-}
-
-#[test]
-fn reads_scribe_config_from_the_environment() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = write_config(dir.path(), "profile = 'from-env'");
-    let out = scribed(&["--check-config"])
-        .env("SCRIBE_CONFIG", &path)
-        .output()
-        .unwrap();
-    assert_exit(&out, 0);
-    assert!(text(&out.stdout).contains("profile = \"from-env\""));
-}
-
-#[test]
-fn usage_errors_exit_with_2() {
-    let out = scribed(&["--bogus"]).output().unwrap();
-    assert_exit(&out, 2);
-}
-
-#[test]
-fn rejects_a_bad_log_filter() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = write_config(dir.path(), "");
-    let out = scribed(&["--config", path.to_str().unwrap()])
-        .env("SCRIBE_LOG", "scribed=loud")
-        .output()
-        .unwrap();
-    assert_exit(&out, 2);
-    assert!(text(&out.stderr).contains("invalid log filter"));
-}
-
-#[cfg(unix)]
-#[test]
-fn runs_until_sigterm_and_stops_cleanly() {
-    use std::time::{Duration, Instant};
-
-    let dir = tempfile::tempdir().unwrap();
-    let path = write_config(dir.path(), "");
-    let log = dir.path().join("scribed.log");
-    let mut child = scribed(&["--config", path.to_str().unwrap()])
-        .spawn()
-        .unwrap();
-
-    let deadline = Instant::now() + Duration::from_secs(15);
-    while !std::fs::read_to_string(&log)
-        .unwrap_or_default()
-        .contains("waiting for a stop signal")
-    {
-        assert!(Instant::now() < deadline, "scribed did not start");
-        assert!(child.try_wait().unwrap().is_none(), "scribed exited early");
-        std::thread::sleep(Duration::from_millis(50));
+    #[test]
+    fn prints_its_version() {
+        for flag in ["--version", "-V"] {
+            let out = scribed(&[flag]).output().unwrap();
+            assert_exit(&out, 0);
+            assert_eq!(
+                text(&out.stdout),
+                format!("scribed {}\n", scribe_core::VERSION)
+            );
+        }
     }
 
-    let killed = Command::new("kill")
-        .args(["-TERM", &child.id().to_string()])
-        .status()
-        .unwrap();
-    assert!(killed.success());
-    let status = child.wait().unwrap();
-    assert_eq!(status.code(), Some(0));
-
-    let log = std::fs::read_to_string(&log).unwrap();
-    for expected in [
-        "scribed starting",
-        "data dir: ",
-        "storage ready",
-        "stop signal received",
-        "scribed stopped",
-    ] {
-        assert!(log.contains(expected), "missing {expected:?} in:\n{log}");
-    }
+    /// The shipped file configures the URL module, so it needs a build with it.
     #[cfg(feature = "url")]
-    for expected in ["modules: url", "module url started", "module url stopped"] {
-        assert!(log.contains(expected), "missing {expected:?} in:\n{log}");
-    }
-    assert!(dir.path().join("data").join("spool").is_dir());
-    for db in ["state.db", "events.db"] {
+    #[test]
+    fn checks_the_shipped_config() {
+        let out = scribed(&[
+            "--check-config",
+            "--config",
+            shipped_config().to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+        assert_exit(&out, 0);
+        let stdout = text(&out.stdout);
         assert!(
-            dir.path().join("data").join(db).is_file(),
-            "{db} was not created"
+            stdout.starts_with("# Effective scribed configuration"),
+            "{stdout}"
         );
+        assert!(stdout.contains("mode = \"learn\""), "{stdout}");
+        assert!(
+            stdout.contains("[modules]\nenabled = [\"url\"]"),
+            "{stdout}"
+        );
+        assert!(
+            stdout.contains("[modules.url]\nquery = \"redact_values\""),
+            "{stdout}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runs_until_sigterm_and_stops_cleanly() {
+        use std::time::{Duration, Instant};
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_config(dir.path(), "");
+        let log = dir.path().join("scribed.log");
+        let mut child = scribed(&["--config", path.to_str().unwrap()])
+            .spawn()
+            .unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(15);
+        while !std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .contains("waiting for a stop signal")
+        {
+            assert!(Instant::now() < deadline, "scribed did not start");
+            assert!(child.try_wait().unwrap().is_none(), "scribed exited early");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        let killed = Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status()
+            .unwrap();
+        assert!(killed.success());
+        let status = child.wait().unwrap();
+        assert_eq!(status.code(), Some(0));
+
+        let log = std::fs::read_to_string(&log).unwrap();
+        for expected in [
+            "scribed starting",
+            "data dir: ",
+            "storage ready",
+            "stop signal received",
+            "scribed stopped",
+        ] {
+            assert!(log.contains(expected), "missing {expected:?} in:\n{log}");
+        }
+        #[cfg(feature = "url")]
+        for expected in ["modules: url", "module url started", "module url stopped"] {
+            assert!(log.contains(expected), "missing {expected:?} in:\n{log}");
+        }
+        assert!(dir.path().join("data").join("spool").is_dir());
+        for db in ["state.db", "events.db"] {
+            assert!(
+                dir.path().join("data").join(db).is_file(),
+                "{db} was not created"
+            );
+        }
+    }
+}
+
+mod functional {
+    use super::*;
+
+    #[cfg(feature = "url")]
+    #[test]
+    fn warns_about_the_deprecated_url_query() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_config(dir.path(), "[privacy]\nurl_query = \"strip\"");
+        let out = scribed(&["--check-config", "--config", path.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_exit(&out, 0);
+        let stdout = text(&out.stdout);
+        assert!(
+            stdout.contains("# warning: privacy.url_query is deprecated"),
+            "{stdout}"
+        );
+        assert!(stdout.contains("query = \"strip\""), "{stdout}");
+    }
+
+    #[test]
+    fn rejects_an_unknown_module() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_config(dir.path(), "[modules]\nenabled = [\"kperf\"]");
+        let out = scribed(&["--check-config", "--config", path.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_exit(&out, 2);
+        let stderr = text(&out.stderr);
+        assert!(stderr.contains("module \"kperf\" is not built"), "{stderr}");
+        assert!(stderr.contains("line 3"), "{stderr}");
+    }
+
+    #[test]
+    fn rejects_a_bad_config_with_its_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.toml");
+        std::fs::write(&path, "mode = \"learn\"\nthreshold = 70\n").unwrap();
+        let out = scribed(&["--check-config", "--config", path.to_str().unwrap()])
+            .output()
+            .unwrap();
+        assert_exit(&out, 2);
+        let stderr = text(&out.stderr);
+        assert!(stderr.contains("line 2"), "{stderr}");
+        assert!(stderr.contains("unknown field `threshold`"), "{stderr}");
+    }
+
+    #[test]
+    fn a_named_config_must_exist() {
+        let out = scribed(&["--config", "/nonexistent/scribe.toml"])
+            .output()
+            .unwrap();
+        assert_exit(&out, 2);
+        assert!(text(&out.stderr).contains("named by --config"));
+    }
+
+    #[test]
+    fn reads_scribe_config_from_the_environment() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_config(dir.path(), "profile = 'from-env'");
+        let out = scribed(&["--check-config"])
+            .env("SCRIBE_CONFIG", &path)
+            .output()
+            .unwrap();
+        assert_exit(&out, 0);
+        assert!(text(&out.stdout).contains("profile = \"from-env\""));
+    }
+
+    #[test]
+    fn usage_errors_exit_with_2() {
+        let out = scribed(&["--bogus"]).output().unwrap();
+        assert_exit(&out, 2);
+    }
+
+    #[test]
+    fn rejects_a_bad_log_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_config(dir.path(), "");
+        let out = scribed(&["--config", path.to_str().unwrap()])
+            .env("SCRIBE_LOG", "scribed=loud")
+            .output()
+            .unwrap();
+        assert_exit(&out, 2);
+        assert!(text(&out.stderr).contains("invalid log filter"));
     }
 }

@@ -407,18 +407,22 @@ fn url_has_password(url: &str) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn line_and_column() {
-        let text = "a = 1\nbb = 2\n";
-        assert_eq!(line_column(text, 0), (1, 1));
-        assert_eq!(line_column(text, 6), (2, 1));
-        assert_eq!(line_column(text, 9), (2, 4));
-    }
+    mod functional {
+        use super::*;
 
-    #[test]
-    fn spots_passwords_in_urls() {
-        assert!(url_has_password("postgres://scribe:secret@db/scribe"));
-        assert!(!url_has_password("postgres://scribe@db:5432/scribe"));
-        assert!(!url_has_password("postgres://db/scribe?sslmode=require"));
+        #[test]
+        fn line_and_column() {
+            let text = "a = 1\nbb = 2\n";
+            assert_eq!(line_column(text, 0), (1, 1));
+            assert_eq!(line_column(text, 6), (2, 1));
+            assert_eq!(line_column(text, 9), (2, 4));
+        }
+
+        #[test]
+        fn spots_passwords_in_urls() {
+            assert!(url_has_password("postgres://scribe:secret@db/scribe"));
+            assert!(!url_has_password("postgres://scribe@db:5432/scribe"));
+            assert!(!url_has_password("postgres://db/scribe?sslmode=require"));
+        }
     }
 }

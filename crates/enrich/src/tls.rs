@@ -20,21 +20,25 @@ pub fn parse_sni(_client_hello: &[u8]) -> Option<String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn detects_tls_handshake() {
-        assert_eq!(
-            detect_security(&[0x16, 0x03, 0x01, 0x02, 0x00]),
-            Security::Tls
-        );
-    }
+    mod functional {
+        use super::*;
 
-    #[test]
-    fn detects_plaintext_http() {
-        assert_eq!(detect_security(b"GET / HTTP/1.1\r\n"), Security::Plaintext);
-    }
+        #[test]
+        fn detects_tls_handshake() {
+            assert_eq!(
+                detect_security(&[0x16, 0x03, 0x01, 0x02, 0x00]),
+                Security::Tls
+            );
+        }
 
-    #[test]
-    fn empty_is_unknown() {
-        assert_eq!(detect_security(&[]), Security::Unknown);
+        #[test]
+        fn detects_plaintext_http() {
+            assert_eq!(detect_security(b"GET / HTTP/1.1\r\n"), Security::Plaintext);
+        }
+
+        #[test]
+        fn empty_is_unknown() {
+            assert_eq!(detect_security(&[]), Security::Unknown);
+        }
     }
 }

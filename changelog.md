@@ -58,6 +58,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Scenario expectations: `notes`, `unresolved`, `processes`, `signals`, `run_state`, `runtime`.
 - UI mocks: `hibernating`, `degraded-drops`, `module-failed`; statuses carry run state, counters, critical metrics, modules.
 - Spec: `--json` for `scribe hosts` and `scribe alerts`; `scribe baseline` lists entries.
+- `workfiles/test-list.md`: catalogue of the fast tests with tags (`smoke`, `functional`, `integration`,
+  `scenario`), isolation and parallel rules, and a 60 s budget (120 s with contingency).
+- Test tags: every test sits in `smoke::`, `functional::` or `integration::` (`scenario::` when the runner lands).
+- `scripts/check-test-tags.sh` fails on untagged tests; it runs in the Tests workflow.
+- `cargo-nextest` with `.config/nextest.toml`: per-test time limits, a `ci` profile with JUnit output.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.
@@ -83,6 +88,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - `counters-exact` checks per-process counters; `caution-plaintext-known-host` checks the alert's URL note.
 - v2 snapshot rebuilt (not yet released): its flow row has `src` and `ech`.
 - Test data rules: no exceptions to documentation addresses and example names.
+- Tests workflow: smoke first, then the fast run with nextest; fails over 120 s; doc examples run separately.
+- `built_in_registry_has_sqlite` split into a smoke and an integration test; `catches_every_fault` into 7 tests.
+- The module suite's quiet panic hook is thread-local, so parallel tests keep their panic output.
+- `CLAUDE.md`: tag and isolation rules; nextest and the tag check before committing.
 
 ### Deprecated
 - `privacy.url_query`. Use `[modules.url] query`. The old key still works, with a warning, for one minor version.

@@ -275,54 +275,63 @@ mod tests {
         .unwrap()
     }
 
-    #[test]
-    fn serve_creates_folders_and_stops_on_shutdown() {
-        let dir = tempfile::tempdir().unwrap();
-        let data = dir.path().join("data");
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(serve(settings_in(&data), std::future::ready(())))
-            .unwrap();
-        assert!(data.is_dir());
-        assert!(data.join("spool").is_dir());
+    mod functional {
+        use super::*;
+
+        #[test]
+        fn serve_reports_folders_it_cannot_create() {
+            let dir = tempfile::tempdir().unwrap();
+            let blocker = dir.path().join("file");
+            std::fs::write(&blocker, "").unwrap();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let err = rt
+                .block_on(serve(
+                    settings_in(&blocker.join("data")),
+                    std::future::ready(()),
+                ))
+                .unwrap_err();
+            assert!(
+                format!("{err:#}").contains("cannot create folder"),
+                "{err:#}"
+            );
+        }
+
+        #[test]
+        fn arguments() {
+            let args =
+                Args::try_parse_from(["scribed", "--config", "/etc/x.toml", "--check-config"])
+                    .unwrap();
+            assert_eq!(
+                args.config.as_deref(),
+                Some(std::path::Path::new("/etc/x.toml"))
+            );
+            assert!(args.check_config);
+            assert!(Args::try_parse_from(["scribed", "--bogus"]).is_err());
+        }
+
+        #[test]
+        fn config_errors_exit_with_2() {
+            let code = run(
+                Args::try_parse_from(["scribed", "--config", "/nonexistent/scribe.toml"]).unwrap(),
+                None,
+                None,
+            );
+            assert_eq!(code, ExitCode::from(EXIT_CONFIG));
+        }
     }
 
-    #[test]
-    fn serve_reports_folders_it_cannot_create() {
-        let dir = tempfile::tempdir().unwrap();
-        let blocker = dir.path().join("file");
-        std::fs::write(&blocker, "").unwrap();
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let err = rt
-            .block_on(serve(
-                settings_in(&blocker.join("data")),
-                std::future::ready(()),
-            ))
-            .unwrap_err();
-        assert!(
-            format!("{err:#}").contains("cannot create folder"),
-            "{err:#}"
-        );
-    }
+    mod integration {
+        use super::*;
 
-    #[test]
-    fn arguments() {
-        let args =
-            Args::try_parse_from(["scribed", "--config", "/etc/x.toml", "--check-config"]).unwrap();
-        assert_eq!(
-            args.config.as_deref(),
-            Some(std::path::Path::new("/etc/x.toml"))
-        );
-        assert!(args.check_config);
-        assert!(Args::try_parse_from(["scribed", "--bogus"]).is_err());
-    }
-
-    #[test]
-    fn config_errors_exit_with_2() {
-        let code = run(
-            Args::try_parse_from(["scribed", "--config", "/nonexistent/scribe.toml"]).unwrap(),
-            None,
-            None,
-        );
-        assert_eq!(code, ExitCode::from(EXIT_CONFIG));
+        #[test]
+        fn serve_creates_folders_and_stops_on_shutdown() {
+            let dir = tempfile::tempdir().unwrap();
+            let data = dir.path().join("data");
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(serve(settings_in(&data), std::future::ready(())))
+                .unwrap();
+            assert!(data.is_dir());
+            assert!(data.join("spool").is_dir());
+        }
     }
 }

@@ -1,5 +1,5 @@
-# Manual: the "every PR" stage of workfiles/test-approach.md — lint, unit and isolated
-# component tests, fixtures, storage conformance and schema snapshots.
+# Manual: the fast run of workfiles/test-list.md (cargo-nextest, tags smoke / functional / integration /
+# scenario) plus lint, fixtures, storage conformance and schema snapshots.
 name: Tests
 
 on:
@@ -39,6 +39,8 @@ jobs:
         run: cargo run -q -p scribe-test-support --bin gen-fixtures -- --check
       - name: Version consistency
         run: scripts/version.sh check
+      - name: Every test has one tag (smoke / functional / integration / scenario)
+        run: scripts/check-test-tags.sh
 
   msrv:
     name: Minimum Rust version (from Cargo.toml)
@@ -71,10 +73,26 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Unit and isolated component tests
-        run: cargo test --workspace --all-features --locked
+      - uses: taiki-e/install-action@nextest
+      - name: Smoke tests
+        run: cargo nextest run --workspace --all-features --locked --profile ci -E 'test(/(^|::)smoke::/)'
+      - name: Fast run (all tags, budget 60 s, limit 120 s)
+        shell: bash
+        run: |
+          start=$(date +%s)
+          cargo nextest run --workspace --all-features --locked --profile ci
+          took=$(( $(date +%s) - start ))
+          echo "fast run took ${took}s"
+          (( took <= 120 )) || { echo "::error::fast run took ${took}s, over the 120 s limit (workfiles/test-list.md)"; exit 1; }
+      - name: Doc examples
+        run: cargo test --workspace --all-features --locked --doc
       - name: Default features only (SQLite)
-        run: cargo test -p scribe-daemon --locked
+        run: cargo nextest run -p scribe-daemon --locked --profile ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-${{ matrix.os }}
+          path: target/nextest/ci/junit.xml
 
   sqlite:
     name: SQLite backend

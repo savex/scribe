@@ -51,11 +51,13 @@ rules for AI assistants are in [CLAUDE.md](CLAUDE.md).
 ```sh
 cargo build                       # SQLite backend only
 cargo build --features postgres   # add PostgreSQL
-cargo test
+cargo nextest run --workspace --all-features            # fast run (or: cargo test)
+cargo nextest run --workspace -E 'test(/(^|::)smoke::/)'  # one tag: smoke, functional, integration, scenario
 cargo run -p scribe-test-support --bin gen-fixtures   # regenerate testdata/pcap and fuzz seeds
 ```
 
-See [workfiles/test-approach.md](workfiles/test-approach.md) for how testing is organised.
+See [workfiles/test-approach.md](workfiles/test-approach.md) for how testing is organised and
+[workfiles/test-list.md](workfiles/test-list.md) for the tagged test list and its time budget.
 
 ## Running scribed
 

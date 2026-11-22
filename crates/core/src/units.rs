@@ -282,106 +282,6 @@ mod tests {
         s.parse::<HumanDuration>().map(|d| d.get().as_secs())
     }
 
-    #[test]
-    fn parses_durations() {
-        assert_eq!(dur("45s"), Ok(45));
-        assert_eq!(dur("10m"), Ok(600));
-        assert_eq!(dur("1h"), Ok(3_600));
-        assert_eq!(dur("7d"), Ok(604_800));
-        assert_eq!(dur(" 30 m "), Ok(1_800));
-    }
-
-    #[test]
-    fn rejects_bad_durations() {
-        for bad in ["", "10", "m", "10x", "1.5h", "-1s", "10 minutes", "1h30m"] {
-            assert!(
-                matches!(dur(bad), Err(UnitError::Duration(_))),
-                "{bad:?} should be rejected"
-            );
-        }
-        assert_eq!(dur("0s"), Err(UnitError::Zero("0s".into())));
-        assert!(matches!(
-            dur("99999999999999999999d"),
-            Err(UnitError::Duration(_))
-        ));
-        assert_eq!(
-            dur("999999999999999999d"),
-            Err(UnitError::Overflow("999999999999999999d".into()))
-        );
-    }
-
-    #[test]
-    fn formats_durations_in_the_largest_exact_unit() {
-        assert_eq!(HumanDuration::from_secs(90).to_string(), "90s");
-        assert_eq!(HumanDuration::from_secs(600).to_string(), "10m");
-        assert_eq!(HumanDuration::from_secs(7_200).to_string(), "2h");
-        assert_eq!(HumanDuration::from_secs(2_592_000).to_string(), "30d");
-    }
-
-    #[test]
-    fn parses_sizes() {
-        assert_eq!("512KiB".parse(), Ok(SizeLimit::Bytes(512 * KIB)));
-        assert_eq!("32MiB".parse(), Ok(SizeLimit::mib(32)));
-        assert_eq!("2 gib".parse(), Ok(SizeLimit::Bytes(2 * GIB)));
-        assert_eq!("1TiB".parse(), Ok(SizeLimit::Bytes(TIB)));
-        assert_eq!("4096".parse(), Ok(SizeLimit::Bytes(4096)));
-        assert_eq!("100B".parse(), Ok(SizeLimit::Bytes(100)));
-        assert_eq!("5%".parse(), Ok(SizeLimit::Percent(5.0)));
-        assert_eq!("0.5 %".parse(), Ok(SizeLimit::Percent(0.5)));
-        assert_eq!("100%".parse(), Ok(SizeLimit::Percent(100.0)));
-    }
-
-    #[test]
-    fn rejects_bad_sizes() {
-        let err = |s: &str| s.parse::<SizeLimit>().unwrap_err();
-        assert_eq!(err("32MB"), UnitError::DecimalUnit("32MB".into(), "MiB"));
-        assert_eq!(err("1G"), UnitError::DecimalUnit("1G".into(), "GiB"));
-        assert_eq!(err("0MiB"), UnitError::Zero("0MiB".into()));
-        assert_eq!(err("0%"), UnitError::Percent("0%".into()));
-        assert_eq!(err("150%"), UnitError::Percent("150%".into()));
-        assert_eq!(err("abc%"), UnitError::Percent("abc%".into()));
-        assert_eq!(err("lots"), UnitError::Size("lots".into()));
-        assert_eq!(err("1.5GiB"), UnitError::Size("1.5GiB".into()));
-        assert_eq!(
-            err("99999999TiB"),
-            UnitError::Overflow("99999999TiB".into())
-        );
-    }
-
-    #[test]
-    fn resolves_limits() {
-        assert_eq!(SizeLimit::mib(32).resolve(GIB), 32 * MIB);
-        assert_eq!(
-            SizeLimit::Percent(1.0).resolve(16 * GIB),
-            16 * GIB / 100 + 1
-        );
-        assert_eq!(SizeLimit::Percent(50.0).resolve(100), 50);
-        assert_eq!(
-            SizeLimit::Percent(0.001).resolve(10),
-            1,
-            "never resolves to 0"
-        );
-        assert!(SizeLimit::Percent(5.0).is_percent());
-        assert!(!SizeLimit::mib(1).is_percent());
-    }
-
-    #[test]
-    fn formats_sizes() {
-        assert_eq!(SizeLimit::mib(512).to_string(), "512MiB");
-        assert_eq!(SizeLimit::Bytes(GIB).to_string(), "1GiB");
-        assert_eq!(SizeLimit::Bytes(1_000).to_string(), "1000B");
-        assert_eq!(SizeLimit::Percent(5.0).to_string(), "5%");
-        assert_eq!(SizeLimit::Percent(0.5).to_string(), "0.5%");
-    }
-
-    #[test]
-    fn human_bytes_is_approximate() {
-        assert_eq!(human_bytes(100), "100 B");
-        assert_eq!(human_bytes(512 * KIB), "512 KiB");
-        assert_eq!(human_bytes(32 * MIB), "32 MiB");
-        assert_eq!(human_bytes(GIB + GIB / 2), "1.5 GiB");
-    }
-
     #[derive(Debug, Deserialize, Serialize, PartialEq)]
     struct Sample {
         window: HumanDuration,
@@ -391,56 +291,160 @@ mod tests {
         disk: SizeLimit,
     }
 
-    #[test]
-    fn reads_and_writes_toml() {
-        let sample: Sample = toml::from_str(
-            r#"
+    mod functional {
+        use super::*;
+
+        #[test]
+        fn parses_durations() {
+            assert_eq!(dur("45s"), Ok(45));
+            assert_eq!(dur("10m"), Ok(600));
+            assert_eq!(dur("1h"), Ok(3_600));
+            assert_eq!(dur("7d"), Ok(604_800));
+            assert_eq!(dur(" 30 m "), Ok(1_800));
+        }
+
+        #[test]
+        fn rejects_bad_durations() {
+            for bad in ["", "10", "m", "10x", "1.5h", "-1s", "10 minutes", "1h30m"] {
+                assert!(
+                    matches!(dur(bad), Err(UnitError::Duration(_))),
+                    "{bad:?} should be rejected"
+                );
+            }
+            assert_eq!(dur("0s"), Err(UnitError::Zero("0s".into())));
+            assert!(matches!(
+                dur("99999999999999999999d"),
+                Err(UnitError::Duration(_))
+            ));
+            assert_eq!(
+                dur("999999999999999999d"),
+                Err(UnitError::Overflow("999999999999999999d".into()))
+            );
+        }
+
+        #[test]
+        fn formats_durations_in_the_largest_exact_unit() {
+            assert_eq!(HumanDuration::from_secs(90).to_string(), "90s");
+            assert_eq!(HumanDuration::from_secs(600).to_string(), "10m");
+            assert_eq!(HumanDuration::from_secs(7_200).to_string(), "2h");
+            assert_eq!(HumanDuration::from_secs(2_592_000).to_string(), "30d");
+        }
+
+        #[test]
+        fn parses_sizes() {
+            assert_eq!("512KiB".parse(), Ok(SizeLimit::Bytes(512 * KIB)));
+            assert_eq!("32MiB".parse(), Ok(SizeLimit::mib(32)));
+            assert_eq!("2 gib".parse(), Ok(SizeLimit::Bytes(2 * GIB)));
+            assert_eq!("1TiB".parse(), Ok(SizeLimit::Bytes(TIB)));
+            assert_eq!("4096".parse(), Ok(SizeLimit::Bytes(4096)));
+            assert_eq!("100B".parse(), Ok(SizeLimit::Bytes(100)));
+            assert_eq!("5%".parse(), Ok(SizeLimit::Percent(5.0)));
+            assert_eq!("0.5 %".parse(), Ok(SizeLimit::Percent(0.5)));
+            assert_eq!("100%".parse(), Ok(SizeLimit::Percent(100.0)));
+        }
+
+        #[test]
+        fn rejects_bad_sizes() {
+            let err = |s: &str| s.parse::<SizeLimit>().unwrap_err();
+            assert_eq!(err("32MB"), UnitError::DecimalUnit("32MB".into(), "MiB"));
+            assert_eq!(err("1G"), UnitError::DecimalUnit("1G".into(), "GiB"));
+            assert_eq!(err("0MiB"), UnitError::Zero("0MiB".into()));
+            assert_eq!(err("0%"), UnitError::Percent("0%".into()));
+            assert_eq!(err("150%"), UnitError::Percent("150%".into()));
+            assert_eq!(err("abc%"), UnitError::Percent("abc%".into()));
+            assert_eq!(err("lots"), UnitError::Size("lots".into()));
+            assert_eq!(err("1.5GiB"), UnitError::Size("1.5GiB".into()));
+            assert_eq!(
+                err("99999999TiB"),
+                UnitError::Overflow("99999999TiB".into())
+            );
+        }
+
+        #[test]
+        fn resolves_limits() {
+            assert_eq!(SizeLimit::mib(32).resolve(GIB), 32 * MIB);
+            assert_eq!(
+                SizeLimit::Percent(1.0).resolve(16 * GIB),
+                16 * GIB / 100 + 1
+            );
+            assert_eq!(SizeLimit::Percent(50.0).resolve(100), 50);
+            assert_eq!(
+                SizeLimit::Percent(0.001).resolve(10),
+                1,
+                "never resolves to 0"
+            );
+            assert!(SizeLimit::Percent(5.0).is_percent());
+            assert!(!SizeLimit::mib(1).is_percent());
+        }
+
+        #[test]
+        fn formats_sizes() {
+            assert_eq!(SizeLimit::mib(512).to_string(), "512MiB");
+            assert_eq!(SizeLimit::Bytes(GIB).to_string(), "1GiB");
+            assert_eq!(SizeLimit::Bytes(1_000).to_string(), "1000B");
+            assert_eq!(SizeLimit::Percent(5.0).to_string(), "5%");
+            assert_eq!(SizeLimit::Percent(0.5).to_string(), "0.5%");
+        }
+
+        #[test]
+        fn human_bytes_is_approximate() {
+            assert_eq!(human_bytes(100), "100 B");
+            assert_eq!(human_bytes(512 * KIB), "512 KiB");
+            assert_eq!(human_bytes(32 * MIB), "32 MiB");
+            assert_eq!(human_bytes(GIB + GIB / 2), "1.5 GiB");
+        }
+
+        #[test]
+        fn reads_and_writes_toml() {
+            let sample: Sample = toml::from_str(
+                r#"
             window = "10m"
             learn_for = ""
             memory = "32MiB"
             disk = 4096
             "#,
-        )
-        .unwrap();
-        assert_eq!(sample.window, HumanDuration::from_secs(600));
-        assert_eq!(sample.learn_for, None);
-        assert_eq!(sample.memory, SizeLimit::mib(32));
-        assert_eq!(sample.disk, SizeLimit::Bytes(4096));
+            )
+            .unwrap();
+            assert_eq!(sample.window, HumanDuration::from_secs(600));
+            assert_eq!(sample.learn_for, None);
+            assert_eq!(sample.memory, SizeLimit::mib(32));
+            assert_eq!(sample.disk, SizeLimit::Bytes(4096));
 
-        let written = toml::to_string(&sample).unwrap();
-        assert!(written.contains("window = \"10m\""), "{written}");
-        assert!(written.contains("learn_for = \"\""), "{written}");
-        assert_eq!(toml::from_str::<Sample>(&written).unwrap(), sample);
-    }
-
-    #[test]
-    fn toml_errors_name_the_value() {
-        let err = toml::from_str::<Sample>(
-            "window = \"10x\"\nlearn_for = \"\"\nmemory = \"1MiB\"\ndisk = \"1MiB\"\n",
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(err.contains("invalid duration \"10x\""), "{err}");
-        assert!(err.contains("line 1"), "{err}");
-    }
-
-    proptest! {
-        #[test]
-        fn durations_round_trip(secs in 1u64..10_000_000) {
-            let d = HumanDuration::from_secs(secs);
-            prop_assert_eq!(d.to_string().parse::<HumanDuration>(), Ok(d));
+            let written = toml::to_string(&sample).unwrap();
+            assert!(written.contains("window = \"10m\""), "{written}");
+            assert!(written.contains("learn_for = \"\""), "{written}");
+            assert_eq!(toml::from_str::<Sample>(&written).unwrap(), sample);
         }
 
         #[test]
-        fn byte_sizes_round_trip(value in 1u64..1_000_000, shift in prop::sample::select(vec![0u32, 10, 20, 30])) {
-            let size = SizeLimit::Bytes(value << shift);
-            prop_assert_eq!(size.to_string().parse::<SizeLimit>(), Ok(size));
+        fn toml_errors_name_the_value() {
+            let err = toml::from_str::<Sample>(
+                "window = \"10x\"\nlearn_for = \"\"\nmemory = \"1MiB\"\ndisk = \"1MiB\"\n",
+            )
+            .unwrap_err()
+            .to_string();
+            assert!(err.contains("invalid duration \"10x\""), "{err}");
+            assert!(err.contains("line 1"), "{err}");
         }
 
-        #[test]
-        fn percentages_round_trip(tenths in 1u32..=1000) {
-            let size = SizeLimit::Percent(f64::from(tenths) / 10.0);
-            prop_assert_eq!(size.to_string().parse::<SizeLimit>(), Ok(size));
+        proptest! {
+            #[test]
+            fn durations_round_trip(secs in 1u64..10_000_000) {
+                let d = HumanDuration::from_secs(secs);
+                prop_assert_eq!(d.to_string().parse::<HumanDuration>(), Ok(d));
+            }
+
+            #[test]
+            fn byte_sizes_round_trip(value in 1u64..1_000_000, shift in prop::sample::select(vec![0u32, 10, 20, 30])) {
+                let size = SizeLimit::Bytes(value << shift);
+                prop_assert_eq!(size.to_string().parse::<SizeLimit>(), Ok(size));
+            }
+
+            #[test]
+            fn percentages_round_trip(tenths in 1u32..=1000) {
+                let size = SizeLimit::Percent(f64::from(tenths) / 10.0);
+                prop_assert_eq!(size.to_string().parse::<SizeLimit>(), Ok(size));
+            }
         }
     }
 }
