@@ -117,3 +117,30 @@ fn a_quic_initial_names_a_udp_flow() {
     assert_eq!(other.event.proto, Protocol::Udp);
     assert_eq!(other.event.hostname, None);
 }
+
+#[test]
+fn udp_is_classified_from_its_first_datagram() {
+    use scribe_test_support::packets::dns;
+    use scribe_test_support::packets::quic::{client_initials, RFC_DCID};
+    let e = enricher();
+    let mut query = flow("192.0.2.53:53")
+        .udp()
+        .payload(&dns::query(1, "a.example.com", dns::TYPE_A))
+        .observe();
+    query.event.security = Security::Unknown;
+    e.enrich(&mut query);
+    assert_eq!(query.event.security, Security::Plaintext);
+
+    // The first of several Initials: QUIC, name still unknown until the pipeline joins them.
+    let hello = client_hello(&ClientHelloOptions {
+        sni: Some("big.example.com".into()),
+        tls13: true,
+        ..Default::default()
+    });
+    let first = &client_initials(&RFC_DCID, &hello[5..], 60)[0];
+    let mut quic = flow("192.0.2.40:443").udp().payload(first).observe();
+    quic.event.security = Security::Unknown;
+    e.enrich(&mut quic);
+    assert_eq!(quic.event.security, Security::Quic);
+    assert_eq!(quic.event.hostname, None);
+}

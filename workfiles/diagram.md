@@ -27,10 +27,10 @@ flowchart TB
     subgraph daemon["scribed — crates/daemon (root / SYSTEM service)"]
         api["Local API — crates/api<br/>gRPC over Unix socket / named pipe"]
         ingest["Ingest<br/>Observation = FlowEvent + first client bytes"]
-        enrich["Enrichment — crates/enrich<br/>DNS cache · SNI · HTTP Host · TLS / QUIC detection"]
+        enrich["Enrichment — crates/enrich<br/>DNS cache · SNI · HTTP Host · QUIC Initial · TLS / QUIC detection"]
         subgraph mods["Modules — built (phase 0b)"]
             host["ModuleHost<br/>budget · panic isolation · pause / resume"]
-            url["URL module — crates/module-url<br/>notes.url · url.request (parser in phase 3)"]
+            url["URL module — crates/module-url<br/>notes.url · url.request · query privacy (hash key via scribe-secrets)"]
             later["later modules<br/>e.g. kernel metrics (kperf)"]
             queue["OutputQueue<br/>records · metrics · state"]
         end

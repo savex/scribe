@@ -68,6 +68,12 @@ impl Enricher {
         if let (Some(head), Protocol::Udp | Protocol::Quic) = (obs.head.as_deref(), event.proto) {
             if let Some(hello) = client_hello_from_initial(head) {
                 Self::apply_hello(event, hello);
+            } else if event.security == Security::Unknown {
+                event.security = if looks_like_quic(head) {
+                    Security::Quic
+                } else {
+                    Security::Plaintext
+                };
             }
         }
         if let (Some(head), Protocol::Tcp) = (obs.head.as_deref(), event.proto) {
@@ -90,4 +96,15 @@ impl Enricher {
             event.hostname = self.dns.lookup(&event.dst_ip).map(str::to_owned);
         }
     }
+}
+
+/// A QUIC v1 / v2 long header whose Initial could not be read (later packet, ClientHello split
+/// over several datagrams): still QUIC, not plaintext.
+fn looks_like_quic(datagram: &[u8]) -> bool {
+    datagram.len() >= 5
+        && datagram[0] & 0xc0 == 0xc0
+        && matches!(
+            u32::from_be_bytes([datagram[1], datagram[2], datagram[3], datagram[4]]),
+            crate::quic::VERSION_1 | crate::quic::VERSION_2
+        )
 }

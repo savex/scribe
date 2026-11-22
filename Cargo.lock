@@ -872,6 +872,8 @@ dependencies = [
  "scribe-core",
  "scribe-daemon",
  "scribe-enrich",
+ "scribe-module-api",
+ "scribe-module-url",
  "scribe-storage-api",
  "scribe-storage-conformance",
  "scribe-storage-manager",

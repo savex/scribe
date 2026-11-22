@@ -98,17 +98,18 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 Also `serde_json`, `rusqlite` 0.43 (bundled SQLite, phase 1); the storage manager uses Tokio (`rt`, `sync`, `time`) and `tracing` (phase 2).
 
 **Planned libraries** (add when implementing): `tokio-postgres` + `deadpool`, `aya`,
-`windows`, `pcap`, `tonic` (gRPC), `libfuzzer-sys`, `ring` 0.17 (decided, see table above).
+`windows`, `pcap`, `tonic` (gRPC), `libfuzzer-sys` (fuzz workspace only). `ring` 0.17 is in use (`enrich`, `secrets`, `module-url`, `test-support`).
 
 ## 4. Crates and binaries
 
 | Name | Kind | Purpose |
 |---|---|---|
 | `scribe-core` | lib | Flow events, modes, alerts, clock, sensor interface, `VERSION` |
-| `scribe-enrich` | lib | DNS cache, TLS SNI, HTTP Host, TLS detection (full HTTP request / URL parsing is in `scribe-module-url`) |
+| `scribe-enrich` | lib | `Enricher`: TLS ClientHello (SNI, ALPN, ECH), HTTP request heads and `Host`, DNS answers and cache, QUIC Initial decryption, security detection (full URL parsing is in `scribe-module-url`) |
+| `scribe-secrets` | lib | Secret references (`file:` now; keychain, DPAPI, Secret Service in phase 11), key generation |
 | `scribe-sensor-linux` / `-windows` / `-pcap` | lib | Capture sensors |
 | `scribe-storage-api` | lib | `StateStore`, `EventSink`, `StorageFactory` |
-| `scribe-storage-manager` | lib | Registry, fan-out to sinks (later: cache, batching, spool, retention) |
+| `scribe-storage-manager` | lib | Registry, writer task per sink (batching, retention), spool and replay, outage buffer, cache, health |
 | `scribe-storage-sqlite` | lib | Default backend (feature `sqlite`, on by default); implemented, passes both conformance suites |
 | `scribe-storage-postgres` | lib | Optional backend (feature `postgres`) |
 | `scribe-storage-conformance` / `scribe-sensor-conformance` | lib | Shared test suites |
@@ -183,9 +184,9 @@ Full option table: `workfiles/specs.md` section 9.1.
 
 | Item | Value | State |
 |---|---|---|
-| Hostname sources, in priority | TLS SNI → HTTP `Host` header → DNS cache (IP → queried name) | Decided (fixtures, scenarios) |
+| Hostname sources, in priority | TLS SNI (TCP or QUIC Initial) → HTTP `Host` header → a name the sensor reported → DNS cache (IP → queried name); DNS answers come from raw responses (pcap, eBPF) or OS-decoded answers (ETW) | Implemented (`Enricher`; all fixtures pass end to end) |
 | DNS cache | Keyed by IP, honours record TTL; CNAME chains map back to the **queried** name | Decided |
-| TLS detection | First bytes `0x16 0x03 ..` = TLS; empty = unknown; anything else = plaintext; never by port | Decided |
+| TLS detection | TCP: first bytes `0x16 0x03 ..` = TLS; empty = unknown; anything else = plaintext. UDP: a v1 / v2 long header = QUIC, anything else = plaintext. Never by port | Implemented |
 | ECH | Only the outer public name is visible; flagged `ech: true` | Decided (fixtures) |
 | DNS-over-HTTPS | Later lookups are invisible; flows fall back to IP | Decided |
 | QUIC | SNI from client Initial packets, QUIC v1 and v2 (RFC 9369; draft versions unsupported): derive keys from the Destination Connection ID and the version salt (HKDF-SHA256), remove header protection (AES-128-ECB), decrypt (AES-128-GCM), reassemble CRYPTO frames by offset across Initials of the first DCID (`InitialReassembler`, 64 KiB cap, one hello per flow), then parse the ClientHello. Single-datagram hellos are handled by `Enricher::enrich` (UDP → `Protocol::Quic`); multi-datagram ones need the phase 5 pipeline to keep a reassembler per flow | Implemented |

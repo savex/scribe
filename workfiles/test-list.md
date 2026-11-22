@@ -94,8 +94,8 @@ Every test follows these rules; review checks them.
 
 ## 4. Time budget
 
-**Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`): 183 tests
-(180 run, 3 ignored) plus 1 doc example in 21 test binaries, **0.6 s** wall clock; no test reaches the
+**Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`, after phase 3): 275 tests
+(272 run, 3 ignored) plus doc examples in 42 test binaries, **1.1 s** wall clock; no test reaches the
 2 s warning. Before
 tagging, `cargo test` took 5 s, mostly in one test (`catches_every_fault`), now split into one test per
 fault with a shorter case for the slow-hook fault.
@@ -106,10 +106,10 @@ limit). Compile time is not included.
 | Tag | Tests now | Tests planned (M3) | Planned wall time | Per-test limit (warn / kill) |
 |---|---|---|---|---|
 | `smoke` | 13 | ~20 (+ 6 live) | ≤ 5 s | 2 s / 6 s |
-| `functional` | 196 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
-| `integration` | 6 | ~25 | ≤ 15 s | 5 s / 10 s |
+| `functional` | 254 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
+| `integration` | 8 | ~25 | ≤ 15 s | 5 s / 10 s |
 | `scenario` | 0 | 26 | ≤ 10 s | 5 s / 10 s |
-| **Total** | **215** | **~400** | **≤ 60 s** (limit 120 s) | |
+| **Total** | **275** | **~400** | **≤ 60 s** (limit 120 s) | |
 
 **How the budget holds:** runs are parallel, so wall time ≈ the longer of (total test time ÷ cores) and
 the slowest single test. With ~400 tests averaging under 0.5 s and no test over 10 s, a 4-core CI runner
@@ -210,13 +210,14 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 
 | ID | Test | Checks | Isolation | Time | Status |
 |---|---|---|---|---|---|
-| FUN-E01 | `tls::tests::*` (3) | TLS / plaintext detection from first bytes | In memory | < 10 ms | Exists |
-| FUN-E02 | `sni_from_fixtures` | SNI from TLS 1.2 / 1.3, fragmented, out-of-order; none from truncated / no-SNI | Reads fixtures | 20 ms | Phase 3 |
-| FUN-E03 | `host_header_from_fixtures` | `Host` from `http_plain`, `http_keepalive` | Reads fixtures | < 10 ms | Phase 3 |
-| FUN-E04 | `dns_cache_follows_answers` | A / AAAA / CNAME answers, TTL expiry with `FakeClock` | In memory | < 10 ms | Phase 3 |
-| FUN-E05 | `ech_sets_the_flag` | `tls_ech`: outer name, `ech` true, `unresolved()` true | Reads fixtures | < 10 ms | Phase 3 |
-| FUN-E06 | `quic_initial_rfc9001_vector` | QUIC Initial decrypted with `ring`; SNI from the RFC 9001 Appendix A packet | In memory | < 10 ms | Phase 3 |
-| FUN-E07 | `parsers_survive_malformed_input` | `malformed`, `tls_truncated` and 1,000 seeded random inputs: no panic | In memory | 0.2 s | Phase 3 |
+| FUN-E01 | `tls::detects_*`, `empty_is_unknown` (3) | TLS / plaintext detection from first bytes | In memory | < 10 ms | Exists |
+| FUN-E02 | `tls::reads_sni_from_tls13_and_tls12`, `a_hello_split_over_two_records_is_reassembled`, `names_are_normalised_and_checked`, `reads_alpn`; fixtures in INT-18 | SNI from TLS 1.2 / 1.3, split records, name checks; fixtures `tls*` (fragmented, out-of-order, truncated, no-SNI) end to end | In memory / reads fixtures | 20 ms | Exists |
+| FUN-E03 | `http::*` (6), `enricher::host_header_names_a_plaintext_flow`; fixtures in INT-18 | `Host` from origin, proxy and CONNECT forms; IP literals refused; `http_plain`, `http_keepalive` end to end | In memory / reads fixtures | < 10 ms | Exists |
+| FUN-E04 | `dns::*` (5) | A / AAAA / CNAME answers, compression, shortest TTL on the chain, TTL cap and expiry with `FakeClock`, entry limit | In memory | < 10 ms | Exists |
+| FUN-E05 | `tls::no_sni_and_ech`, `enricher::ech_sets_the_flag_and_the_flow_counts_as_unresolved`; `tls_ech` in INT-18 | Outer name, `ech` true, `unresolved()` true | In memory / reads fixtures | < 10 ms | Exists |
+| FUN-E06 | `quic::quic_initial_rfc9001_vector`, `quic_v2_initial_rfc9369_vector`, `the_test_builder_reproduces_both_rfc_packets`, `a_hello_split_over_initials_is_joined_in_any_order`, `initials_for_another_connection_id_are_ignored`, `quic_fixtures_name_their_flows` (+3) | QUIC v1 / v2 Initial decrypted with `ring`; SNI from the RFC packets; a second implementation reproduces them; CRYPTO reassembly | In memory | < 10 ms | Exists |
+| FUN-E07 | `tls::every_prefix_is_incomplete_never_a_panic`, `quic::random_datagrams_never_panic`, `mutated_rfc_packets_never_panic`, `dns::queries_failures_and_garbage_are_rejected`, `quic::fuzz_seeds_reach_the_parsers`; `malformed` in INT-18 | Prefixes, mutations and random input: no panic; fuzz seeds still reach the parsers | In memory | 0.2 s | Exists |
+| FUN-E08 | `enricher::*` (9) | Name order SNI > `Host` > sensor name > DNS cache; security for TCP and UDP; QUIC Initials turn UDP flows into named QUIC flows | In memory | < 10 ms | Exists |
 | FUN-SN01 | `pcap_decoder_matches_expected_flows` | Each pcap fixture decodes to its JSON expectations (`kind`, `head`) | Reads fixtures | 0.1 s | Phase 6 |
 | FUN-SN02 | `ebpf_samples_decode` | `testdata/events/linux-ebpf/*` → expected observations | Reads samples | < 10 ms | Phase 7 |
 | FUN-SN03 | `etw_samples_decode` | `testdata/events/windows-etw/*` → expected observations | Reads samples | < 10 ms | Phase 8 |
@@ -229,11 +230,11 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 |---|---|---|---|---|---|
 | FUN-M01 | module-api `config::tests::*`, `manifest::tests::*`, `tests::*` (11) | `ConfigDoc` lines, manifest naming rules | In memory | < 10 ms | Exists |
 | FUN-M02 | `catches_*` (7), `a_*_module_passes` (3) | Module suite passes good modules and catches each of 7 faults | In memory | 0.4 s | Exists |
-| FUN-M03 | `url_module_conforms`, URL `tests::*` (6) | URL module passes the suite; `query` config with deprecated key | In memory | 0.3 s | Exists |
+| FUN-M03 | `url_module_conforms`, `url::*` (5) | URL module passes the suite; `query` config with deprecated key | In memory | 0.3 s | Exists |
 | FUN-M04 | `module_host.rs` (10) | Notes, panic isolation, budget, source ticks, pause / resume, reload, full queue, restart failure | `FakeClock` | 50 ms | Exists |
-| FUN-M05 | `url_parser_on_fixtures` | Request URL from `http_plain` and both requests of `http_keepalive`; user info removed | Reads fixtures | < 10 ms | Phase 3 |
-| FUN-M06 | `url_privacy_table` | Every `query` mode against the specs 12.2 examples | In memory | < 10 ms | Phase 3 |
-| FUN-M07 | `url_hash_uses_the_secret_key` | `hash` mode with a key from the secrets crate (`file:` backend) | Temp dir | < 10 ms | Phase 3 |
+| FUN-M05 | `hook::notes_records_and_counts_a_plaintext_request`, `tls_flows_get_no_url`; `http_plain`, `http_keepalive` in INT-18 | Request URL from both fixtures (both requests of the kept-alive one); user info removed | In memory / reads fixtures | < 10 ms | Exists |
+| FUN-M06 | `privacy::*` (4) | Every `query` mode against the specs 12.2 examples; origin form with odd ports | In memory | < 10 ms | Exists |
+| FUN-M07 | `hook::hash_*`, `short_hash_is_hmac_sha256_cut_to_six_digits`, `switching_to_hash_while_running_loads_the_key`, `a_bad_hash_key_reference_points_at_the_value` (6) | `hash` mode: HMAC-SHA256 vector, key created once in `data_dir` or read from `hash_key`, no key → no start | Temp dir | < 10 ms | Exists |
 
 **Storage**
 
@@ -270,7 +271,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-A02 | `webhook_signing_and_https` | HMAC test vectors, HTTPS only, no cross-host redirects (local test server) | Port `:0` | 50 ms | Phase 11 |
 | FUN-A03 | `notification_adapters` | OS notification calls through a fake OS interface | In memory | < 10 ms | Phase 11 |
 | FUN-A04 | `threat_list_integrity` | Bad checksum rejected; last good list kept; entry cap | Temp dir | < 10 ms | Phase 11 |
-| FUN-SC01 | `secrets_file_backend` | `file:` references: read, mode checks, missing file errors | Temp dir | < 10 ms | Phase 3 |
+| FUN-SC01 | `scribe-secrets` functional (8) | References parse and print back; `file:` read, mode and owner checks, race-safe creation, shared directory refused, OS stores `Unsupported` | Temp dir | < 10 ms | Exists |
 
 **Test support**
 
@@ -289,21 +290,22 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | INT-05 | `module_output_reaches_storage` | Module host → output queue → storage manager → SQLite events and `module_state` | Records, metrics and state written | Temp dir, `FakeClock` | 50 ms | Phase 5 (with `TagModule`) |
 | INT-06 | `module_state_survives_restart` | SQLite `module_state` → module host start → module | Stored state handed back at start | Temp dir | 50 ms | Phase 5 |
 | INT-07 | `config_reload_reaches_modules` | Config reload → module host → module settings | Live keys applied, restart keys reported | Temp dir | 20 ms | Phase 5 |
-| INT-08 | `dns_answer_names_a_later_flow` | Enrichment DNS cache → TLS flow without SNI | `dns_cname_then_tls`, `dns_aaaa_then_tls` hostnames | Reads fixtures | 20 ms | Phase 3 |
+| INT-08 | `dns_answer_names_a_later_flow` | Enrichment DNS cache → TLS flow without SNI | `dns_cname_then_tls`, `dns_aaaa_then_tls` hostnames (packet builders; fixtures also in INT-18) | In memory | 20 ms | Exists (`tests/integration/enrich.rs`) |
 | INT-09 | `pcap_to_enriched_flows` | pcap decoder → enrichment → URL module | Each fixture's full JSON expectation incl. `notes.url`, `ech` | Reads fixtures | 0.1 s | Phase 6 |
 | INT-10 | `pipeline_stores_a_flow` | `FakeSensor` → enrichment → modules → counters → policy → storage | One flow becomes a host, counters and a stored event | Temp dir, `FakeClock` | 50 ms | Phase 5 |
 | INT-11 | `policy_alert_reaches_outputs_and_store` | Policy → alert outputs + `AlertState` + alert event | Alert delivered once and stored | Temp dir | 30 ms | Phases 4, 11 |
 | INT-12 | `cli_api_daemon_round_trip` | CLI → local API (temp socket) → daemon → storage | `hosts`, `mode`, `baseline add` round-trip | Temp dir + socket | 0.3 s | Phase 10 |
 | INT-13 | `api_status_reflects_daemon` | Daemon state → API `Status` → CLI `daemon status --json` | Run state, counters, modules match | Temp socket | 0.2 s | Phase 10 |
-| INT-14 | `secrets_to_backends` | Secrets crate → Postgres credentials, URL hash key | `file:` references resolved where used | Temp dir | 20 ms | Phases 3, 12 |
+| INT-14 | `secrets_to_backends` | Secrets crate → Postgres credentials, URL hash key | `file:` references resolved where used | Temp dir | 20 ms | URL key exists (FUN-M07); Postgres in phase 12 |
 | INT-15 | `postgres_sink_through_manager` | Storage manager → Postgres sink (TLS) | Events and module data stored | Own schema | 0.5 s | Phase 12 |
 | INT-16 | `xpc_bridge_with_fake_extension` | Fake extension process → XPC bridge → ingest | Flow messages arrive as observations; unsigned peer refused | Child process | 0.5 s | Phase 9 (macOS) |
 | INT-17 | `ui_commands_against_mock_api` | Tauri commands → `MockApiServer` | Requests and error mapping | Temp socket | 0.2 s | Later (UI) |
+| INT-18 | `every_fixture_gives_its_expected_flows` | Fixture frames (test-side Ethernet / IP / TCP / UDP reader) → `Enricher` (DNS cache, QUIC reassembler) → URL module | Every fixture's expected flows: proto, destination, name, security, `notes.url`, `ech`, `kind` | Reads fixtures | 20 ms | Exists (`tests/integration/enrich.rs`); INT-09 replaces the reader with the pcap sensor in phase 6 |
 
 ### 5.4 Scenario
 
 One test per file in `testdata/scenarios/`, played by the scenario runner (phase 4; run-state actions
-need phase 5, request counts and URL notes need phase 3). Each runs in-process with `FakeSensor`,
+need phase 5; request counts and URL notes work since phase 3). Each runs in-process with `FakeSensor`,
 `FakeClock`, a temporary SQLite state store, `MemorySink` and `RecordingAlertSink`; simulated time makes
 hour-long scenarios take milliseconds.
 

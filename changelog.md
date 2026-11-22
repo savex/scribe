@@ -102,6 +102,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Checked against the RFC 9001 and RFC 9369 sample packets. Fixtures `quic_initial`, `quic_split_hello`.
 - Phase 3 step 7: fuzz targets `dns_message` and `quic_initial` (plus `parse_client_hello` in `tls_client_hello`),
   their seeds in `fixtures.rs`, and a test that runs the seeds through the parsers. Fuzz workflow lists all four.
+- Phase 3 step 8: every pcap fixture runs end to end through the enricher and the URL module (INT-18); UDP
+  flows are classified (QUIC long header or plaintext). Spec, skill, plan (phase 3 done; OS secret stores
+  moved to phase 11), status (coverage 91.7%), test list, test approach and diagram updated.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

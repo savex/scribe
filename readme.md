@@ -15,12 +15,13 @@ how often, and whether the traffic uses TLS.
 ```
 crates/
   core/                 shared types: FlowEvent, Mode, Sensor trait
-  enrich/               DNS cache, TLS SNI / HTTP Host parsing, TLS detection
+  enrich/               host names from TLS SNI, HTTP Host, DNS answers and QUIC Initials; security detection
+  secrets/              secret references (file: now; OS key stores later) and key generation
   sensor-linux/         eBPF sensor (Linux)
   sensor-windows/       ETW sensor (Windows)
   sensor-pcap/          libpcap / Npcap fallback (all OSes)
   storage-api/          storage plugin traits: StateStore, EventSink, StorageFactory
-  storage-manager/      backend registry, fan-out to sinks
+  storage-manager/      backend registry, writer per sink, spool, outage buffer, cache
   storage-sqlite/       default backend (implemented)
   storage-postgres/     PostgreSQL backend (feature `postgres`)
   storage-conformance/  shared test suite every backend must pass
@@ -125,6 +126,7 @@ GitHub Release. Pushing a `v*` tag by hand starts **Release** too.
 
 ## Status
 
-Phases 0, 0b and 1 are done: config, logging, daemon lifecycle, CLI parsing, the module framework
-with the URL module skeleton, and the SQLite backend (state and events). Sensors, the storage
-manager's batching and spool, Postgres, the policy engine and the local API are not implemented yet. Details: `workfiles/status.md`.
+Phases 0, 0b, 1, 2 and 3 are done: config, logging, daemon lifecycle, CLI parsing, the module framework,
+the SQLite backend, the storage manager (batching, spool, outage buffer, cache), and enrichment (SNI,
+`Host`, DNS, QUIC, ECH) with the URL module's parser and privacy rules. Sensors, the pipeline that
+connects them, Postgres, the policy engine and the local API are not implemented yet. Details: `workfiles/status.md`.

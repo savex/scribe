@@ -140,12 +140,12 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 |---|---|---|---|
 | FR-1 | Capture every outgoing TCP connection and UDP / QUIC flow, IPv4 and IPv6, on macOS, Linux and Windows | Stub | Sensor conformance suite; pcap fixtures |
 | FR-2 | Attribute each flow to its process (pid and path) where the sensor allows; the pcap fallback reports no process | Stub | Sensor conformance (`expect_process_info`) |
-| FR-3 | Find the host name in this order: TLS SNI, HTTP `Host` header, DNS cache (IP → queried name, CNAME chains map back to the queried name) | Partly (DNS cache) | pcap fixtures `tls13_sni_ipv4`, `http_plain`, `dns_cname_then_tls`, `dns_aaaa_then_tls` |
-| FR-4 | Classify each flow as `tls`, `quic`, `plaintext` or `unknown` from its first bytes, never from the port | Partly (TCP) | Unit tests in `enrich`; fixtures |
-| FR-5 | For ECH, record the outer public name and flag the flow `ech` | Partly (`FlowEvent.ech` stored; detection in phase 3) | Fixture `tls_ech` |
-| FR-6 | For QUIC, read the SNI from the Initial packet (using `ring` 0.17) | Planned | Fixture to be checked against RFC 9001 Appendix A |
-| FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Partly (`FlowEvent::unresolved()`: no name or ECH outer name only; tracking in phases 3–5) | Scenario `hostname-unresolved`; fixture `doh` |
-| FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Planned | Fixture `http_plain`; module conformance |
+| FR-3 | Find the host name in this order: TLS SNI, HTTP `Host` header, DNS cache (IP → queried name, CNAME chains map back to the queried name) | Implemented (`scribe_enrich::Enricher`; a name the sensor reports ranks after `Host`; wired to traffic in phase 5) | pcap fixtures `tls13_sni_ipv4`, `http_plain`, `dns_cname_then_tls`, `dns_aaaa_then_tls` |
+| FR-4 | Classify each flow as `tls`, `quic`, `plaintext` or `unknown` from its first bytes, never from the port | Implemented (TCP and UDP, QUIC long headers) | Functional tests in `enrich`; every fixture end to end |
+| FR-5 | For ECH, record the outer public name and flag the flow `ech` | Implemented | Fixture `tls_ech` |
+| FR-6 | For QUIC, read the SNI from the Initial packet (using `ring` 0.17) | Implemented (v1 and v2, ClientHello across several Initials; per-flow reassembly wired in phase 5) | RFC 9001 and RFC 9369 Appendix A packets; fixtures `quic_initial`, `quic_split_hello`; fuzz target `quic_initial` |
+| FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Partly (`FlowEvent::unresolved()`; the enricher leaves nameless flows unnamed and never drops them; tracking by IP in phases 4–5) | Scenario `hostname-unresolved`; fixture `doh` |
+| FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Implemented (request parser, all `query` modes including `hash`; wired to traffic in phase 5) | Fixture `http_plain`; module conformance |
 | FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Planned | Scenario `counters-exact`; storage conformance |
 | FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Implemented in the SQLite state store (Postgres in phase 12) | Storage conformance |
 | FR-11 | Support the modes `learn`, `caution` and `alert` with the behaviour in section 8 | Planned | Scenarios |
@@ -294,7 +294,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | Core | `crates/core` | `FlowEvent`, `Mode`, `Sensor`, `Clock`, `Alert` / `AlertOutput`, `VERSION` | — | Partly (types written, untested); config and logging planned |
 | Enrichment | `crates/enrich` | DNS cache, SNI / HTTP `Host` / DNS / QUIC parsing, security classification; full HTTP request and URL parsing moves to the URL module | core | Partly (TLS detection, DNS cache) |
 | Module API | `crates/module-api` (`scribe-module-api`) | `Module`, `FlowHook`, `Source`, `Manifest`, `ModuleContext`, notes, records, metric samples | core | Implemented |
-| URL module | `crates/module-url` (`scribe-module-url`, feature `url`, default on) | Plaintext HTTP request parsing, URL privacy, request counters, `scribe url` commands | module-api | Partly (module, config, hook, conformance; parser in phase 3, `scribe url` in phase 10) |
+| URL module | `crates/module-url` (`scribe-module-url`, feature `url`, default on) | Plaintext HTTP request parsing, URL privacy, request counters, `scribe url` commands | module-api | Partly (module, config, hook, conformance, request parser and URL privacy; `scribe url` in phase 10) |
 | Kernel metrics module | `crates/module-kperf` (`scribe-module-kperf`, feature `kperf`) | Example of a later module: TCP retransmits, RTT, run-queue delay from kernel probes | module-api, sensors' `ProbeHost` | Idea (not planned) |
 | Linux sensor | `crates/sensor-linux` | eBPF probes with `aya`, process lookup | core | Stub |
 | Windows sensor | `crates/sensor-windows` | ETW kernel-network and DNS-client events, Npcap for payloads | core | Stub |
@@ -423,8 +423,8 @@ Windows via ETW and performance counters, macOS a smaller set via `sysctl` / `ns
    the storage crates don't depend on the module API.
 3. **Sensors send `Observation`s now** (event plus up to `HEAD_MAX` = 4 KiB of client bytes), not from
    phase 6: the sensors were stubs, and the module suite needs observations with bytes.
-4. **The URL module is a skeleton**: manifest, config, hook, request counters and conformance work; the
-   request parser (`parse::request_url`) and the `query` rules arrive in phase 3.
+4. **The URL module started as a skeleton** (manifest, config, hook, request counters, conformance); the
+   request parser (`parse::request_url`) and the `query` rules followed in phase 3.
 5. **Module kinds are `Cow<'static, str>`**: static names from manifests, owned names when records are
    read back from storage. `EventKind` is `Clone`, not `Copy`.
 
@@ -558,7 +558,7 @@ Loaded and checked by `crates/daemon/src/config/` (phase 0).
 | `[policy.entropy] min_label_length`, `min_bits_per_char` | integer, number | `10`, `3.5` | Draft default |
 | `[[policy.threat_lists]] name`, `path` or `url`, `format`, `refresh` | — | none | Draft default |
 | `[modules] enabled` | list of compiled-in module ids | `["url"]` | Implemented (section 7.4) |
-| `[modules.url] query` | `full` \| `redact_values` \| `strip` \| `path_only` \| `hash` | `redact_values` | Implemented (values decided in section 12.2; applied from phase 3) |
+| `[modules.url] query` | `full` \| `redact_values` \| `strip` \| `path_only` \| `hash` | `redact_values` | Implemented (section 12.2) |
 | `[modules.url] hash_key` | secret reference for the `hash` key | `file:<data_dir>/url_hash.key` (created on first start) | Implemented |
 | `[privacy] url_query` | as `[modules.url] query` | — | Deprecated alias, read with a warning for one minor version |
 | `[storage.state] kind` | `sqlite` \| `postgres` | `sqlite` | Decided |
@@ -926,7 +926,7 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 | Capture (FR-1, FR-2) | Sensor conformance suite and traffic generator, draft raw records | Yes |
 | API and UI (FR-20) | Mock API scenarios | Partly |
 | Daemon controls (FR-27 – FR-31) | Daemon tests with `FakeSensor`, `FakeClock`, `FaultySink`; CLI tests against `MockApiServer`; mocks `daemon-down`, `daemon-restart`; sensor conformance case *stop, then start again* | Planned |
-| Modules (FR-32 – FR-35, NFR-20) | `scribe-module-conformance`; storage conformance cases for module records, metric samples and module state; URL module against `http_plain` and the 12.2 table; panic and slow-hook tests; schema v2 snapshot | Implemented (module and storage conformance, `ModuleHost` tests, v2 snapshot); `http_plain` and the 12.2 table with the parser in phase 3 |
+| Modules (FR-32 – FR-35, NFR-20) | `scribe-module-conformance`; storage conformance cases for module records, metric samples and module state; URL module against `http_plain` and the 12.2 table; panic and slow-hook tests; schema v2 snapshot | Implemented (module and storage conformance, `ModuleHost` tests, v2 snapshot, `http_plain` / `http_keepalive` end to end, the 12.2 table) |
 | Install and upgrade (UC-10) | End-to-end scripts | Yes (need installers) |
 | Non-functional (NFR-1 – NFR-5) | Performance and soak runs | Planned |
 | Security (NFR-8 – NFR-10, NFR-17 – NFR-19) | API tests calling every control endpoint as a read-only and an admin peer; fake-server test for the CLI's server check; oversized messages and too many streams; StrictModes file-mode table; `hibernate` cap and alert with `FakeClock`; Postgres `sslmode` config errors and a TLS-only Postgres in CI; signed webhook test vectors; threat-list checksum mismatch; audit chain with a deleted and an edited row; XPC decoder and API requests fuzzed; `cargo deny` / `cargo audit`; release signature and attestation checked in the Release smoke test | Planned |
