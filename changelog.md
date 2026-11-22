@@ -83,6 +83,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   host, schema version and JSON payload per event, epoch-millisecond timestamps; reads schema 1 flows (`url`,
   `request`) as notes and `payload`. New `StorageError::Data` for unreadable records.
 
+- Phase 1 step 2: the SQLite backend opens its file on first use (WAL, `synchronous = NORMAL`, 5 s busy
+  timeout) with `rusqlite` 0.43 (bundled SQLite) and applies missing migrations, each in a transaction, recording
+  them in `schema_migrations` and `user_version`; a database newer than the build is refused. Health reports a
+  pending migration or an unopenable file. `scribed` now creates `state.db` and `events.db` and logs `storage ready`.
+
 ### Changed
 - Shipped `config/scribe.toml`: the `[privacy]` table is replaced by `[modules]` and `[modules.url]`.
 

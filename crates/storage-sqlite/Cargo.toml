@@ -8,7 +8,10 @@ rust-version.workspace = true
 [dependencies]
 serde_json.workspace = true
 scribe-storage-api.workspace = true
-# TODO: rusqlite = { version = "...", features = ["bundled"] }
+scribe-core.workspace = true
+rusqlite.workspace = true
 
 [dev-dependencies]
 scribe-storage-conformance.workspace = true
+tempfile.workspace = true
+rusqlite.workspace = true

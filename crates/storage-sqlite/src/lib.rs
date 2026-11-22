@@ -1,10 +1,19 @@
 //! SQLite backend (default). Provides both a [`StateStore`] and an [`EventSink`].
 //!
-//! Options: `path` (required) — database file. Schema lives in `migrations/`.
+//! Options: `path` (required) — database file. Schema lives in `migrations/`; `migrate` applies
+//! the missing ones and refuses a database newer than this build. The file is opened on first use
+//! in WAL mode.
+
+mod db;
 
 use std::net::IpAddr;
-use std::path::PathBuf;
+use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
+
+use scribe_core::Clock;
+
+use crate::db::Db;
 
 use scribe_storage_api::{
     not_implemented, required_option, AlertState, BackendOptions, Baseline, BaselineEntry,
@@ -42,17 +51,30 @@ impl StorageFactory for SqliteFactory {
 }
 
 pub struct SqliteStore {
-    path: PathBuf,
+    db: Db,
 }
 
 impl SqliteStore {
     pub fn from_options(options: &BackendOptions) -> Result<Self> {
         let path = required_option(options, KIND, "path")?;
-        Ok(Self { path: path.into() })
+        Ok(Self {
+            db: Db::new(path.into()),
+        })
     }
 
-    pub fn path(&self) -> &PathBuf {
-        &self.path
+    /// Use `clock` for stored times (tests).
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.db.clock = clock;
+        self
+    }
+
+    pub fn path(&self) -> &Path {
+        self.db.path()
+    }
+
+    /// The highest applied migration (0 for a new file).
+    pub fn schema_version(&self) -> Result<u32> {
+        self.db.version()
     }
 }
 
@@ -65,7 +87,7 @@ impl StateStore for SqliteStore {
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {
-        not_implemented("sqlite: migrate")
+        Box::pin(async move { self.db.migrate().map(|_| ()) })
     }
 
     fn upsert_host<'a>(&'a self, _delta: &'a HostDelta) -> BoxFuture<'a, Result<HostId>> {
@@ -118,13 +140,13 @@ impl StateStore for SqliteStore {
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {
-        Box::pin(async { Health::Down("sqlite backend not implemented yet".into()) })
+        Box::pin(async move { self.db.health() })
     }
 }
 
 pub struct SqliteSink {
     name: String,
-    path: PathBuf,
+    db: Db,
 }
 
 impl SqliteSink {
@@ -132,12 +154,21 @@ impl SqliteSink {
         let path = required_option(options, KIND, "path")?;
         Ok(Self {
             name: name.to_owned(),
-            path: path.into(),
+            db: Db::new(path.into()),
         })
     }
 
-    pub fn path(&self) -> &PathBuf {
-        &self.path
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.db.clock = clock;
+        self
+    }
+
+    pub fn path(&self) -> &Path {
+        self.db.path()
+    }
+
+    pub fn schema_version(&self) -> Result<u32> {
+        self.db.version()
     }
 }
 
@@ -155,7 +186,7 @@ impl EventSink for SqliteSink {
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {
-        not_implemented("sqlite: migrate")
+        Box::pin(async move { self.db.migrate().map(|_| ()) })
     }
 
     fn write_batch<'a>(&'a self, _batch: &'a [StoredEvent]) -> BoxFuture<'a, Result<()>> {
@@ -166,11 +197,12 @@ impl EventSink for SqliteSink {
         not_implemented("sqlite: query")
     }
 
+    /// Every batch is committed when `write_batch` returns, so there is nothing to flush.
     fn flush(&self) -> BoxFuture<'_, Result<()>> {
-        not_implemented("sqlite: flush")
+        Box::pin(async { Ok(()) })
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {
-        Box::pin(async { Health::Down("sqlite backend not implemented yet".into()) })
+        Box::pin(async move { self.db.health() })
     }
 }

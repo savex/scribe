@@ -20,3 +20,4 @@ scribe-storage-conformance.workspace = true
 scribe-test-support.workspace = true
 scribe-core.workspace = true
 serde_json.workspace = true
+tempfile.workspace = true

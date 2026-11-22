@@ -200,7 +200,7 @@ fn runs_until_sigterm_and_stops_cleanly() {
     for expected in [
         "scribed starting",
         "data dir: ",
-        "storage backend is not implemented yet",
+        "storage ready",
         "stop signal received",
         "scribed stopped",
     ] {
@@ -211,4 +211,10 @@ fn runs_until_sigterm_and_stops_cleanly() {
         assert!(log.contains(expected), "missing {expected:?} in:\n{log}");
     }
     assert!(dir.path().join("data").join("spool").is_dir());
+    for db in ["state.db", "events.db"] {
+        assert!(
+            dir.path().join("data").join(db).is_file(),
+            "{db} was not created"
+        );
+    }
 }

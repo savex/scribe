@@ -108,7 +108,7 @@ pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> an
     let storage =
         StorageManager::from_config(&registry, &settings.storage).context("cannot open storage")?;
     match storage.migrate().await {
-        Ok(()) => {}
+        Ok(()) => info!("storage ready"),
         Err(StorageError::NotImplemented(op)) => {
             warn!("storage backend is not implemented yet ({op}); nothing will be stored")
         }

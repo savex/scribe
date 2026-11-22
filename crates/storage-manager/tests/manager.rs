@@ -292,11 +292,16 @@ fn from_config_reports_the_failing_backend() {
 fn built_in_registry_has_sqlite() {
     let registry = Registry::with_builtin();
     assert!(registry.kinds().any(|k| k == "sqlite"));
-    let config = StorageConfig::sqlite_default("/tmp/scribe-test.db");
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("scribe.db");
+    let config = StorageConfig::sqlite_default(path.to_str().unwrap());
     let manager = StorageManager::from_config(&registry, &config).unwrap();
-    // The SQLite backend is still a stub (plan phase 1).
-    let err = block_on(manager.migrate()).unwrap_err();
-    assert!(matches!(err, StorageError::NotImplemented(_)), "{err}");
+    block_on(manager.migrate()).unwrap();
+    assert!(path.is_file());
+    assert_eq!(
+        block_on(manager.state().health()),
+        scribe_storage_api::Health::Ok
+    );
 }
 
 #[test]
