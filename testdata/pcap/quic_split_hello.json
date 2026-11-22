@@ -1,0 +1,7 @@
+{
+  "fixture": "quic_split_hello.pcap",
+  "description": "QUIC v1 ClientHello spread over three Initial datagrams (as large post-quantum key shares do); one flow.",
+  "expected_flows": [
+    { "proto": "quic", "dst_ip": "192.0.2.41", "dst_port": 443, "hostname": "split.quic.example.com", "security": "quic", "notes": {}, "ech": false, "kind": "new_flow" }
+  ]
+}

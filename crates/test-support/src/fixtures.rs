@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use crate::packets::dns::{self, Answer};
 use crate::packets::tls::{client_hello, client_hello_sni, ClientHelloOptions};
-use crate::packets::{http, udp_frame, write_pcap, TcpFlow};
+use crate::packets::{http, quic, udp_frame, write_pcap, TcpFlow};
 
 pub struct Fixture {
     pub name: &'static str,
@@ -39,6 +39,18 @@ impl ExpectedFlow {
             dst: addr(dst),
             hostname,
             security,
+            url: None,
+            ech: false,
+            kind: "new_flow",
+        }
+    }
+
+    fn quic(dst: &str, hostname: &'static str) -> Self {
+        Self {
+            proto: "quic",
+            dst: addr(dst),
+            hostname: Some(hostname),
+            security: "quic",
             url: None,
             ech: false,
             kind: "new_flow",
@@ -138,6 +150,26 @@ fn dns_exchange(
         udp_frame(c, s, &dns::query(id, name, qtype), true),
         udp_frame(s, c, &dns::response(id, name, qtype, answers, 300), false),
     ]
+}
+
+/// A ClientHello handshake message for `sni` with ALPN `h3`, as QUIC carries it (no record header).
+fn quic_hello(sni: &str) -> Vec<u8> {
+    client_hello(&ClientHelloOptions {
+        sni: Some(sni.into()),
+        tls13: true,
+        alpn: vec!["h3".into()],
+        ..Default::default()
+    })[5..]
+        .to_vec()
+}
+
+/// Client Initials for `sni`, `chunk` CRYPTO bytes per datagram, as UDP frames.
+fn quic_session(client: &str, server: &str, dcid: &[u8], sni: &str, chunk: usize) -> Vec<Vec<u8>> {
+    let (c, s) = (addr(client), addr(server));
+    quic::client_initials(dcid, &quic_hello(sni), chunk)
+        .iter()
+        .map(|p| udp_frame(c, s, p, true))
+        .collect()
 }
 
 fn no_sni_hello() -> Vec<u8> {
@@ -368,6 +400,18 @@ pub fn all() -> Vec<Fixture> {
                 &[&client_hello_sni("doh.example.net")],
             ),
             expected: vec![ExpectedFlow::tcp("198.51.100.53:443", Some("doh.example.net"), "tls")],
+        },
+        Fixture {
+            name: "quic_initial",
+            description: "QUIC v1 client Initial carrying the whole ClientHello (SNI, ALPN h3) in one 1200-byte datagram.",
+            frames: quic_session("10.0.0.2:50020", "192.0.2.40:443", &[0x51; 8], "quic.example.com", 1000),
+            expected: vec![ExpectedFlow::quic("192.0.2.40:443", "quic.example.com")],
+        },
+        Fixture {
+            name: "quic_split_hello",
+            description: "QUIC v1 ClientHello spread over three Initial datagrams (as large post-quantum key shares do); one flow.",
+            frames: quic_session("10.0.0.2:50021", "192.0.2.41:443", &[0x52; 8], "split.quic.example.com", 60),
+            expected: vec![ExpectedFlow::quic("192.0.2.41:443", "split.quic.example.com")],
         },
     ]
 }

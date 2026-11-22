@@ -709,6 +709,7 @@ name = "scribe-enrich"
 version = "0.1.1"
 dependencies = [
  "proptest",
+ "ring",
  "scribe-core",
  "scribe-test-support",
 ]
@@ -853,6 +854,7 @@ dependencies = [
 name = "scribe-test-support"
 version = "0.1.1"
 dependencies = [
+ "ring",
  "scribe-core",
  "scribe-module-api",
  "scribe-storage-api",

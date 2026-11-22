@@ -5,6 +5,7 @@ pub mod dns;
 pub mod http;
 pub mod net;
 pub mod pcap;
+pub mod quic;
 pub mod tls;
 
 pub use net::{tcp_frame, udp_frame, TcpFlow};

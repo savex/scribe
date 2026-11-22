@@ -4,4 +4,5 @@
 mod dns;
 mod enricher;
 mod http;
+mod quic;
 mod tls;

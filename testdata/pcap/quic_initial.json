@@ -1,0 +1,7 @@
+{
+  "fixture": "quic_initial.pcap",
+  "description": "QUIC v1 client Initial carrying the whole ClientHello (SNI, ALPN h3) in one 1200-byte datagram.",
+  "expected_flows": [
+    { "proto": "quic", "dst_ip": "192.0.2.40", "dst_port": 443, "hostname": "quic.example.com", "security": "quic", "notes": {}, "ech": false, "kind": "new_flow" }
+  ]
+}

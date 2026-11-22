@@ -1,6 +1,11 @@
 //! Fill in what a sensor's observation lacks: transport security, the ECH flag and the host name
-//! (FR-3, FR-4, FR-5). Order for the host name: TLS SNI, then the HTTP `Host` header, then a name
-//! the sensor already reported (macOS gives one), then the DNS cache for the destination IP.
+//! (FR-3, FR-4, FR-5). Order for the host name: TLS SNI (over TCP or in a QUIC Initial), then the
+//! HTTP `Host` header, then a name the sensor already reported (macOS gives one), then the DNS cache
+//! for the destination IP.
+//!
+//! A UDP observation whose first bytes are a client Initial that carries the whole ClientHello
+//! becomes a QUIC flow. ClientHellos spread over several Initials need per-flow state: the
+//! pipeline (phase 5) keeps a [`crate::InitialReassembler`] per flow and calls [`Enricher::apply_hello`].
 //!
 //! DNS answers come from the server, so sensors report them separately: the pipeline (phase 5)
 //! calls [`Enricher::observe_dns_response`] with response bytes (pcap, eBPF) or
@@ -10,11 +15,12 @@ use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use scribe_core::{Clock, Observation, Protocol, Security};
+use scribe_core::{Clock, FlowEvent, Observation, Protocol, Security};
 
 use crate::dns::{parse_response, DnsCache};
 use crate::http::host_header;
-use crate::tls::{detect_security, parse_client_hello};
+use crate::quic::client_hello_from_initial;
+use crate::tls::{detect_security, parse_client_hello, ClientHello};
 
 pub struct Enricher {
     dns: DnsCache,
@@ -46,9 +52,24 @@ impl Enricher {
         &self.dns
     }
 
+    /// Mark `event` as QUIC and take the name and ECH flag from its ClientHello.
+    pub fn apply_hello(event: &mut FlowEvent, hello: ClientHello) {
+        event.proto = Protocol::Quic;
+        event.security = Security::Quic;
+        event.ech |= hello.ech;
+        if hello.sni.is_some() {
+            event.hostname = hello.sni;
+        }
+    }
+
     /// Complete the observation's event in place.
     pub fn enrich(&self, obs: &mut Observation) {
         let event = &mut obs.event;
+        if let (Some(head), Protocol::Udp | Protocol::Quic) = (obs.head.as_deref(), event.proto) {
+            if let Some(hello) = client_hello_from_initial(head) {
+                Self::apply_hello(event, hello);
+            }
+        }
         if let (Some(head), Protocol::Tcp) = (obs.head.as_deref(), event.proto) {
             if event.security == Security::Unknown {
                 event.security = detect_security(head);

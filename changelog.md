@@ -97,6 +97,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   race-safe key creation; `keychain:`, `dpapi:`, `secret-service:` parsed, backends in phase 11).
   URL `query = "hash"` now works: HMAC-SHA256 (ring), first 6 hex digits, key from `[modules.url] hash_key`
   or `url_hash.key` in `data_dir`. `ModuleContext` gains `data_dir`.
+- Phase 3 step 6: QUIC Initial decryption with `ring` (v1 and v2, header protection, AES-128-GCM, CRYPTO
+  frame reassembly across packets); the enricher turns UDP flows with a client Initial into named QUIC flows.
+  Checked against the RFC 9001 and RFC 9369 sample packets. Fixtures `quic_initial`, `quic_split_hello`.
 
 ### Changed
 - `FlowEvent.url` is now `FlowEvent.notes`; the URL module writes `notes.url`.

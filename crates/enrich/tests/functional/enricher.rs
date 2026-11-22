@@ -97,3 +97,23 @@ fn nameless_flows_stay_unresolved() {
     assert_eq!(obs.event.hostname, None);
     assert!(obs.event.unresolved());
 }
+
+#[test]
+fn a_quic_initial_names_a_udp_flow() {
+    use scribe_core::Protocol;
+    use scribe_test_support::packets::quic::{hex, RFC9001_CLIENT_INITIAL};
+    let e = enricher();
+    let mut obs = flow("192.0.2.40:443")
+        .udp()
+        .payload(&hex(RFC9001_CLIENT_INITIAL))
+        .observe();
+    e.enrich(&mut obs);
+    assert_eq!(obs.event.proto, Protocol::Quic);
+    assert_eq!(obs.event.security, Security::Quic);
+    assert_eq!(obs.event.hostname.as_deref(), Some("example.com"));
+
+    let mut other = flow("192.0.2.41:443").udp().payload(b"\x40short").observe();
+    e.enrich(&mut other);
+    assert_eq!(other.event.proto, Protocol::Udp);
+    assert_eq!(other.event.hostname, None);
+}

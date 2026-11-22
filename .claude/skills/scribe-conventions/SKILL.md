@@ -188,8 +188,8 @@ Full option table: `workfiles/specs.md` section 9.1.
 | TLS detection | First bytes `0x16 0x03 ..` = TLS; empty = unknown; anything else = plaintext; never by port | Decided |
 | ECH | Only the outer public name is visible; flagged `ech: true` | Decided (fixtures) |
 | DNS-over-HTTPS | Later lookups are invisible; flows fall back to IP | Decided |
-| QUIC | SNI from the Initial packet: derive keys from the Destination Connection ID and the version salt (HKDF-SHA256), remove header protection (AES-128-ECB), decrypt (AES-128-GCM), reassemble CRYPTO frames by offset, then parse the ClientHello | Proposed (parser and fixture not written) |
-| QUIC crypto | `ring` 0.17 in `enrich` and `test-support`; fixture checked against the RFC 9001 Appendix A sample packet | Decided |
+| QUIC | SNI from client Initial packets, QUIC v1 and v2 (RFC 9369; draft versions unsupported): derive keys from the Destination Connection ID and the version salt (HKDF-SHA256), remove header protection (AES-128-ECB), decrypt (AES-128-GCM), reassemble CRYPTO frames by offset across Initials of the first DCID (`InitialReassembler`, 64 KiB cap, one hello per flow), then parse the ClientHello. Single-datagram hellos are handled by `Enricher::enrich` (UDP → `Protocol::Quic`); multi-datagram ones need the phase 5 pipeline to keep a reassembler per flow | Implemented |
+| QUIC crypto | `ring` 0.17 in `enrich` and `test-support` (two separate implementations); both RFC 9001 and RFC 9369 Appendix A packets decrypt, and the test-support builder reproduces them byte for byte; fixtures `quic_initial`, `quic_split_hello`. ring's C code means local macOS cross-checks cover only crates without it; CI checks the rest natively | Decided |
 | Full URL | Plaintext HTTP only | Decided |
 
 ## 8. Counting
