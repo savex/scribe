@@ -14,11 +14,9 @@ fn loopback_interface() -> &'static str {
 }
 
 #[test]
-#[ignore = "needs capture privileges; pcap sensor not implemented yet"]
+#[ignore = "needs capture privileges (root, or Npcap on Windows)"]
 fn pcap_sensor_conforms() {
-    let mut sensor = scribe_sensor_pcap::PcapSensor {
-        interface: Some(loopback_interface().into()),
-    };
+    let mut sensor = scribe_sensor_pcap::PcapSensor::new(Some(loopback_interface().into()));
     let opts = SuiteOptions {
         expect_process_info: false,
         ..Default::default()

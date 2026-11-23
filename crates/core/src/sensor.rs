@@ -10,6 +10,9 @@ pub trait Sensor: Send {
     fn has_process_info(&self) -> bool;
     fn start(&mut self, out: Sender<Observation>) -> Result<(), SensorError>;
     fn stop(&mut self);
+    /// Whether an enabled module needs client bytes past the first request (set before `start`).
+    /// Sensors that always send what they have can ignore it.
+    fn set_payload(&mut self, _needed: bool) {}
 }
 
 #[derive(Debug, thiserror::Error)]

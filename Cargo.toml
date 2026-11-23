@@ -48,5 +48,7 @@ windows-sys = { version = "0.61", features = ["Win32_System_SystemInformation"] 
 proptest = "1.11"
 tempfile = "3"
 ring = "0.17"
+# libpcap / Npcap, loaded at run time by the pcap sensor.
+libloading = "0.9"
 # Scenario files (tests only); maintained fork of the deprecated serde_yaml.
 serde_yaml_ng = "0.10"

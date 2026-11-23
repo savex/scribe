@@ -387,6 +387,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
+name = "libloading"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1832accd5a4ca2795ace4d05d15c4039be15b62d3b950eff99746a990e3cc10"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
+
+[[package]]
 name = "libsqlite3-sys"
 version = "0.40.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -803,10 +813,12 @@ dependencies = [
 name = "scribe-sensor-pcap"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "libloading",
  "proptest",
  "scribe-core",
  "scribe-test-support",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

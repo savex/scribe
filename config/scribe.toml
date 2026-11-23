@@ -99,6 +99,15 @@ query = "redact_values"
 # hash_key = "file:/var/lib/scribe/url_hash.key"
 
 
+# ─── Sensor ──────────────────────────────────────────────────────────────────
+
+[sensor]
+# Capture device for the pcap sensor (the fallback on every system, and the sensor on macOS until
+# the Network Extension arrives). "" = automatic: Linux `any`, else the first device that is up with
+# an address. Examples: "en0", "eth0", "\\Device\\NPF_{GUID}" (Npcap).
+interface = ""
+
+
 # ─── Daemon ──────────────────────────────────────────────────────────────────
 
 [daemon]

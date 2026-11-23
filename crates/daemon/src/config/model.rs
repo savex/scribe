@@ -30,6 +30,7 @@ pub struct Config {
     pub storage: Storage,
     pub log: Log,
     pub daemon: Daemon,
+    pub sensor: SensorConfig,
 }
 
 impl Default for Config {
@@ -45,8 +46,20 @@ impl Default for Config {
             storage: Storage::default(),
             log: Log::default(),
             daemon: Daemon::default(),
+            sensor: SensorConfig::default(),
         }
     }
+}
+
+// ─── Sensor ─────────────────────────────────────────────────────────────────
+
+/// `[sensor]`: capture settings.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct SensorConfig {
+    /// pcap capture device; `""` = automatic (Linux `any`, else the first device that is up with
+    /// an address). Ignored by the native sensors.
+    pub interface: String,
 }
 
 // ─── Daemon ─────────────────────────────────────────────────────────────────

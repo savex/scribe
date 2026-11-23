@@ -8,6 +8,8 @@ rust-version.workspace = true
 [dependencies]
 scribe-core.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
+libloading.workspace = true
 
 [dev-dependencies]
 scribe-test-support.workspace = true

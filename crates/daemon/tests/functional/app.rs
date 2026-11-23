@@ -109,3 +109,35 @@ fn a_missing_threat_list_stops_scribed() {
     let err = rt.block_on(serve(s, std::future::ready(()))).unwrap_err();
     assert!(format!("{err:#}").contains("threat list"), "{err:#}");
 }
+
+/// A native sensor that can't start hands over to the fallback.
+#[test]
+fn the_fallback_sensor_takes_over_when_the_native_one_fails() {
+    use scribe_core::{Observation, Sensor, SensorError};
+    use scribe_daemon::app::FallbackSensor;
+    use scribe_test_support::FakeSensor;
+
+    struct Broken;
+    impl Sensor for Broken {
+        fn name(&self) -> &'static str {
+            "native"
+        }
+        fn has_process_info(&self) -> bool {
+            true
+        }
+        fn start(&mut self, _out: std::sync::mpsc::Sender<Observation>) -> Result<(), SensorError> {
+            Err(SensorError::Unsupported("not here"))
+        }
+        fn stop(&mut self) {}
+    }
+
+    let fallback = FakeSensor::new(vec![]).without_process_info();
+    let mut s = FallbackSensor::new(Box::new(Broken), Box::new(fallback));
+    assert_eq!((s.name(), s.has_process_info()), ("native", true));
+    let (tx, _rx) = std::sync::mpsc::channel();
+    s.start(tx.clone()).unwrap();
+    assert_eq!((s.name(), s.has_process_info()), ("fake", false));
+    s.stop();
+    s.start(tx).unwrap(); // a restart goes straight to the fallback
+    assert_eq!(s.name(), "fake");
+}

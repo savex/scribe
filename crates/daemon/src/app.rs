@@ -126,7 +126,8 @@ pub fn run_until(
 /// Opens storage, starts the platform sensor and runs the capture pipeline until `shutdown`
 /// completes.
 pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> anyhow::Result<()> {
-    serve_with(settings, platform_sensor(), shutdown).await
+    let sensor = platform_sensor(&settings);
+    serve_with(settings, sensor, shutdown).await
 }
 
 /// Observations waiting between the sensor thread and the pipeline.
@@ -432,6 +433,7 @@ pub async fn serve_controlled(
         })
         .context("cannot start the sensor thread")?;
     let restart_tx = sensor_tx.clone();
+    sensor.set_payload(pipeline.modules().needs_payload());
     match sensor.start(sensor_tx) {
         Ok(()) => info!(
             sensor = sensor.name(),
@@ -656,14 +658,92 @@ async fn shutdown_signal() {
     }
 }
 
-fn platform_sensor() -> Box<dyn Sensor> {
+/// The sensor for this system, with the pcap sensor as the fallback when the native one can't
+/// start (specs 8.4). macOS uses pcap until the Network Extension arrives (phase 9).
+fn platform_sensor(settings: &Settings) -> Box<dyn Sensor> {
+    let iface = settings.config.sensor.interface.trim();
+    let pcap = scribe_sensor_pcap::PcapSensor::new((!iface.is_empty()).then(|| iface.to_owned()));
     #[cfg(target_os = "linux")]
-    return Box::new(scribe_sensor_linux::EbpfSensor);
+    return Box::new(FallbackSensor::new(
+        Box::new(scribe_sensor_linux::EbpfSensor),
+        Box::new(pcap),
+    ));
     #[cfg(windows)]
-    return Box::new(scribe_sensor_windows::EtwSensor);
-    // macOS: flows arrive from the Network Extension over XPC; pcap until that exists.
+    return Box::new(FallbackSensor::new(
+        Box::new(scribe_sensor_windows::EtwSensor),
+        Box::new(pcap),
+    ));
     #[cfg(not(any(target_os = "linux", windows)))]
-    return Box::new(scribe_sensor_pcap::PcapSensor { interface: None });
+    return Box::new(pcap);
+}
+
+/// A native sensor with a fallback: `start` tries the native one and, if it can't run, the
+/// fallback; status then reports the fallback (no process info).
+pub struct FallbackSensor {
+    primary: Box<dyn Sensor>,
+    fallback: Box<dyn Sensor>,
+    using_fallback: bool,
+}
+
+impl FallbackSensor {
+    pub fn new(primary: Box<dyn Sensor>, fallback: Box<dyn Sensor>) -> Self {
+        Self {
+            primary,
+            fallback,
+            using_fallback: false,
+        }
+    }
+
+    fn active(&self) -> &dyn Sensor {
+        if self.using_fallback {
+            self.fallback.as_ref()
+        } else {
+            self.primary.as_ref()
+        }
+    }
+}
+
+impl Sensor for FallbackSensor {
+    fn name(&self) -> &'static str {
+        self.active().name()
+    }
+
+    fn has_process_info(&self) -> bool {
+        self.active().has_process_info()
+    }
+
+    fn set_payload(&mut self, needed: bool) {
+        self.primary.set_payload(needed);
+        self.fallback.set_payload(needed);
+    }
+
+    fn start(
+        &mut self,
+        out: std::sync::mpsc::Sender<Observation>,
+    ) -> Result<(), scribe_core::SensorError> {
+        if !self.using_fallback {
+            match self.primary.start(out.clone()) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    warn!(
+                        "{} sensor is not available ({e}); falling back to {} (no process info)",
+                        self.primary.name(),
+                        self.fallback.name()
+                    );
+                    self.using_fallback = true;
+                }
+            }
+        }
+        self.fallback.start(out)
+    }
+
+    fn stop(&mut self) {
+        if self.using_fallback {
+            self.fallback.stop();
+        } else {
+            self.primary.stop();
+        }
+    }
 }
 
 /// Read the threat lists that are files (relative paths are under `data_dir`). A list that can't

@@ -69,6 +69,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   otherwise), later HTTP requests as `Payload` when modules need payload, UDP flows, QUIC follow-up Initials,
   DNS answers as `DnsResponse`, `Close` with the remaining bytes (FIN, RST, idle), local-address filtering, a
   bounded table, and `replay` for pcap files (FUN-SN01). The pipeline counts a `Close`'s bytes.
+- Phase 6 step 3: live capture: libpcap / Npcap loaded at run time (`libloading`, `SCRIBE_LIBPCAP` to override;
+  no SDK at build time), non-blocking reads so `stop` never waits for traffic, device choice (`[sensor]
+  interface`, default Linux `any` or the first interface that is up), local addresses from every device.
+  `scribed` falls back from the native sensors (Linux, Windows) to pcap when they can't start; macOS uses
+  pcap. `Sensor::set_payload` tells sensors whether modules need payload.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),
