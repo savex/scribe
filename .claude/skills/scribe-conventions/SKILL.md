@@ -125,7 +125,7 @@ Also `serde_json`, `rusqlite` 0.43 (bundled SQLite, phase 1); the storage manage
 | `scribe-module-url` | lib | URL tracking module, feature `url` of `scribe-daemon`, on by default |
 | `scribe-module-conformance` | lib | Suite every module must pass |
 | `scribe-api` | lib (planned) | gRPC server and client (features `server` / `client`), protocol in `proto/scribe/v1/` |
-| `scribe-daemon` / `scribed` | lib + bin | The service: `config`, `logging`, `app` modules in the library; `main.rs` is a thin wrapper |
+| `scribe-daemon` / `scribed` | lib + bin | The service: `config` (with `reload`), `logging`, `pipeline`, `chain`, `security`, `service`, `privileges`, `modules` and `app` in the library; `main.rs` is a thin wrapper |
 | `scribe-cli` / `scribe` | lib + bin | The command line client (`clap`) |
 
 Only SQLite and Postgres storage backends are in scope. ClickHouse, OpenSearch, file sinks and
@@ -355,8 +355,8 @@ Notes:
 |---|---|
 | Estimates assume | one experienced Rust developer; LOC without blanks and comments; tests counted separately |
 | Total size | ~18,000 production LOC + ~5,400 test LOC |
-| Total effort | 121.5–151.5 person-days; 95.5–120.5 remaining after phases 0, 0b, 1 and 2, 115–145 with a 20% buffer (includes the security design, +14.5 days, the module framework, +10–12 days, and the 2026-11-22 plan review, +3.5–4.5) |
-| Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 65.5–80.5 days; M2 native sensors 35.5–45.5 days; M3 production 20.5–25.5 days |
+| Total effort | 123–153.5 person-days; 74–92.5 remaining after phases 0, 0b and 1–5, 89–111 with a 20% buffer (includes the security design, +14.5 days, the module framework, +10–12 days, and the 2026-11-22 plan review, +3.5–4.5) |
+| Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 67–82.5 days planned, 20.5–24 remaining; M2 native sensors 35.5–45.5 days; M3 production 20.5–25.5 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning; Release workflow not run on GitHub yet (Tests green since 2026-11-22) |
 | Secrets | `scribe-secrets`: references `file:` (implemented: absolute path, Unix mode `0600` or stricter, owner = service account or root, no group/other-writable parent without sticky bit; created via temp file + hard link so a concurrent start keeps the first key; one trailing newline dropped), `keychain:<service>/<account>`, `dpapi:<path>`, `secret-service:<label>` (parsed, return `Unsupported` until phase 11, where the webhook secret needs them; Windows `file:` ACL checks with the installer in phase 13). `Secret` hides its bytes in `Debug` and zeroes them on drop. Modules get `ModuleContext::data_dir` for their files | Decided (file), Planned (OS stores) |
 

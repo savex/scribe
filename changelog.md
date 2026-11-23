@@ -50,6 +50,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 5 step 7: service integration: systemd `Type=notify` readiness, a systemd unit and a launchd plist,
   `scribed --service` for the Windows service control manager (`windows-service` 0.8) with an install script,
   service files in the release archives, and `[daemon] user` to drop root privileges on Unix.
+- Phase 5 step 8: integration tests for module output and state across restarts (INT-05, INT-06), hosts and
+  baseline across restarts (SCN-20) and isolated profiles (SCN-25). Spec, skill, plan (phase 5 done; hourly
+  buckets and alert-state restore to phase 10), status (coverage 91.7%), test list, test approach, scenario
+  README and readme updated.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

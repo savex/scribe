@@ -144,7 +144,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-4 | Classify each flow as `tls`, `quic`, `plaintext` or `unknown` from its first bytes, never from the port | Implemented (TCP and UDP, QUIC long headers) | Functional tests in `enrich`; every fixture end to end |
 | FR-5 | For ECH, record the outer public name and flag the flow `ech` | Implemented | Fixture `tls_ech` |
 | FR-6 | For QUIC, read the SNI from the Initial packet (using `ring` 0.17) | Implemented (v1 and v2, ClientHello across several Initials; per-flow reassembly wired in phase 5) | RFC 9001 and RFC 9369 Appendix A packets; fixtures `quic_initial`, `quic_split_hello`; fuzz target `quic_initial` |
-| FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Partly (`FlowEvent::unresolved()`; the enricher leaves nameless flows unnamed and never drops them; tracking by IP in phases 4–5) | Scenario `hostname-unresolved`; fixture `doh` |
+| FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Implemented (hosts keyed by IP when nameless, `hosts.unresolved` since schema v3; shown by `scribe hosts` in phase 10) | Scenario `hostname-unresolved`; fixture `doh` |
 | FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Implemented (request parser, all `query` modes including `hash`; wired to traffic in phase 5) | Fixture `http_plain`; module conformance |
 | FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Partly (per host and per process + host since schema v3; hourly buckets not yet) | Scenario `counters-exact`; storage conformance |
 | FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Implemented in the SQLite state store (Postgres in phase 12) | Storage conformance |
@@ -164,8 +164,8 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-24 | Export hosts and baselines | Planned | — |
 | FR-25 | While the state store is unavailable, keep the latest events in a bounded in-memory buffer; when full, drop the oldest to add the newest; count drops; replay in order on recovery | Implemented (`BufferedState`) | `FaultySink`-style state-store tests (planned) |
 | FR-26 | Store plaintext URLs according to `[modules.url] query` (formerly `privacy.url_query`); always remove user info (`user:password@`) | Planned | Unit tests (planned); fixture `http_plain` |
-| FR-27 | `scribe daemon status` shows the run state, live counters and critical metrics (section 6.2.1); `scribe status` is its short form | Planned | API tests; CLI output tests with `MockApiServer` |
-| FR-28 | `scribe daemon health` reports healthy / degraded / unhealthy with reasons, exits `0` / `1`, and answers within its timeout; also over `grpc.health.v1` | Planned | Daemon tests with `FaultySink` and a stopped `FakeSensor`; mock `daemon-down` |
+| FR-27 | `scribe daemon status` shows the run state, live counters and critical metrics (section 6.2.1); `scribe status` is its short form | Partly (daemon side: `Pipeline::status`, `Command::Status`; the API and CLI output in phase 10) | API tests; CLI output tests with `MockApiServer` |
+| FR-28 | `scribe daemon health` reports healthy / degraded / unhealthy with reasons, exits `0` / `1`, and answers within its timeout; also over `grpc.health.v1` | Planned (phase 10; the parts exist: storage health, run state, sensor start result) | Daemon tests with `FaultySink` and a stopped `FakeSensor`; mock `daemon-down` |
 | FR-29 | `scribe daemon reset` clears runtime counters and caches and reloads the config without a restart; never changes stored history; an invalid config is rejected and the running one kept | Implemented in the daemon (`Command::Reset`, `Command::Reload`, SIGHUP; the command in phase 10) | Daemon tests; config error table reused for reload |
 | FR-30 | `scribe daemon hibernate [--for]` stops capture and processing while the daemon keeps serving the API; the pause is capped by `daemon.max_hibernate`, raises an alert, and is recorded and visible | Implemented in the daemon (`Pipeline::hibernate`, `Command::Hibernate`; the command in phase 10) | Daemon tests with `FakeSensor` and `FakeClock`; sensor conformance (stop and start again) |
 | FR-31 | `scribe daemon wakeup` (or the end of `--for`) resumes processing with the same mode, baseline and caches | Implemented in the daemon (`Pipeline::wakeup`, timer wakeup on the 1 s tick; the command in phase 10) | Same as FR-30 |
@@ -482,10 +482,10 @@ The default mode is `learn`. Hosts added to the baseline in learn mode stay list
 
 | Situation | Behaviour | Status |
 |---|---|---|
-| Native sensor unavailable (old kernel, extension not approved) | Fall back to the pcap sensor; status reports no process info | Planned |
+| Native sensor unavailable (old kernel, extension not approved) | Fall back to the pcap sensor; status reports no process info. Today `scribed` logs that capture isn't available and keeps running without a sensor | Planned (fallback), Implemented (keeps running) |
 | Event sink down | Spool to disk (`storage.spool`), replay in order; when `max_size` or `min_free_disk` is reached drop the oldest and count drops | Implemented (phase 2) |
 | State store unavailable | Keep the latest events in an in-memory buffer (`storage.buffer`); when full, drop the oldest to add the newest; count drops, report unhealthy, replay in order on recovery (FR-25) | Implemented (phase 2) |
-| Hostname hidden (ECH, DoH) | Track by IP or outer name, flag it | Planned |
+| Hostname hidden (ECH, DoH) | Track by IP or outer name, flag it | Implemented (phase 5) |
 | Invalid config | At start: refuse to start, report the error and line (Implemented). On reload: keep the running config, report the error and line (Planned) | Partly |
 
 ### 8.5 Daemon run states (implemented in the daemon in phase 5; commands in phase 10)

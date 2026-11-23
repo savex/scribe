@@ -177,8 +177,9 @@ Every setting is explained in [config/scribe.toml](config/scribe.toml).
 | Local storage (SQLite), buffering and retention | Done |
 | Host names from TLS, QUIC, HTTP and DNS | Done |
 | Policy engine and alert rules | Done |
-| Connecting the sensor to the rest (live capture) | Next |
-| Sensors for Linux, Windows and macOS | Planned |
+| The daemon pipeline: counters, alerts, hibernation, config reload, audit trail | Done |
+| Running as a service (systemd, launchd, Windows) | Done |
+| Live capture: pcap sensor, then native sensors for Linux, Windows and macOS | Next |
 | Command-line queries, alert outputs, PostgreSQL, installers | Planned |
 
 Details: [workfiles/status.md](workfiles/status.md) and [workfiles/plan.md](workfiles/plan.md).

@@ -1,21 +1,35 @@
 # scribe readiness by module
 
-As of the end of **phase 4** (2026-11-22, commits `9c36205`…`ef17bee` plus the docs commit), scribe still
-doesn't capture traffic, but **the decision side is complete**: the `scribe-policy` engine applies the three
-modes, scores unlisted hosts with the built-in and module signals and threat lists, deduplicates and
-acknowledges alerts, and ends learn mode on time. 16 of the 19 daemon scenarios now run and pass; the other
-3 need the pipeline's run states and counters (phase 5). Product code coverage is 92.1%.
+As of the end of **phase 5** (2026-11-22, commits `39796b2`…`173e2bf` plus the docs commit), **`scribed` runs
+the whole pipeline**: sensor → enrichment (SNI, `Host`, DNS answers, QUIC) → modules → policy → storage, with
+per-host and per-process counters, alerts, audit events in a tamper-evident chain, hibernation and wakeup,
+config reload on SIGHUP, and service integration for systemd, launchd and Windows. All 19 daemon scenarios
+pass through the real pipeline. What's missing for real use is a sensor: the platform sensors are still stubs
+(phase 6 brings pcap). Product code coverage is 91.7%.
 
 **How this was measured**
 - **Completion** is an estimate against each module's scope in [plan.md](plan.md).
 - **Coverage** is line coverage from `cargo test --workspace --all-features` alone, measured with LLVM
-  source-based coverage (rustup `llvm-tools`) on macOS, all rows re-measured after phase 4. 319 tests
-  passed and 7 were skipped (Postgres
+  source-based coverage (rustup `llvm-tools`) on macOS, all rows re-measured after phase 5. 358 tests
+  passed and 4 were skipped (Postgres
   conformance needs a database; sensor conformance needs privileges).
 - Unit tests written inside source files (`#[cfg(test)]` modules) count as covered lines, which raises
   the percentages of `core`, `daemon` and `cli` somewhat. `crates/daemon/src/config/tests.rs` and
   `tests/` folders are excluded.
 - Linux- and Windows-only code (memory lookup, journald) is compile-checked from macOS but only runs in CI.
+
+## Phase 5 delivered (one commit per step)
+
+| Step | Commit | Result |
+|---|---|---|
+| 1. Pipeline core | `39796b2` | `Pipeline::process`: DNS answers, enrichment, QUIC holding, modules, policy → writes; runtime counters |
+| 2. Schema v3 | `a5b5fb8` | Per process + host counters, sticky `unresolved` flag; SQLite and Postgres migrations, snapshots, conformance |
+| 3. `serve()` | `45175fc` | Sensor thread → bounded queue → pipeline → storage; alerts logged; scenario runner on the real pipeline |
+| 4. Run states | `5102dc0` | Hibernate (capped, alerted, audited), wakeup, reset, status; `Command`s for the API; all 19 scenarios pass |
+| 5. Config reload | `877accb` | SIGHUP and `Command::Reload`: live keys applied, restart keys reported, broken files refused |
+| 6. Security | `a35b813` | Audit and alert chain (`seq`, `prev_hmac`), start / stop / unclean-stop audits, StrictModes |
+| 7. Services | `173e2bf` | systemd `Type=notify` and unit, launchd plist, Windows service, `[daemon] user` privilege drop |
+| 8. Tests and docs | this commit | Restart, module-state and profile integration tests; spec, skill, plan, status, test list, readme |
 
 ## Phase 4 delivered (one commit per step)
 
@@ -99,35 +113,35 @@ earlier edit (`111411c`); they are restored.
 
 | Module | Plan phase | Completion | What exists | What's missing | Test coverage |
 |---|---|---|---|---|---|
-| `core` | 0, 0b | **~95%** | Flow event with module notes, `Observation`, modes, sensor interface, clock, alert interface, module data types, `VERSION`, units, platform defaults | Grows as later phases need shared types | **97%** (419/432) |
+| `core` | 0, 0b | **~95%** | Flow event with module notes, `Observation` (incl. `DnsResponse`), modes, sensor interface, clock, alert with notes, module data types, `VERSION`, units, platform defaults | Grows as later phases need shared types | **97%** (420/432) |
 | `module-api` | 0b | **~95%** | `Module`, `Manifest` checks, `FlowHook`, `Source`, `Emitter`, `ModuleContext` (with `data_dir`), `ConfigDoc`, `Signal`, `Reload` | API service hooks (phase 10), `ProbeHost` (native sensors) | **98%** (156/160) |
-| `module-url` | 0b, 3, 10 | **~80%** | Manifest, `[modules.url] query` and `hash_key`, request parser, all five `query` modes, flow hook, request counters; passes the module suite and every HTTP fixture | `scribe url` (phase 10) | **97%** (233/240) |
-| `storage-api` | 0b, 1–2 | **100%** | Interfaces with module data, `EventKind`, schema version 2, row codec, `delete_before` | Grows with later phases | **91%** (260/285) |
-| `storage-manager` | 2 | **100%** | Registry, writer task per sink, batching, retention, spool and replay, outage buffer, host cache, health | Wiring into `daemon status` (phase 10) | **90%** (977/1082) |
-| `storage-sqlite` | 1, 2 | **100%** | Migration runner, every state store and event sink method incl. retention, worker thread, health; passes both suites on file and in memory | — | **94%** (624/666) |
+| `module-url` | 0b, 3, 10 | **~80%** | Manifest, `[modules.url] query` and `hash_key`, request parser, all five `query` modes, flow hook, request counters kept across restarts | `scribe url` (phase 10) | **98%** (236/240) |
+| `storage-api` | 0b, 1–2, 5 | **100%** | Interfaces with module data, schema version 3 (process counters, `unresolved`), alert notes and port, chain links, row codec, `delete_before` | Hourly buckets (phase 10) | **91%** (319/352) |
+| `storage-manager` | 2 | **100%** | Registry, writer task per sink, batching, retention, spool and replay, outage buffer, host cache, health | Live limit changes on reload (later) | **93%** (1013/1095) |
+| `storage-sqlite` | 1, 2, 5 | **100%** | Migrations 1–3, every state store and event sink method incl. process counters, worker thread, health; passes both suites | — | **94%** (676/722) |
 | `storage-postgres` | 12 | **~15%** | v1 and v2 migrations and seeds, factory, stubs | All of it | **3%** (3/112). Conformance tests skipped. |
-| `enrich` | 3 | **100%** | `Enricher`; TLS ClientHello, HTTP heads, DNS answers and cache, QUIC Initial decryption and reassembly; every fixture end to end | Per-flow use in the pipeline (phase 5) | **95%** (600/632) |
+| `enrich` | 3 | **100%** | `Enricher`; TLS ClientHello, HTTP heads, DNS answers and cache (clearable), QUIC Initial decryption and reassembly | — | **96%** (609/638) |
 | `secrets` | 3, 11 | **~60%** | `file:` references with owner / mode checks and key generation; `keychain:`, `dpapi:`, `secret-service:` parsed | OS store backends (phase 11), Windows ACL checks (phase 13) | **88%** (156/177) |
-| `policy` | 4 | **100%** | Signals, threat lists, `Policy::decide` (modes, scoring with module signals, learn timer, dedupe, acknowledgement); built by `scribed` at start | Fed by the pipeline and its state saved (phase 5) | **96%** (412/429) |
-| `daemon` (`scribed`) | 0, 0b, 5 | **~35%** | Config loading and checks (modules and module scores included), logging, startup summary, folders, SQLite storage created and migrated, `ModuleHost`, module output stored, policy built with baseline and threat lists, signal handling, exit codes | Sensor → enrichment → modules → policy → storage pipeline, run states, service-manager integration, dropping privileges | **95%** (1452/1524) |
-| `sensor-pcap` | 6 | **~2%** | Stub (sends `Observation`s) | Capture and flow reassembly | **60%** (6/10), stub only |
+| `policy` | 4 | **100%** | Signals, threat lists, `Policy::decide`; reload setters, learn countdown pause | Alert state restored at start (phase 10) | **97%** (444/459) |
+| `daemon` (`scribed`) | 0, 0b, 5 | **~85%** | Config, logging (live level), the capture pipeline, run states and `Command`s, config reload (SIGHUP), audit chain, StrictModes, crash marker, systemd notify, Windows service, privilege drop | A real sensor (phases 6–9), the API (phase 10) | **92%** (2305/2516) |
+| `sensor-pcap` | 6 | **~2%** | Stub (returns `Unsupported`; `scribed` runs without capture) | Capture and flow reassembly | **70%** (7/10), stub only |
 | `sensor-linux` (eBPF) | 7 | **~2%** | Stub, Linux only | eBPF programs, loader, process lookup | n/a (not built on macOS) |
 | `sensor-windows` (ETW) | 8 | **~2%** | Stub, Windows only | ETW session, DNS-client events, Npcap | n/a (not built on macOS) |
 | macOS Network Extension | 9 | **0%** | README only | Swift extension, XPC bridge | n/a |
 | Local API (`crates/api`) and `cli` | 10 | **~20%** | CLI parses every command with `clap`, exit codes; API location decided | gRPC API, `scribe daemon` and `scribe modules`; commands talk to nothing | **88%** (29/33, `cli` library only) |
 | Alert outputs (`crates/alerts`) | 11 | **~5%** | Alert output interface | Notifications, log, webhook | n/a |
 | UI (Tauri) | later | **0%** | Test folders and mock API data | Everything | n/a |
-| Packaging | 13 | **~15%** | Release archives with checksums; release smoke test runs both binaries and checks the shipped config and the URL module | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing | n/a |
+| Packaging | 13 | **~20%** | Release archives with checksums and service files (systemd unit, launchd plist, Windows install script); release smoke test | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing, hardened units | n/a |
 
-**Product total:** 5,327 of 5,785 measurable lines covered (**92.1%**).
+**Product total:** 6,373 of 6,949 measurable lines covered (**91.7%**).
 The coverage targets in the test approach (≥ 80% for `core` and the daemon config) are met.
 
 ## Test infrastructure, CI and data
 
 | Module | Completion | What exists | Test coverage |
 |---|---|---|---|
-| `test-support` | **100%** | Test doubles (with module doubles and `RecordingEmitter`), packet builders (now QUIC Initials with `ring`), pcap writer, fixture generator | **93%** (1542/1656) |
-| `storage-conformance` | **100%** | Suite every storage backend must pass, with module data | **98%** (348/354) |
+| `test-support` | **100%** | Test doubles (with process counters in `MemoryStore`), packet builders, pcap writer, fixture generator | **94%** (1598/1709) |
+| `storage-conformance` | **100%** | Suite every storage backend must pass, with module data, process counters and `unresolved` | **99%** (414/420) |
 | `sensor-conformance` | **100%** | Suite every sensor must pass (checks client bytes), plus the traffic generator | **41%** (86/210); the runner needs a real sensor |
 | `module-conformance` | **100%** | Suite every module must pass | **85%** (245/289) |
 | Test data | **100%** | 16 pcap fixtures (2 QUIC), all checked end to end; RFC 9001 / 9369 sample packets; 19 scenarios (16 run), raw sensor samples, v1 and v2 database snapshots | Checked by the fixture, end-to-end, scenario and snapshot tests |
@@ -135,16 +149,15 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
 | CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Tests passed on GitHub (2026-11-22, run `45072299330`); Release and the other workflows not run yet |
 
-**Overall:** 7,548 of 8,294 measurable lines covered (**91.0%**).
+**Overall:** 8,716 of 9,577 measurable lines covered (**91.0%**).
 
 ## What this means
 
-- **Phases 0, 0b, 1, 2, 3 and 4 are done.** Remaining effort: 83–103.5 days (100–124 with buffer); milestone M1: 29.5–35 days.
-- **The daemon has a skeleton to grow into:** each next phase plugs into `serve()` (the pipeline in phase 5, which feeds `ModuleHost::on_flow`) and reads its settings from the already-checked config.
+- **Phases 0, 0b and 1–5 are done.** Remaining effort: 74–92.5 days (89–111 with buffer); milestone M1: 20.5–24 days.
+- **The daemon is complete apart from capture and the API:** a sensor only has to send `Observation`s (and `DnsResponse`s) into the channel `serve()` gives it; the API (phase 10) sends the `Command`s that already work.
 - **Next steps** (plan milestone M1):
   0. Run the Release workflow once (push the `v0.1.1` tag); Tests already passed on GitHub.
-  1. Phase 5: the pipeline, with a QUIC reassembler per UDP flow, DNS responses fed to the `Enricher`, and the
-     policy's decisions saved; it also turns on the last 3 scenarios.
+  1. Phase 6: the pcap sensor, against the 16 fixtures and the sensor conformance suite.
   2. Apply for Apple's Network Extension entitlement (plan risk 1).
 - **Not verified here:** the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests,
   the Postgres migration 0002 (no local Postgres; the Tests workflow loads it) and the fuzz targets (no nightly).

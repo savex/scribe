@@ -94,8 +94,8 @@ Every test follows these rules; review checks them.
 
 ## 4. Time budget
 
-**Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`, after phase 4): 325 tests
-(319 run, 6 ignored) plus doc examples in 44 test binaries, **1.2 s** wall clock; no test reaches the
+**Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`, after phase 5): 361 tests
+(358 run, 3 ignored) plus doc examples in 44 test binaries, **1.4 s** wall clock; no test reaches the
 2 s warning. Before
 tagging, `cargo test` took 5 s, mostly in one test (`catches_every_fault`), now split into one test per
 fault with a shorter case for the slow-hook fault.
@@ -106,10 +106,10 @@ limit). Compile time is not included.
 | Tag | Tests now | Tests planned (M3) | Planned wall time | Per-test limit (warn / kill) |
 |---|---|---|---|---|
 | `smoke` | 13 | ~20 (+ 6 live) | ≤ 5 s | 2 s / 6 s |
-| `functional` | 282 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
-| `integration` | 8 | ~25 | ≤ 15 s | 5 s / 10 s |
+| `functional` | 311 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
+| `integration` | 15 | ~25 | ≤ 15 s | 5 s / 10 s |
 | `scenario` | 22 | 26 | ≤ 10 s | 5 s / 10 s |
-| **Total** | **325** | **~400** | **≤ 60 s** (limit 120 s) | |
+| **Total** | **361** | **~400** | **≤ 60 s** (limit 120 s) | |
 
 **How the budget holds:** runs are parallel, so wall time ≈ the longer of (total test time ÷ cores) and
 the slowest single test. With ~400 tests averaging under 0.5 s and no test over 10 s, a 4-core CI runner
@@ -218,6 +218,9 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-E06 | `quic::quic_initial_rfc9001_vector`, `quic_v2_initial_rfc9369_vector`, `the_test_builder_reproduces_both_rfc_packets`, `a_hello_split_over_initials_is_joined_in_any_order`, `initials_for_another_connection_id_are_ignored`, `quic_fixtures_name_their_flows` (+3) | QUIC v1 / v2 Initial decrypted with `ring`; SNI from the RFC packets; a second implementation reproduces them; CRYPTO reassembly | In memory | < 10 ms | Exists |
 | FUN-E07 | `tls::every_prefix_is_incomplete_never_a_panic`, `quic::random_datagrams_never_panic`, `mutated_rfc_packets_never_panic`, `dns::queries_failures_and_garbage_are_rejected`, `quic::fuzz_seeds_reach_the_parsers`; `malformed` in INT-18 | Prefixes, mutations and random input: no panic; fuzz seeds still reach the parsers | In memory | 0.2 s | Exists |
 | FUN-E08 | `enricher::*` (9) | Name order SNI > `Host` > sensor name > DNS cache; security for TCP and UDP; QUIC Initials turn UDP flows into named QUIC flows | In memory | < 10 ms | Exists |
+| FUN-D01 | `pipeline::*` (12) | Pipeline writes, DNS answers, QUIC holding and timeout, run states, cache reset | `FakeClock` | < 10 ms | Exists |
+| FUN-D02 | `chain::*` (5) | Audit chain seal, verify, gaps, edits, restart, codec round trip; StrictModes | Temp dir | < 10 ms | Exists |
+| FUN-D03 | `service::*` (5), `daemon_user_is_unix_only`, `max_hibernate_*`, `reload_*` | Service files, privilege drop, systemd notify (Linux), config keys of phase 5, reload planner | Temp dir | < 10 ms | Exists |
 | FUN-SN01 | `pcap_decoder_matches_expected_flows` | Each pcap fixture decodes to its JSON expectations (`kind`, `head`) | Reads fixtures | 0.1 s | Phase 6 |
 | FUN-SN02 | `ebpf_samples_decode` | `testdata/events/linux-ebpf/*` → expected observations | Reads samples | < 10 ms | Phase 7 |
 | FUN-SN03 | `etw_samples_decode` | `testdata/events/windows-etw/*` → expected observations | Reads samples | < 10 ms | Phase 8 |
@@ -266,7 +269,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-P02 | `engine::caution_mode_follows_the_table`, `spec_8_3_examples_score_as_documented`, `caution_prefers_the_score_reason_over_plaintext`, `alert_mode_alerts_on_unlisted_hosts_and_plaintext`, `module_signals_use_their_configured_score` | Sum, cap at 100, threshold 50, top reason, reason order, module scores | In memory | < 10 ms | Exists |
 | FUN-P03 | `signals::entropy_matches_hand_computed_values`, `random_looking_names_are_flagged_and_ordinary_ones_are_not`, `entropy_is_bounded_by_the_alphabet` | Label length and bits-per-character limits | In memory | < 10 ms | Exists |
 | FUN-P04 | `engine::alerts_repeat_once_per_window_per_host_and_process`, `acknowledged_alerts_stay_silent`, `a_repeat_with_new_notes_updates_the_earlier_alert` | Window per host + process from the last alert; acknowledged stays silent; notes added to the earlier alert | `FakeClock` | < 10 ms | Exists |
-| FUN-P05 | `engine::learn_ends_after_learn_for_and_switches_mode`, `a_mode_switch_applies_to_the_next_flow`; pause while hibernating in phase 5 | `learn_for` switch; mode change from the next flow | `FakeClock` | < 10 ms | Exists (pause: phase 5) |
+| FUN-P05 | `engine::learn_ends_after_learn_for_and_switches_mode`, `a_mode_switch_applies_to_the_next_flow`, `a_paused_learn_timer_ends_later_by_the_pause` | `learn_for` switch; mode change from the next flow; paused while hibernating | `FakeClock` | < 10 ms | Exists |
 | FUN-A01 | `log_output_writes_alerts` | Alert log line format | Temp dir | < 10 ms | Phase 11 |
 | FUN-A02 | `webhook_signing_and_https` | HMAC test vectors, HTTPS only, no cross-host redirects (local test server) | Port `:0` | 50 ms | Phase 11 |
 | FUN-A03 | `notification_adapters` | OS notification calls through a fake OS interface | In memory | < 10 ms | Phase 11 |
@@ -287,12 +290,12 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | INT-02 | `serve_creates_folders_and_stops_on_shutdown` | Config → resolve → storage manager → backends | `serve()` builds storage from settings and shuts down | Temp dir | 30 ms | Exists (`tests/integration/daemon.rs`) |
 | INT-03 | `reads_rows_written_by_schema_1`, `reads_the_v2_snapshot` | Snapshot → migration → codec → sink | Old rows readable after migration | Temp dir | 30 ms | Exists |
 | INT-04 | `released_snapshots_migrate_to_the_latest_schema` | Snapshot → migration → state store | Seeded hosts readable after migration | Temp dir | 30 ms | Exists (`tests/integration/storage.rs`) |
-| INT-05 | `module_output_reaches_storage` | Module host → output queue → storage manager → SQLite events and `module_state` | Records, metrics and state written | Temp dir, `FakeClock` | 50 ms | Phase 5 (with `TagModule`) |
-| INT-06 | `module_state_survives_restart` | SQLite `module_state` → module host start → module | Stored state handed back at start | Temp dir | 50 ms | Phase 5 |
-| INT-07 | `config_reload_reaches_modules` | Config reload → module host → module settings | Live keys applied, restart keys reported | Temp dir | 20 ms | Phase 5 |
+| INT-05 | `module_output_is_stored_and_its_state_survives_a_restart` | Module host → output queue → storage manager → SQLite events and `module_state` | `url.request` records and the request counter stored | Temp dir | 100 ms | Exists (`tests/integration/daemon.rs`) |
+| INT-06 | `module_output_is_stored_and_its_state_survives_a_restart` | SQLite `module_state` → module host start → module | The counter continues after a restart | Temp dir | (same test) | Exists |
+| INT-07 | `config_reload_applies_live_keys_and_refuses_broken_files` | Config file → reload → policy, modules | Live keys applied, restart keys reported, broken file refused | Temp dir | 50 ms | Exists |
 | INT-08 | `dns_answer_names_a_later_flow` | Enrichment DNS cache → TLS flow without SNI | `dns_cname_then_tls`, `dns_aaaa_then_tls` hostnames (packet builders; fixtures also in INT-18) | In memory | 20 ms | Exists (`tests/integration/enrich.rs`) |
 | INT-09 | `pcap_to_enriched_flows` | pcap decoder → enrichment → URL module | Each fixture's full JSON expectation incl. `notes.url`, `ech` | Reads fixtures | 0.1 s | Phase 6 |
-| INT-10 | `pipeline_stores_a_flow` | `FakeSensor` → enrichment → modules → counters → policy → storage | One flow becomes a host, counters and a stored event | Temp dir, `FakeClock` | 50 ms | Phase 5 |
+| INT-10 | `pipeline_stores_flows_counters_and_alerts` | `FakeSensor` → enrichment → modules → policy → SQLite | Hosts, per-process counters, alert state, flow and alert events | Temp dir | 50 ms | Exists |
 | INT-11 | `policy_alert_reaches_outputs_and_store` | Policy → alert outputs + `AlertState` + alert event | Alert delivered once and stored | Temp dir | 30 ms | Phases 4, 11 |
 | INT-12 | `cli_api_daemon_round_trip` | CLI → local API (temp socket) → daemon → storage | `hosts`, `mode`, `baseline add` round-trip | Temp dir + socket | 0.3 s | Phase 10 |
 | INT-13 | `api_status_reflects_daemon` | Daemon state → API `Status` → CLI `daemon status --json` | Run state, counters, modules match | Temp socket | 0.2 s | Phase 10 |
@@ -300,6 +303,8 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | INT-15 | `postgres_sink_through_manager` | Storage manager → Postgres sink (TLS) | Events and module data stored | Own schema | 0.5 s | Phase 12 |
 | INT-16 | `xpc_bridge_with_fake_extension` | Fake extension process → XPC bridge → ingest | Flow messages arrive as observations; unsigned peer refused | Child process | 0.5 s | Phase 9 (macOS) |
 | INT-17 | `ui_commands_against_mock_api` | Tauri commands → `MockApiServer` | Requests and error mapping | Temp socket | 0.2 s | Later (UI) |
+| INT-19 | `commands_drive_the_run_states` | `Command`s → running daemon → storage | Hibernate, reset, wakeup, status; audit events and the `hibernated` alert stored | Temp dir | 50 ms | Exists |
+| INT-20 | `an_unclean_stop_is_audited_and_the_chain_verifies` | Two daemon runs → audit chain | Unclean stop audited; the chain of both runs verifies | Temp dir | 100 ms | Exists |
 | INT-18 | `every_fixture_gives_its_expected_flows` | Fixture frames (test-side Ethernet / IP / TCP / UDP reader) → `Enricher` (DNS cache, QUIC reassembler) → URL module | Every fixture's expected flows: proto, destination, name, security, `notes.url`, `ech`, `kind` | Reads fixtures | 20 ms | Exists (`tests/integration/enrich.rs`); INT-09 replaces the reader with the pcap sensor in phase 6 |
 
 ### 5.4 Scenario
@@ -326,17 +331,17 @@ from phase 5 it uses the real pipeline with `FakeSensor`, a temporary SQLite sta
 | SCN-12 | `alert-unlisted-host` | Alert mode alerts on unlisted hosts only | 20 ms | Exists |
 | SCN-13 | `alert-dedupe-window` | One alert per window per host + process | 20 ms | Exists |
 | SCN-14 | `alert-acknowledged` | Acknowledged alert stays silent | 20 ms | Exists |
-| SCN-15 | `counters-exact` | Exact counters per host and per process | 20 ms | Ignored until phase 5 (per-process counters) |
+| SCN-15 | `counters-exact` | Exact counters per host and per process | 20 ms | Exists |
 | SCN-16 | `hostname-unresolved` | ECH and nameless flows tracked and flagged | 20 ms | Exists |
 | SCN-17 | `module-signal-scored` | A module signal lifts the score and names the alert | 20 ms | Exists |
-| SCN-18 | `daemon-hibernate-capped` | Hibernation capped, alerting, recording nothing | 20 ms | Ignored until phase 5 |
-| SCN-19 | `daemon-wakeup-and-reset` | Wakeup resumes; reset keeps history | 20 ms | Ignored until phase 5 |
-| SCN-20 | `restart_keeps_state` (new file) | Hosts, counters, baseline and mode survive a daemon restart on the same SQLite files | 50 ms | Phase 5 |
-| SCN-21 | `storage_outage_and_replay` (new file) | State store down mid-run: buffer, drops counted, replay in order | 30 ms | Phases 2, 5 |
-| SCN-22 | `sink_outage_spools` (new file) | Event sink down: spool, then replay; other sinks unaffected | 30 ms | Phases 2, 5 |
-| SCN-23 | `module_panics_mid_run` (new file) | A test module panics; it is switched off, health degraded, the rest keeps going | 20 ms | Phase 5 |
-| SCN-24 | `config_reload_mid_run` (new file) | Policy scores changed by reload apply from the next flow | 20 ms | Phase 5 |
-| SCN-25 | `profiles_are_isolated` (new file) | A host learned in `work` is unlisted in `home` | 20 ms | Phase 5 (switching profile reloads the baseline) |
+| SCN-18 | `daemon-hibernate-capped` | Hibernation capped, alerting, recording nothing | 20 ms | Exists |
+| SCN-19 | `daemon-wakeup-and-reset` | Wakeup resumes; reset keeps history | 20 ms | Exists |
+| SCN-20 | `restart_keeps_hosts_counters_and_baseline` (integration test) | Hosts, counters and learned baseline survive a restart on the same SQLite files | 100 ms | Exists (`tests/integration/daemon.rs`) |
+| SCN-21 | `storage_outage_and_replay` | State store down mid-run: buffer, drops counted, replay in order | 30 ms | Covered below the pipeline by the storage-manager tests (`state.rs`); a pipeline-level run with `FaultySink` in phase 12 |
+| SCN-22 | `sink_outage_spools` | Event sink down: spool, then replay; other sinks unaffected | 30 ms | Covered below the pipeline by the storage-manager tests (`spool.rs`, `writer.rs`); pipeline-level run in phase 12 |
+| SCN-23 | `module_panics_mid_run` | A test module panics; it is switched off, health degraded, the rest keeps going | 20 ms | Covered by FUN-M04 (`module_host.rs`), which the pipeline uses unchanged |
+| SCN-24 | `config_reload_mid_run` → INT-07 | Policy and module changes by reload apply from the next flow | 50 ms | Exists (as INT-07) |
+| SCN-25 | `profiles_are_isolated` (integration test) | A host learned in `work` is unlisted in `home` | 150 ms | Exists (`tests/integration/daemon.rs`) |
 | SCN-26 | `runner_rejects_bad_scenarios` | The runner refuses unknown keys and bad times with the line (or event index) | < 10 ms | Exists |
 
 ## 6. Coverage of the test approach

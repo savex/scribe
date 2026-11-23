@@ -120,10 +120,9 @@ Run the real pipeline (ingest → enrichment → modules → counters → policy
 - the real `ModuleHost` with the built-in modules, or test modules from `crates/test-support`
 
 Until the local API exists (phase 10), scenarios drive the pipeline in-process. The scenario runner
-(`tests/scenario`, since phase 4) plays them through `ModuleHost`, the policy engine and `MemoryStore`; 16 of the 19
-run, and the 3 that need hibernation, reset, run states or per-process counters are ignored until the pipeline
-(phase 5) replaces this stand-in. From phase 10 the same scenarios also run
-through the real local API.
+(`tests/scenario`) plays them through the daemon's real `Pipeline` and stores its writes in `MemoryStore`; all 19
+pass. Restarts, profiles and reloads need files and two daemon runs, so they are integration tests on SQLite
+(`tests/integration/daemon.rs`). From phase 10 the same scenarios also run through the real local API.
 
 **Scenario files:** each scenario is a YAML file in `testdata/scenarios/` (19 today; format in its README) containing:
 - mode and starting baseline
@@ -269,7 +268,7 @@ fuzz/                    cargo-fuzz targets (tls_client_hello, http_request) and
 testdata/
   pcap/                  14 generated traffic fixtures with expected flows
   events/                raw eBPF / ETW / Network Extension records with expected observations (draft)
-  scenarios/             19 daemon YAML scenarios (16 run; 3 wait for phase 5)
+  scenarios/             19 daemon YAML scenarios (all run through the real pipeline)
   db/                    schema snapshots v1 and v2, seeds, build.sh
 ui/tests/                Vitest, Playwright, API mocks
 ```

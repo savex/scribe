@@ -2,8 +2,9 @@
 
 Each file describes one isolated daemon test: the pipeline runs with `FakeSensor`,
 `MemoryStore`, `MemorySink`, `RecordingAlertSink` and `FakeClock`, plays `events`, and
-compares the final state with `expect`. The runner is `tests/scenario` (one test per file); until the
-pipeline exists (plan phase 5) it plays events through `ModuleHost`, the policy engine and `MemoryStore`.
+compares the final state with `expect`. The runner is `tests/scenario` (one test per file): it plays
+events through the daemon's `Pipeline` (enrichment, `ModuleHost`, the policy engine) and stores its writes in
+`MemoryStore`; API actions call the same methods the daemon's `Command`s do.
 
 ## Format
 
@@ -69,7 +70,6 @@ Reason ids used so far: `unlisted_host`, `raw_ip`, `unusual_port`, `high_entropy
 `plaintext`, `new_process`, `new_tld`, `threat_list`, `hibernated`, and module reasons such as
 `tag.large_head`.
 
-**Depends on later phases.** `hibernate`, `wakeup`, `reset`, `max_hibernate`, `run_state`, `runtime` and
-per-process counters (`processes`) need the daemon run states and counters (phase 5); the runner refuses
-them and their tests are ignored until then. `unresolved` is worked out by the runner (no host name, or an
-ECH outer name) until the state store keeps that flag.
+**Runner notes.** Daemon alerts (`hibernated`) have no destination, so `dst: null`. A hibernation ends on the
+next event after its end time, as the daemon's one-second tick would end it. `reset: [config]` (a reload) is
+refused: reloads need a file and are covered by the integration test `config_reload_applies_live_keys_and_refuses_broken_files`.

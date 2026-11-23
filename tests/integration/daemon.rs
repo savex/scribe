@@ -324,3 +324,169 @@ fn an_unclean_stop_is_audited_and_the_chain_verifies() {
     assert_eq!(chain.seq(), 5);
     assert!(verify(chain.key(), &events).is_empty());
 }
+
+// ─── Restarts and profiles (INT-05, INT-06, SCN-20, SCN-25) ─────────────────
+
+fn settings_with(dir: &std::path::Path, extra: &str) -> Settings {
+    let text = format!(
+        "data_dir = '{}'\n{extra}\n[log]\nfile = ''\n",
+        dir.display()
+    );
+    let source = Source::File("test.toml".into());
+    resolve(
+        parse(&text, &source, &context()).unwrap(),
+        source,
+        &DefaultPaths::current().unwrap(),
+        &HostFacts,
+    )
+    .unwrap()
+}
+
+/// One daemon run over `observations`, stopped as soon as they are processed.
+fn run_once(dir: &std::path::Path, extra: &str, observations: Vec<scribe_core::Observation>) {
+    let sensor = scribe_test_support::FakeSensor::from_observations(observations);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(scribe_daemon::app::serve_with(
+        settings_with(dir, extra),
+        Box::new(sensor),
+        std::future::ready(()),
+    ))
+    .unwrap();
+}
+
+// Observations carry the current time: the sink's 30-day retention runs at each start and would
+// delete rows from the builders' fixed 2023 timestamp.
+fn tls(dst: &str, sni: &str) -> scribe_core::Observation {
+    let mut o = scribe_test_support::flow(dst)
+        .at(std::time::SystemTime::now())
+        .payload(&scribe_test_support::packets::tls::client_hello_sni(sni))
+        .bytes(100)
+        .observe();
+    o.event.kind = scribe_core::FlowKind::NewFlow;
+    o.event.security = scribe_core::Security::Unknown;
+    o
+}
+
+fn request(url: &str) -> scribe_core::Observation {
+    scribe_test_support::flow("192.0.2.20:80")
+        .at(std::time::SystemTime::now())
+        .http_get(url)
+        .observe()
+}
+
+fn stored(dir: &std::path::Path) -> Vec<scribe_storage_api::StoredEvent> {
+    use scribe_storage_api::{EventQuery, EventSink};
+    let sink = scribe_tests::sqlite_sink("local-history", &dir.join("events.db"));
+    futures_block(sink.query(&EventQuery::default()))
+        .unwrap()
+        .items
+}
+
+fn futures_block<F: std::future::Future>(f: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap()
+        .block_on(f)
+}
+
+fn alerts_for(events: &[scribe_storage_api::StoredEvent], host: &str) -> usize {
+    events
+        .iter()
+        .filter(|e| matches!(e, scribe_storage_api::StoredEvent::Alert(a) if a.host.as_deref() == Some(host)))
+        .count()
+}
+
+/// INT-05 and INT-06: the URL module's records reach the event sink, and its state is handed back
+/// at the next start, so its counter continues.
+#[test]
+fn module_output_is_stored_and_its_state_survives_a_restart() {
+    use scribe_storage_api::{StateStore, StoredEvent};
+    let dir = tempfile::tempdir().unwrap();
+    run_once(
+        dir.path(),
+        "",
+        vec![request("http://plain.example.com/a?x=1")],
+    );
+    run_once(dir.path(), "", vec![request("http://plain.example.com/b")]);
+
+    let events = stored(dir.path());
+    let urls: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            StoredEvent::Module(r) if r.kind == "url.request" => r.payload["url"].as_str(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        urls,
+        [
+            "http://plain.example.com/a?x=<redacted>",
+            "http://plain.example.com/b"
+        ]
+    );
+    let state = scribe_tests::sqlite_store(&dir.path().join("state.db"));
+    let module = futures_block(state.module_state("url")).unwrap();
+    assert_eq!(
+        module["requests.plain.example.com"],
+        serde_json::json!(2),
+        "counter continued"
+    );
+}
+
+/// SCN-20: hosts, counters and the learned baseline survive a restart on the same files.
+#[test]
+fn restart_keeps_hosts_counters_and_baseline() {
+    use scribe_storage_api::StateStore;
+    let dir = tempfile::tempdir().unwrap();
+    run_once(
+        dir.path(),
+        "mode = 'learn'",
+        vec![tls("192.0.2.10:443", "api.example.com")],
+    );
+    run_once(
+        dir.path(),
+        "mode = 'alert'",
+        vec![
+            tls("192.0.2.10:443", "api.example.com"),
+            tls("192.0.2.12:443", "docs.example.com"),
+        ],
+    );
+    let state = scribe_tests::sqlite_store(&dir.path().join("state.db"));
+    let api = futures_block(state.get_host("api.example.com"))
+        .unwrap()
+        .unwrap();
+    assert_eq!((api.conn_count, api.bytes_out), (2, 200));
+    let events = stored(dir.path());
+    assert_eq!(
+        alerts_for(&events, "api.example.com"),
+        0,
+        "learned in the first run"
+    );
+    assert_eq!(alerts_for(&events, "docs.example.com"), 1);
+}
+
+/// SCN-25: a host learned in one profile is unlisted in another.
+#[test]
+fn profiles_are_isolated() {
+    let dir = tempfile::tempdir().unwrap();
+    run_once(
+        dir.path(),
+        "mode = 'learn'\nprofile = 'work'",
+        vec![tls("192.0.2.10:443", "api.example.com")],
+    );
+    run_once(
+        dir.path(),
+        "mode = 'alert'\nprofile = 'home'",
+        vec![tls("192.0.2.10:443", "api.example.com")],
+    );
+    run_once(
+        dir.path(),
+        "mode = 'alert'\nprofile = 'work'",
+        vec![tls("192.0.2.10:443", "api.example.com")],
+    );
+    assert_eq!(
+        alerts_for(&stored(dir.path()), "api.example.com"),
+        1,
+        "only the home run alerts"
+    );
+}
