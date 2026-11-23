@@ -3,6 +3,7 @@
 
 pub mod decode;
 pub mod file;
+pub mod flows;
 
 use std::sync::mpsc::Sender;
 

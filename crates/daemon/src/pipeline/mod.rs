@@ -496,7 +496,10 @@ impl Pipeline {
             FlowKind::Payload => self.counters.payloads += 1,
             FlowKind::Close | FlowKind::DnsResponse => {}
         }
-        if event.kind != FlowKind::Close {
+        // A Close carries the client bytes sent after the flow's last observation: counted, but
+        // neither a connection nor a stored flow event.
+        let counted = event.kind != FlowKind::Close || event.bytes_out > 0;
+        if counted {
             w.hosts.push(HostDelta {
                 name: d.host.clone(),
                 seen_at: event.ts,
@@ -507,6 +510,8 @@ impl Pipeline {
                 unresolved: event.unresolved(),
                 process: event.process_path.clone(),
             });
+        }
+        if event.kind != FlowKind::Close {
             w.events.push(StoredEvent::Flow(event.clone()));
         }
         if let Some(host) = d.baseline_add {

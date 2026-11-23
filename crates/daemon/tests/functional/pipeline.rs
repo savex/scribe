@@ -378,3 +378,27 @@ fn clear_caches_forgets_dns_answers() {
     p.clear_caches();
     assert_eq!(p.status().dns_entries, 0);
 }
+
+#[test]
+fn a_close_counts_its_bytes_but_not_a_connection() {
+    let (mut p, _) = pipeline(Mode::Learn, &[]);
+    p.process(new_flow(
+        flow("192.0.2.10:443")
+            .bytes(100)
+            .payload(&hello(Some("api.example.com")))
+            .observe(),
+    ));
+    let quiet = p.process(flow("192.0.2.10:443").close().observe());
+    assert!(quiet.hosts.is_empty(), "no bytes left: nothing to count");
+    let w = p.process(
+        flow("192.0.2.10:443")
+            .host("api.example.com")
+            .bytes(4000)
+            .close()
+            .observe(),
+    );
+    assert_eq!(w.hosts.len(), 1);
+    assert_eq!((w.hosts[0].connections, w.hosts[0].bytes_out), (0, 4000));
+    assert!(w.events.is_empty(), "a close is not stored as a flow");
+    assert!(w.alerts.is_empty());
+}

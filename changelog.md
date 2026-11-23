@@ -64,6 +64,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 6 step 1: pcap sensor decoding (`scribe_sensor_pcap::decode`): Ethernet with VLAN tags, BSD loopback,
   raw IP, Linux cooked v1 / v2; IPv4 and IPv6 (extension headers skipped, fragments left out); TCP and UDP.
   A classic pcap file reader (`file`), both byte orders, µs / ns. Smoke test SMK-13 reads every fixture.
+- Phase 6 step 2: flow tracking (`scribe_sensor_pcap::flows`): TCP flows from the client's SYN with their first
+  bytes reassembled in or out of order (whole ClientHello, HTTP head, or first segment; reported after 1 s
+  otherwise), later HTTP requests as `Payload` when modules need payload, UDP flows, QUIC follow-up Initials,
+  DNS answers as `DnsResponse`, `Close` with the remaining bytes (FIN, RST, idle), local-address filtering, a
+  bounded table, and `replay` for pcap files (FUN-SN01). The pipeline counts a `Close`'s bytes.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),
