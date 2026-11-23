@@ -93,7 +93,8 @@ fn hash_mode_creates_a_key_and_matches_repeated_queries() {
     );
     assert_eq!(a, b);
     assert_ne!(a, c);
-    assert!(!a.contains("42"));
+    // The query itself is gone (the random hash may well contain the digits "42").
+    assert!(!a.contains("id=42") && !a.contains("id="), "{a}");
 
     // Same install, same key: a restart gives the same hash.
     assert_eq!(

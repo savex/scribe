@@ -74,6 +74,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   interface`, default Linux `any` or the first interface that is up), local addresses from every device.
   `scribed` falls back from the native sensors (Linux, Windows) to pcap when they can't start; macOS uses
   pcap. `Sensor::set_payload` tells sensors whether modules need payload.
+- Fixed a flaky URL `hash` test: it failed when the random 6-digit hash contained "42"; it now checks that
+  the query is gone.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),
