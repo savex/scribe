@@ -19,6 +19,7 @@ fn pcap_sensor_conforms() {
     let mut sensor = scribe_sensor_pcap::PcapSensor::new(Some(loopback_interface().into()));
     let opts = SuiteOptions {
         expect_process_info: false,
+        names_flows: false,
         ..Default::default()
     };
     if let Err(failures) = run_sensor_suite(&mut sensor, &opts) {

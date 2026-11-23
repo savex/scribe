@@ -20,6 +20,9 @@ pub use traffic::{Case, Expected};
 pub struct SuiteOptions {
     /// Check pid and process path. False for the pcap fallback.
     pub expect_process_info: bool,
+    /// The sensor itself names flows and classifies their security (native sensors). False for
+    /// pcap, which leaves both to enrichment: then only the client bytes are checked.
+    pub names_flows: bool,
     /// Longest wait for each expected event.
     pub timeout: Duration,
 }
@@ -28,6 +31,7 @@ impl Default for SuiteOptions {
     fn default() -> Self {
         Self {
             expect_process_info: true,
+            names_flows: true,
             timeout: Duration::from_secs(1),
         }
     }
@@ -83,11 +87,57 @@ pub fn run_sensor_suite(sensor: &mut dyn Sensor, opts: &SuiteOptions) -> Result<
     }
 
     sensor.stop();
+    failures.extend(stop_then_start_again(sensor, &rx, opts));
     if failures.is_empty() {
         Ok(())
     } else {
         Err(failures)
     }
+}
+
+/// After `stop` the sensor reports nothing; a second `start` captures again (hibernation and
+/// wakeup rely on it).
+fn stop_then_start_again(
+    sensor: &mut dyn Sensor,
+    old: &Receiver<Observation>,
+    opts: &SuiteOptions,
+) -> Vec<String> {
+    let mut failures = Vec::new();
+    let case = Case::PlainTcp {
+        payload: b"\x00\x02SCRIBE-AFTER-STOP",
+    };
+    match traffic::send(&case) {
+        Ok((expected, receipt)) => {
+            let _ = receipt.wait();
+            if !wait_for(old, &expected, opts.timeout / 2).is_empty() {
+                failures.push(format!("{}: reported a flow after stop", sensor.name()));
+            }
+        }
+        Err(err) => failures.push(format!("stop / start: could not send traffic: {err}")),
+    }
+    let (tx, rx) = mpsc::channel();
+    if let Err(e) = sensor.start(tx) {
+        failures.push(format!("{}: start after stop failed: {e}", sensor.name()));
+        return failures;
+    }
+    let case = Case::PlainTcp {
+        payload: b"\x00\x03SCRIBE-STARTED-AGAIN",
+    };
+    match traffic::send(&case) {
+        Ok((expected, receipt)) => {
+            let _ = receipt.wait();
+            if wait_for(&rx, &expected, opts.timeout).is_empty() {
+                failures.push(format!(
+                    "{}: no event for {} after starting again",
+                    sensor.name(),
+                    expected.dst
+                ));
+            }
+        }
+        Err(err) => failures.push(format!("stop / start: could not send traffic: {err}")),
+    }
+    sensor.stop();
+    failures
 }
 
 /// Observations for the expected destination, until the expected head bytes arrived (or, when
@@ -154,14 +204,16 @@ fn compare(
         format!("{:?}", event.proto),
         format!("{:?}", expected.proto),
     );
-    check(
-        "hostname",
-        event.hostname == expected.hostname,
-        format!("{:?}", event.hostname),
-        format!("{:?}", expected.hostname),
-    );
+    if opts.names_flows {
+        check(
+            "hostname",
+            event.hostname == expected.hostname,
+            format!("{:?}", event.hostname),
+            format!("{:?}", expected.hostname),
+        );
+    }
     // UDP payloads are opaque, so only TCP cases pin the security classification.
-    if expected.proto != scribe_core::Protocol::Udp {
+    if opts.names_flows && expected.proto != scribe_core::Protocol::Udp {
         check(
             "security",
             event.security == expected.security,

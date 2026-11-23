@@ -9,6 +9,9 @@
 #   scripts/build/linux.sh release                     dist/ archive for x86_64-unknown-linux-gnu
 #                                                      (and aarch64-unknown-linux-gnu with --all-targets)
 #   scripts/build/linux.sh shell                       a shell in the build container
+#   scripts/build/linux.sh run <command…>              one command in the build container (as root:
+#                                                      e.g. the capture tests, `cargo nextest run
+#                                                      -p scribe-sensor-conformance --run-ignored only`)
 #   scripts/build/linux.sh clean
 #
 # Modes:
@@ -177,6 +180,7 @@ container_main() {
       run_in "$ctr" scripts/build/linux.sh --native doctor
       ;;
     shell) build_image "$ctr"; run_in "$ctr" -it bash ;;
+    run) build_image "$ctr"; run_in "$ctr" "$@" ;;
     clean) rm -rf "$ROOT/target/linux-$ARCH" ;;
     build | test | check | release)
       build_image "$ctr"
@@ -186,7 +190,7 @@ container_main() {
   esac
 }
 
-usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; }
 
 main() {
   cd "$ROOT"

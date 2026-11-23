@@ -76,6 +76,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   pcap. `Sensor::set_payload` tells sensors whether modules need payload.
 - Fixed a flaky URL `hash` test: it failed when the random 6-digit hash contained "42"; it now checks that
   the query is gone.
+- Phase 6 step 4: the sensor conformance suite stops and starts the sensor again; `names_flows` leaves host
+  names and security to enrichment for pcap. The pcap sensor passes the suite live on Linux (`scripts/build/
+  linux.sh run …` as root in the container). INT-09: every fixture through pcap replay and the daemon
+  pipeline, replacing the test-side frame reader (INT-18).
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),
