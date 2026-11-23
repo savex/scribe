@@ -90,10 +90,11 @@ Open questions from [specs.md](specs.md) section 15 that a phase can't finish wi
 | Question | Needed by | Proposed answer |
 |---|---|---|
 | 9. Does hibernation survive a restart? | Phase 5 | No; a restart always resumes processing |
-| 11. Default for `daemon.max_hibernate`, and may it be unlimited? | Phase 5 | `4h`; `0` = unlimited, warned at every start |
+| 11. Default for `daemon.max_hibernate`, and may it be unlimited? | Phase 5 | Answered: `4h`; `""` = unlimited, warned at every start |
 | 12. Group names `scribe` / `scribe-admin`, created by whom? | Phase 10 (checks), 13 (installers) | These names, created by the installers |
 | 15. How long `privacy.url_query` stays an alias | Release after phase 3 | One minor version, with a warning |
 | 13. Release signing: cosign keyless or minisign | Phase 13 | Open |
+| Keep `x86_64-apple-darwin` as a release target? Intel Macs stop at macOS 26 and Rosetta ends after macOS 27 (risk 10) | Phase 13, or the next release | Keep building it (cross-compiling needs no Rosetta) while macOS 26 is supported; test it only on an Intel Mac or in CI; drop it when CI loses Intel macOS runners |
 
 ## Risks
 
@@ -106,6 +107,27 @@ Open questions from [specs.md](specs.md) section 15 that a phase can't finish wi
 7. **Security scope (new):** the 12.1.1 design touches every phase and three OSes. The privilege split and the API access checks are the riskiest parts: keep the privileged code tiny, test every control call as a read-only peer, and review both in phase 14. Encryption at rest (`storage.encrypt`) is optional and can slip past v1 without blocking a release.
 8. **Minimum Rust version (resolved):** policy *follow dependencies*, 1.89 now. Remaining risk: a dependency may require a very recent Rust (aya 0.16 needs 1.98); that's accepted, since release binaries are built on current stable.
 9. **CI partly run:** the Tests workflow passed on GitHub on 2026-11-22 (run `45072299330`): the whole workspace, including the crates with C code (bundled SQLite, `ring`), builds and passes on Linux, macOS and Windows. Release, Version tracking, Sensors, E2E, Fuzz and UI have not run there yet (next step 0).
+
+10. **Rosetta retirement (new, 2026-11-22):** macOS 27 is the last release with general-purpose Rosetta; from macOS 28 (autumn 2027) Apple keeps it only for older unmaintained games ([Apple](https://support.apple.com/en-us/102527)). Rosetta for Linux VMs (used by Apple `container` for `amd64` images) is reported to continue, but Apple's support page doesn't say so. So no build or test step may *depend* on Rosetta: Linux release builds cross-compile from a native `arm64` container, `x86_64` Linux tests run natively (WSL2 on the Windows x64 machine, or CI), and `x86_64` macOS tests run in CI. Rosetta stays an optional shortcut while it works.
+
+## Local build scripts (implemented 2026-11-22)
+
+One script per host, the same commands everywhere (`doctor`, `build`, `test`, `check`, `release`, `clean`), versions in one shared file (`scripts/build/config`), and `dist/` archives named exactly as `release.yml` names them, so CI can call the same scripts.
+
+| Host | Script | Builds | Tests |
+|---|---|---|---|
+| macOS (Apple silicon), Terminal or Xcode | `scripts/build/macos.sh` | `aarch64-apple-darwin` natively; `x86_64-apple-darwin` by cross-compiling (no Rosetta); universal binary with `lipo` | `arm64` natively; `x86_64` in CI. Inside Xcode: reads `CONFIGURATION`, `ARCHS`, `ACTION`, writes to `BUILT_PRODUCTS_DIR`, puts `~/.cargo/bin` on `PATH`, prints Xcode-style errors; an External Build System target now, a Run Script phase for the Network Extension in phase 9 |
+| macOS → Linux | `scripts/build/linux.sh` with Apple `container` (falls back to docker / podman) | Native `arm64` Ubuntu container; `x86_64-unknown-linux-gnu` cross-compiled in it (`gcc-x86-64-linux-gnu` or cargo-zigbuild, glibc pinned to the base image or older) | `aarch64` Linux tests in the container; `--arch amd64` under Rosetta only as an optional extra while it exists |
+| Windows x64 | `scripts/build/windows.ps1` (PowerShell 7, works on 5.1) | `x86_64-pc-windows-msvc` natively (MSVC Build Tools, Windows SDK; Npcap SDK from phase 6, WiX from phase 13) | Natively, admin for service and sensor tests |
+| Windows x64 → Linux | `scripts/build/linux.sh --native` in WSL2 Ubuntu | `x86_64-unknown-linux-gnu` natively | `x86_64` Linux tests natively; WSL2's kernel also suits the eBPF work of phase 7 |
+| CI | the same scripts | every release target | every target |
+
+Status: `scripts/build/{config, common.sh, macos.sh, linux.sh, linux.Containerfile, windows.ps1}` exist.
+Verified here: `macos.sh doctor / check / release / xcode` (universal binary from a minimal Xcode-like environment);
+`linux.sh image / doctor / check / test / release --all-targets` with Apple `container` (native arm64 image, x86_64
+cross-compiled, binaries need glibc 2.34; 359 tests pass on Linux). `windows.ps1` parses in PowerShell 7.4 and its
+`doctor` runs; it has not run on Windows yet. Not verified: `linux.sh` with docker or podman, and in WSL2. CI doesn't
+call the scripts yet.
 
 ## Not included
 - **Tauri UI:** about 4–6k LOC (TypeScript + Rust), 20–30 days. Test folders and mock API data already exist.

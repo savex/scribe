@@ -369,4 +369,6 @@ Notes:
 | Editor | VSCodium with rust-analyzer (Testing panel on), CodeLLDB, Even Better TOML, YAML, GitHub Actions, ShellCheck, PowerShell (all from Open VSX) |
 | Tracked editor files | `.vscode/settings.json`, `launch.json`, `tasks.json`, `extensions.json` only |
 | Local CI equivalent | Task "ci: Tests workflow (local)" |
+| Local build scripts | `scripts/build/{macos.sh, linux.sh, windows.ps1}` with shared `config` and `common.sh`; commands `doctor`, `build`, `test`, `check`, `release`, `clean` (+ `image`, `shell` on Linux, `service-test` on Windows); `dist/` archives and `SHA256SUMS` as `release.yml` makes them; `macos.sh` reads Xcode's `ACTION`, `CONFIGURATION`, `ARCHS` and writes universal binaries to `BUILT_PRODUCTS_DIR`; `linux.sh` runs itself with `--native` inside a native `arm64` image (`linux.Containerfile`) and cross-compiles `x86_64`; `windows.ps1` for PowerShell 7 and 5.1; `dist/` is git-ignored | Implemented (Windows not run on Windows yet) |
+| Rosetta | Never required by a build or test step: general Rosetta ends after macOS 27; Rosetta for Linux VMs is reported to stay but unconfirmed (plan risk 10) | Decided |
 | Coverage locally | rustup `llvm-tools` + `-C instrument-coverage` (no `cargo-llvm-cov` installed) |

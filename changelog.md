@@ -54,6 +54,13 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   baseline across restarts (SCN-20) and isolated profiles (SCN-25). Spec, skill, plan (phase 5 done; hourly
   buckets and alert-state restore to phase 10), status (coverage 91.7%), test list, test approach, scenario
   README and readme updated.
+- Plan: proposed local build scripts per host (macOS in Terminal or Xcode, Linux in a native `arm64` container or
+  WSL2, Windows x64), risk 10 (Rosetta retirement after macOS 27) and an open decision on the
+  `x86_64-apple-darwin` release target.
+- Build scripts per system (`scripts/build/`): `macos.sh` (Terminal and Xcode, universal binaries),
+  `linux.sh` (Apple `container`, docker or podman with a native arm64 image that cross-compiles x86_64, or
+  `--native`), `windows.ps1` (PowerShell, Windows x64); shared `config`; `release` makes the same `dist/`
+  archives and `SHA256SUMS` as the Release workflow. `dist/` is git-ignored.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

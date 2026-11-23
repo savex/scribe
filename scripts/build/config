@@ -1,0 +1,16 @@
+# Shared settings for scripts/build/* (workfiles/plan.md, "Local build scripts").
+# KEY=value lines only, no quotes or spaces around "=": read by bash and by PowerShell.
+# The minimum Rust version is read from Cargo.toml (`rust-version`), not from here.
+
+# cargo-nextest version the scripts install when missing.
+NEXTEST_VERSION=0.9.152
+
+# Linux build container. The base image sets the glibc the binaries need (24.04: glibc 2.39);
+# an older base (e.g. ubuntu:22.04, glibc 2.35) makes binaries that run on more distributions.
+LINUX_BASE_IMAGE=ubuntu:24.04
+LINUX_IMAGE=scribe-build-linux
+CONTAINER_CPUS=8
+CONTAINER_MEMORY=8G
+
+# Packages that make the release binaries.
+RELEASE_PACKAGES=scribe-daemon scribe-cli

@@ -189,6 +189,20 @@ Changes: [changelog.md](changelog.md).
 
 scribe is a Rust workspace (Rust 1.89 or newer).
 
+Build scripts for each system (`doctor` lists what's missing):
+
+```sh
+scripts/build/macos.sh check          # macOS, also from Xcode; release → dist/
+scripts/build/linux.sh check          # Linux in a container on macOS (Apple container, docker or podman)
+scripts/build/linux.sh --native test  # Linux directly (CI runner, WSL2)
+```
+
+```powershell
+pwsh -File scripts\build\windows.ps1 check   # Windows x64
+```
+
+Or with cargo directly:
+
 ```sh
 cargo build                                           # SQLite storage only
 cargo build --features postgres                       # add PostgreSQL
