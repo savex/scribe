@@ -18,6 +18,8 @@ service Scribe {
   rpc Health(HealthRequest) returns (HealthReply);
 
   rpc ListHosts(ListHostsRequest) returns (HostPage);
+  // One host's hourly counters, oldest first (`scribe hosts --hourly`).
+  rpc ListHostHours(ListHostHoursRequest) returns (HostHours);
   rpc ListAlerts(ListAlertsRequest) returns (AlertPage);
   // New alerts as they are raised, until the client hangs up.
   rpc WatchAlerts(WatchAlertsRequest) returns (stream Alert);
@@ -153,6 +155,25 @@ message Host {
   repeated string processes = 10;
   bool unresolved = 11;
   bool ech = 12;
+}
+
+message ListHostHoursRequest {
+  string host = 1;
+  // From the hour holding this time on; absent for the last 24 hours.
+  optional int64 since_ms = 2;
+}
+
+message HostHours {
+  string host = 1;
+  repeated HostHour items = 2;
+}
+
+message HostHour {
+  // Start of the hour.
+  int64 hour_ms = 1;
+  uint64 conn_count = 2;
+  uint64 req_count = 3;
+  uint64 bytes_out = 4;
 }
 
 // ------------------------------------------------------------------------------------------ alerts

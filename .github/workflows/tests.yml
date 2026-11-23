@@ -149,7 +149,14 @@ jobs:
           run crates/storage-postgres/migrations/0002_modules.sql
           run crates/storage-postgres/migrations/0002_modules.sql
           run testdata/db/postgres/v2_seed.sql
+          run crates/storage-postgres/migrations/0003_processes.sql
+          run crates/storage-postgres/migrations/0003_processes.sql
+          run testdata/db/postgres/v3_seed.sql
+          run crates/storage-postgres/migrations/0004_hours.sql
+          run crates/storage-postgres/migrations/0004_hours.sql
+          run testdata/db/postgres/v4_seed.sql
           psql -d scribe_snapshot -c 'SELECT count(*) AS hosts FROM hosts'
+          psql -d scribe_snapshot -c 'SELECT count(*) AS hourly_buckets FROM host_hours'
           psql -d scribe_snapshot -c 'SELECT kind, module, count(*) FROM events GROUP BY 1, 2 ORDER BY 1'
       - name: Conformance
         run: |

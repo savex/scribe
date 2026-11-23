@@ -47,6 +47,10 @@ impl Scribe for Mock {
         unimplemented()
     }
 
+    async fn list_host_hours(&self, _: Request<ListHostHoursRequest>) -> Reply<HostHours> {
+        unimplemented()
+    }
+
     async fn list_alerts(&self, _: Request<ListAlertsRequest>) -> Reply<AlertPage> {
         unimplemented()
     }

@@ -27,6 +27,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 10 step 5a: `scribed` restores acknowledgements and the dedupe state of recent alerts at start
   (`StateStore::alert_states` with a conformance case); `scribe audit verify` (API `VerifyAudit`) checks the
   chain of stored audit and alert records and names gaps, changed records and a missing tail.
+- Phase 10 step 5b: schema v4 with hourly counters per host (`host_hours`, FR-9), `StateStore::host_hours`
+  and `prune_host_hours` with a conformance case, `[storage.hours] keep` (default `90d`), API `ListHostHours`
+  and `scribe hosts --hourly <host> [--since]`; snapshots `sqlite/v4.db` and `postgres/v4_seed.sql`. The Postgres CI
+  job now loads migrations 0003 and 0004 and their seeds too.
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module

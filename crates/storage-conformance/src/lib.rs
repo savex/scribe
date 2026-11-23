@@ -50,6 +50,7 @@ pub async fn state_store_suite(store: &dyn StateStore) {
     security_flags_accumulate(store).await;
     unresolved_flag_is_sticky(store).await;
     process_counters_follow_deltas(store).await;
+    hourly_buckets_add_up(store).await;
     list_hosts_paginates(store).await;
     baseline_round_trip(store).await;
     alert_state_round_trip(store).await;
@@ -480,6 +481,58 @@ async fn module_state_round_trip(store: &dyn StateStore) {
         json!("other"),
         "modules don't share keys"
     );
+}
+
+async fn hourly_buckets_add_up(store: &dyn StateStore) {
+    use std::time::Duration;
+    // A fixed day, so the test never straddles an hour boundary by accident.
+    let base = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_002_800); // 23:00:00 UTC
+    let at = |offset_secs: u64, conns: u64, bytes: u64| HostDelta {
+        seen_at: base + Duration::from_secs(offset_secs),
+        ..delta("hourly.example", conns, 0, bytes)
+    };
+    for d in [
+        at(10, 1, 100),
+        at(3599, 2, 50),
+        at(3600, 1, 7),
+        at(7200 + 5, 0, 0),
+    ] {
+        store.upsert_host(&d).await.expect("upsert");
+    }
+    let all = store
+        .host_hours("hourly.example", base)
+        .await
+        .expect("host_hours");
+    let rows: Vec<(SystemTime, u64, u64)> = all
+        .iter()
+        .map(|b| (b.hour, b.conn_count, b.bytes_out))
+        .collect();
+    assert_eq!(
+        rows,
+        [(base, 3, 150), (base + Duration::from_secs(3600), 1, 7)],
+        "deltas add up per hour; an all-zero delta makes no bucket"
+    );
+    let later = store
+        .host_hours("hourly.example", base + Duration::from_secs(3700))
+        .await
+        .expect("since");
+    assert_eq!(later.len(), 1, "`since` counts from the start of its hour");
+    assert!(store
+        .host_hours("other.example", base)
+        .await
+        .expect("other host")
+        .is_empty());
+    let removed = store
+        .prune_host_hours(base + Duration::from_secs(3600))
+        .await
+        .expect("prune");
+    assert_eq!(removed, 1);
+    let kept = store
+        .host_hours("hourly.example", base)
+        .await
+        .expect("after prune");
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].hour, base + Duration::from_secs(3600));
 }
 
 fn now() -> SystemTime {

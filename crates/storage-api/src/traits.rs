@@ -5,8 +5,9 @@ use std::pin::Pin;
 use std::time::{Duration, SystemTime};
 
 use crate::{
-    AlertState, Baseline, BaselineEntry, EventQuery, Health, Host, HostDelta, HostId, HostQuery,
-    ModuleState, Page, ProcessHost, Result, SinkCaps, StorageError, StoreCaps, StoredEvent,
+    AlertState, Baseline, BaselineEntry, EventQuery, Health, Host, HostDelta, HostHour, HostId,
+    HostQuery, ModuleState, Page, ProcessHost, Result, SinkCaps, StorageError, StoreCaps,
+    StoredEvent,
 };
 
 /// Boxed future so the traits stay object-safe without extra crates.
@@ -32,6 +33,22 @@ pub trait StateStore: Send + Sync {
     ) -> BoxFuture<'a, Result<Vec<ProcessHost>>> {
         let _ = process;
         not_implemented("process_hosts")
+    }
+
+    /// `host`'s hourly buckets from the hour holding `since` on, oldest first. Every
+    /// `upsert_host` adds its deltas to the bucket of `seen_at`'s hour.
+    fn host_hours<'a>(
+        &'a self,
+        host: &'a str,
+        since: SystemTime,
+    ) -> BoxFuture<'a, Result<Vec<HostHour>>> {
+        let _ = (host, since);
+        not_implemented("host_hours")
+    }
+    /// Delete buckets of hours that started before `before`; returns how many were removed.
+    fn prune_host_hours(&self, before: SystemTime) -> BoxFuture<'_, Result<u64>> {
+        let _ = before;
+        not_implemented("prune_host_hours")
     }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>>;

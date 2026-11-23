@@ -59,8 +59,36 @@ async fn data(command: &Command, socket: &Path) -> Outcome {
     let mut client = connect(socket, CALL_TIMEOUT).await?;
     match command {
         Command::Hosts {
+            hourly: Some(host),
+            since,
+            json: as_json,
+            ..
+        } => {
+            let since_ms = since.map(|d| {
+                let t = std::time::SystemTime::now()
+                    .checked_sub(d)
+                    .unwrap_or(std::time::UNIX_EPOCH);
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |d| d.as_millis() as i64)
+            });
+            let hours = client
+                .list_host_hours(pb::ListHostHoursRequest {
+                    host: host.clone(),
+                    since_ms,
+                })
+                .await
+                .map_err(call_failure)?
+                .into_inner();
+            print(&if *as_json {
+                json(&hours)? + "\n"
+            } else {
+                output::host_hours(&hours)
+            });
+        }
+        Command::Hosts {
             filter,
             json: as_json,
+            ..
         } => {
             let page = client
                 .list_hosts(pb::ListHostsRequest {

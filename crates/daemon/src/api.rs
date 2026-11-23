@@ -654,6 +654,9 @@ impl Api {
     }
 }
 
+/// How far back `ListHostHours` looks without `since_ms`.
+const DEFAULT_HOURS: Duration = Duration::from_secs(24 * 3600);
+
 /// Audit and alert records read per page while verifying the chain.
 const VERIFY_PAGE: usize = 10_000;
 
@@ -741,6 +744,39 @@ impl Scribe for Api {
                 })
                 .collect(),
             total: page.total,
+        }))
+    }
+
+    async fn list_host_hours(
+        &self,
+        request: Request<pb::ListHostHoursRequest>,
+    ) -> Reply<pb::HostHours> {
+        self.policy.check(&request, Access::Read)?;
+        let r = request.into_inner();
+        let host = host_name(&r.host)?;
+        let since = match r.since_ms {
+            Some(ms) => from_ms(ms),
+            None => SystemTime::now()
+                .checked_sub(DEFAULT_HOURS)
+                .unwrap_or(UNIX_EPOCH),
+        };
+        let rows = self
+            .storage
+            .state()
+            .host_hours(&host, since)
+            .await
+            .map_err(|e| storage_error("hourly counters", e))?;
+        Ok(Response::new(pb::HostHours {
+            host,
+            items: rows
+                .iter()
+                .map(|b| pb::HostHour {
+                    hour_ms: epoch_ms(b.hour),
+                    conn_count: b.conn_count,
+                    req_count: b.req_count,
+                    bytes_out: b.bytes_out,
+                })
+                .collect(),
         }))
     }
 

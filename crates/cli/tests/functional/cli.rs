@@ -20,7 +20,18 @@ fn parses_every_command() {
         parse(&["hosts", "--filter", "example", "--json"]),
         Command::Hosts {
             filter: Some("example".into()),
+            hourly: None,
+            since: None,
             json: true
+        }
+    );
+    assert_eq!(
+        parse(&["hosts", "--hourly", "api.example.com", "--since", "7d"]),
+        Command::Hosts {
+            filter: None,
+            hourly: Some("api.example.com".into()),
+            since: Some(Duration::from_secs(7 * 86_400)),
+            json: false
         }
     );
     assert_eq!(
@@ -120,6 +131,8 @@ fn rejects_bad_input() {
         &["scribe", "daemon", "hibernate", "--for", "soon"],
         &["scribe", "daemon", "hibernate", "--for", "0s"],
         &["scribe", "status", "--watch", "2"],
+        &["scribe", "hosts", "--since", "1d"],
+        &["scribe", "hosts", "--hourly", "a.example", "--filter", "x"],
     ] {
         assert!(Cli::try_parse_from(args).is_err(), "{args:?}");
     }

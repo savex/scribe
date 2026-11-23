@@ -670,6 +670,8 @@ pub async fn serve_full(
     let modules_built: Vec<&'static str> = modules::builtin().iter().map(|m| m.id).collect();
     let mut config_loaded = clock.now();
     let mut rates = Rates::default();
+    let hours_keep = settings.config.storage.hours.keep.map(Duration::from);
+    let mut next_prune = clock.now();
 
     let user = settings.config.daemon.user.trim();
     if !user.is_empty() {
@@ -825,6 +827,13 @@ pub async fn serve_full(
                 pipeline.modules_mut().tick();
                 drain.run(queue.take(), &storage).await;
                 rates.sample(clock.now(), pipeline.counters().flows, events_queued(&storage));
+                if let Some(keep) = hours_keep {
+                    let now = clock.now();
+                    if now >= next_prune {
+                        next_prune = now + PRUNE_EVERY;
+                        prune_hours(storage.state(), now, keep).await;
+                    }
+                }
             }
         }
     }
@@ -1053,6 +1062,21 @@ pub fn load_threats(settings: &Settings) -> anyhow::Result<ThreatSet> {
         warn!(list = %name, "threat list downloads arrive in plan phase 11; list \"{name}\" is not used yet");
     }
     Ok(set)
+}
+
+/// How often old hourly buckets are deleted.
+const PRUNE_EVERY: Duration = Duration::from_secs(3600);
+
+/// Delete hourly buckets older than `keep` (`[storage.hours] keep`).
+async fn prune_hours(state: &dyn scribe_storage_api::StateStore, now: SystemTime, keep: Duration) {
+    let Some(cutoff) = now.checked_sub(keep) else {
+        return;
+    };
+    match state.prune_host_hours(cutoff).await {
+        Ok(0) | Err(StorageError::NotImplemented(_)) => {}
+        Ok(n) => info!(removed = n, "old hourly counters deleted"),
+        Err(e) => warn!("cannot delete old hourly counters: {e}"),
+    }
 }
 
 /// Bring back acknowledgements, and dedupe for alerts still inside their window, from the state

@@ -756,7 +756,7 @@ mod functional {
                 "data_dir",
                 "api",
                 "sensor",
-                "storage limits (cache, buffer, spool)",
+                "storage limits (cache, buffer, spool, hours)",
                 "log (file, output, format, rotation)"
             ]
         );

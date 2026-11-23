@@ -20,6 +20,7 @@ pub struct MemoryStore {
     alerts: Mutex<HashMap<String, AlertState>>,
     modules: Mutex<HashMap<String, ModuleState>>,
     process_hosts: Mutex<Vec<ProcessHost>>,
+    hours: Mutex<Vec<scribe_storage_api::HostHour>>,
 }
 
 impl MemoryStore {
@@ -73,6 +74,27 @@ impl StateStore for MemoryStore {
             h.unresolved |= d.unresolved;
             let id = h.id;
             drop(hosts);
+            if d.connections + d.requests + d.bytes_out > 0 {
+                let hour = scribe_storage_api::hour_of(d.seen_at);
+                let mut hours = self.hours.lock().unwrap();
+                match hours
+                    .iter_mut()
+                    .find(|b| b.host == d.name && b.hour == hour)
+                {
+                    Some(b) => {
+                        b.conn_count += d.connections;
+                        b.req_count += d.requests;
+                        b.bytes_out += d.bytes_out;
+                    }
+                    None => hours.push(scribe_storage_api::HostHour {
+                        host: d.name.clone(),
+                        hour,
+                        conn_count: d.connections,
+                        req_count: d.requests,
+                        bytes_out: d.bytes_out,
+                    }),
+                }
+            }
             if let Some(process) = &d.process {
                 let mut ph = self.process_hosts.lock().unwrap();
                 let row = match ph
@@ -100,6 +122,36 @@ impl StateStore for MemoryStore {
                 row.bytes_out += d.bytes_out;
             }
             Ok(id)
+        })
+    }
+
+    fn host_hours<'a>(
+        &'a self,
+        host: &'a str,
+        since: std::time::SystemTime,
+    ) -> BoxFuture<'a, Result<Vec<scribe_storage_api::HostHour>>> {
+        Box::pin(async move {
+            let from = scribe_storage_api::hour_of(since);
+            let mut rows: Vec<_> = self
+                .hours
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|b| b.host == host && b.hour >= from)
+                .cloned()
+                .collect();
+            rows.sort_by_key(|b| b.hour);
+            Ok(rows)
+        })
+    }
+
+    fn prune_host_hours(&self, before: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
+        Box::pin(async move {
+            let cutoff = scribe_storage_api::hour_of(before);
+            let mut hours = self.hours.lock().unwrap();
+            let n = hours.len();
+            hours.retain(|b| b.hour >= cutoff);
+            Ok((n - hours.len()) as u64)
         })
     }
 

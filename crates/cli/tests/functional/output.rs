@@ -315,3 +315,40 @@ fn the_audit_report_names_each_problem() {
          records before 5 are not stored (retention removes old records)\n"
     );
 }
+
+#[test]
+fn hourly_counters_end_with_totals() {
+    let hours = pb::HostHours {
+        host: "api.example.com".into(),
+        items: vec![
+            pb::HostHour {
+                hour_ms: 1_700_002_800_000,
+                conn_count: 3,
+                req_count: 0,
+                bytes_out: 1536,
+            },
+            pb::HostHour {
+                hour_ms: 1_700_006_400_000,
+                conn_count: 1,
+                req_count: 2,
+                bytes_out: 512,
+            },
+        ],
+    };
+    assert_eq!(
+        output::host_hours(&hours),
+        "api.example.com\n\
+         HOUR (UTC)            CONNS  REQUESTS  SENT\n\
+         2023-11-14T23:00:00Z  3      0         1.5 KiB\n\
+         2023-11-15T00:00:00Z  1      2         512 B\n\
+         api.example.com over 2 hours: 4 connections, 2 requests, 2.0 KiB sent\n"
+    );
+    let empty = pb::HostHours {
+        host: "quiet.example".into(),
+        items: vec![],
+    };
+    assert_eq!(
+        output::host_hours(&empty),
+        "quiet.example: no traffic counted in this period\n"
+    );
+}

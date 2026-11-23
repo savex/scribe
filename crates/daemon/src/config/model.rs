@@ -369,6 +369,7 @@ pub struct Storage {
     pub cache: Cache,
     pub buffer: Buffer,
     pub spool: Spool,
+    pub hours: Hours,
     pub sinks: Vec<Spanned<Sink>>,
 }
 
@@ -379,6 +380,7 @@ impl Default for Storage {
             cache: Cache::default(),
             buffer: Buffer::default(),
             spool: Spool::default(),
+            hours: Hours::default(),
             sinks: vec![Spanned::new(0..0, Sink::default())],
         }
     }
@@ -475,6 +477,23 @@ impl Default for Spool {
             dir: "spool".into(),
             max_size: SizeLimit::mib(512),
             min_free_disk: SizeLimit::Percent(5.0),
+        }
+    }
+}
+
+/// `[storage.hours]`: hourly counter buckets per host in the state store (FR-9).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Hours {
+    /// Buckets older than this are deleted (checked hourly); `""` keeps them forever.
+    #[serde(with = "optional_duration")]
+    pub keep: Option<HumanDuration>,
+}
+
+impl Default for Hours {
+    fn default() -> Self {
+        Self {
+            keep: Some(HumanDuration::from_secs(90 * 86_400)),
         }
     }
 }

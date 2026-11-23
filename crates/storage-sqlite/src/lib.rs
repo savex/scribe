@@ -11,7 +11,7 @@ mod state;
 use std::net::IpAddr;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use scribe_core::Clock;
 
@@ -19,8 +19,8 @@ use crate::db::Db;
 
 use scribe_storage_api::{
     required_option, AlertState, BackendOptions, Baseline, BaselineEntry, BoxFuture, EventQuery,
-    EventSink, Health, Host, HostDelta, HostId, HostQuery, ModuleState, Page, ProcessHost, Result,
-    SinkCaps, StateStore, StorageFactory, StoreCaps, StoredEvent,
+    EventSink, Health, Host, HostDelta, HostHour, HostId, HostQuery, ModuleState, Page,
+    ProcessHost, Result, SinkCaps, StateStore, StorageFactory, StoreCaps, StoredEvent,
 };
 
 pub const KIND: &str = "sqlite";
@@ -31,6 +31,7 @@ pub const MIGRATIONS: &[&str] = &[
     include_str!("../migrations/0001_init.sql"),
     include_str!("../migrations/0002_modules.sql"),
     include_str!("../migrations/0003_processes.sql"),
+    include_str!("../migrations/0004_hours.sql"),
 ];
 
 pub struct SqliteFactory;
@@ -129,6 +130,19 @@ impl StateStore for SqliteStore {
             self.db
                 .with(move |c| state::process_hosts(c, process.as_deref())),
         )
+    }
+
+    fn host_hours<'a>(
+        &'a self,
+        host: &'a str,
+        since: SystemTime,
+    ) -> BoxFuture<'a, Result<Vec<HostHour>>> {
+        let host = host.to_owned();
+        Box::pin(self.db.with(move |c| state::host_hours(c, &host, since)))
+    }
+
+    fn prune_host_hours(&self, before: SystemTime) -> BoxFuture<'_, Result<u64>> {
+        Box::pin(self.db.with(move |c| state::prune_host_hours(c, before)))
     }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {

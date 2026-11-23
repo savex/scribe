@@ -146,7 +146,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-6 | For QUIC, read the SNI from the Initial packet (using `ring` 0.17) | Implemented (v1 and v2, ClientHello across several Initials; per-flow reassembly wired in phase 5) | RFC 9001 and RFC 9369 Appendix A packets; fixtures `quic_initial`, `quic_split_hello`; fuzz target `quic_initial` |
 | FR-7 | Track hosts without a name by IP, flagged unresolved; never drop them | Implemented (hosts keyed by IP when nameless, `hosts.unresolved` since schema v3; shown by `scribe hosts` in phase 10) | Scenario `hostname-unresolved`; fixture `doh` |
 | FR-8 | Record the full URL for plaintext HTTP requests (URL module, section 7.4.6) | Implemented (request parser, all `query` modes including `hash`; wired to traffic in phase 5) | Fixture `http_plain`; module conformance |
-| FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Partly (per host and per process + host since schema v3; hourly buckets not yet) | Scenario `counters-exact`; storage conformance |
+| FR-9 | Keep connection, request and byte counters per host and per process + host, plus hourly buckets; updates are deltas | Implemented (per host and per process + host since schema v3; hourly buckets per host since schema v4) | Scenario `counters-exact`; storage conformance |
 | FR-10 | Keep each host's first seen, last seen, `tls_seen` and `plaintext_seen` (flags only turn on) | Implemented in the SQLite state store (Postgres in phase 12) | Storage conformance |
 | FR-11 | Support the modes `learn`, `caution` and `alert` with the behaviour in section 8 | Implemented (`scribe-policy`; fed by the pipeline in phase 5) | Scenarios |
 | FR-12 | Support time-limited learn mode that switches to a chosen mode | Implemented (pausing the timer while hibernating arrives with phase 5) | Scenario `learn-auto-switch` |
@@ -720,7 +720,16 @@ Migration `0003_processes.sql` for both backends, snapshots `testdata/db/sqlite/
   gains `unresolved` and `process`; one upsert updates both tables in one transaction, and a delta without a
   process counts for the host only. `StateStore::process_hosts(process)` lists them.
 - Alert rows also keep `dst_port` and the flow's `notes` (payload keys; older rows read as 0 and empty).
-- Hourly buckets (FR-9) are not stored yet.
+- Hourly buckets (FR-9) arrive with schema v4 (section 10.3.2).
+
+### 10.3.2 Schema v4 for hourly counters (implemented in phase 10)
+
+Migration `0004_hours.sql` for both backends, snapshots `testdata/db/sqlite/v4.db` and `postgres/v4_seed.sql`
+(from `seed_v4.sql`): `host_hours (host, hour)` with connections, requests and bytes per host per hour (the
+hour's start). Every host upsert with a non-zero delta adds to the bucket of its `seen_at` hour in the same
+transaction. `StateStore::host_hours(host, since)` reads them (API `ListHostHours`, `scribe hosts --hourly`);
+`prune_host_hours(before)` deletes old ones, which `scribed` does at start and every hour for buckets older
+than `[storage.hours] keep` (default `90d`, `""` = forever). Host totals are never pruned.
 
 ### 10.4 SQLite backend (implemented in phase 1)
 

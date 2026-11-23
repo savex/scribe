@@ -72,10 +72,11 @@ pub fn plan(running: &Settings, new: Settings) -> ReloadPlan {
     restart("storage.state", old.storage.state != cfg.storage.state);
     restart("storage.sinks", old.storage.sinks != cfg.storage.sinks);
     restart(
-        "storage limits (cache, buffer, spool)",
+        "storage limits (cache, buffer, spool, hours)",
         old.storage.cache != cfg.storage.cache
             || old.storage.buffer != cfg.storage.buffer
-            || old.storage.spool != cfg.storage.spool,
+            || old.storage.spool != cfg.storage.spool
+            || old.storage.hours != cfg.storage.hours,
     );
     restart(
         "log (file, output, format, rotation)",

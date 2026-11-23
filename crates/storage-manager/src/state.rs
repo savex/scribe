@@ -14,11 +14,11 @@ use std::collections::VecDeque;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use scribe_storage_api::{
-    AlertState, Baseline, BaselineEntry, BoxFuture, Health, Host, HostDelta, HostId, HostQuery,
-    ModuleState, Page, ProcessHost, Result, StateStore, StorageError, StoreCaps,
+    AlertState, Baseline, BaselineEntry, BoxFuture, Health, Host, HostDelta, HostHour, HostId,
+    HostQuery, ModuleState, Page, ProcessHost, Result, StateStore, StorageError, StoreCaps,
 };
 use serde_json::Value;
 
@@ -276,6 +276,18 @@ impl StateStore for BufferedState {
         process: Option<&'a str>,
     ) -> BoxFuture<'a, Result<Vec<ProcessHost>>> {
         self.inner.process_hosts(process)
+    }
+
+    fn host_hours<'a>(
+        &'a self,
+        host: &'a str,
+        since: SystemTime,
+    ) -> BoxFuture<'a, Result<Vec<HostHour>>> {
+        self.inner.host_hours(host, since)
+    }
+
+    fn prune_host_hours(&self, before: SystemTime) -> BoxFuture<'_, Result<u64>> {
+        self.inner.prune_host_hours(before)
     }
 
     fn baseline<'a>(&'a self, profile: &'a str) -> BoxFuture<'a, Result<Baseline>> {

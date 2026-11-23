@@ -2,14 +2,14 @@
 //! `tls_seen` / `plaintext_seen` only turn on.
 
 use std::net::IpAddr;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use scribe_core::Security;
 use scribe_storage_api::codec::{from_millis, to_millis};
 use scribe_storage_api::{
-    AlertState, Baseline, BaselineEntry, EntrySource, Host, HostDelta, HostId, HostQuery,
-    ModuleState, Page, ProcessHost,
+    hour_of, AlertState, Baseline, BaselineEntry, EntrySource, Host, HostDelta, HostHour, HostId,
+    HostQuery, ModuleState, Page, ProcessHost,
 };
 
 /// SQLite integers are signed; counters beyond `i64::MAX` saturate.
@@ -67,6 +67,23 @@ pub(crate) fn upsert_host(c: &Connection, d: &HostDelta) -> rusqlite::Result<Hos
         ],
         |r| r.get(0),
     )?;
+    if d.connections + d.requests + d.bytes_out > 0 {
+        c.execute(
+            "INSERT INTO host_hours (host, hour, conn_count, req_count, bytes_out)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (host, hour) DO UPDATE SET
+                 conn_count = conn_count + excluded.conn_count,
+                 req_count  = req_count + excluded.req_count,
+                 bytes_out  = bytes_out + excluded.bytes_out",
+            params![
+                d.name,
+                to_millis(hour_of(d.seen_at)),
+                int(d.connections),
+                int(d.requests),
+                int(d.bytes_out),
+            ],
+        )?;
+    }
     if let Some(process) = &d.process {
         c.execute(
             "INSERT INTO process_hosts (process, host, first_seen, last_seen, conn_count, req_count, bytes_out)
@@ -88,6 +105,35 @@ pub(crate) fn upsert_host(c: &Connection, d: &HostDelta) -> rusqlite::Result<Hos
         )?;
     }
     Ok(id)
+}
+
+pub(crate) fn host_hours(
+    c: &Connection,
+    host: &str,
+    since: SystemTime,
+) -> rusqlite::Result<Vec<HostHour>> {
+    let mut stmt = c.prepare(
+        "SELECT host, hour, conn_count, req_count, bytes_out FROM host_hours
+         WHERE host = ?1 AND hour >= ?2 ORDER BY hour",
+    )?;
+    let rows = stmt.query_map(params![host, to_millis(hour_of(since))], |r| {
+        Ok(HostHour {
+            host: r.get(0)?,
+            hour: from_millis(r.get(1)?),
+            conn_count: r.get::<_, i64>(2)? as u64,
+            req_count: r.get::<_, i64>(3)? as u64,
+            bytes_out: r.get::<_, i64>(4)? as u64,
+        })
+    })?;
+    rows.collect()
+}
+
+pub(crate) fn prune_host_hours(c: &Connection, before: SystemTime) -> rusqlite::Result<u64> {
+    let n = c.execute(
+        "DELETE FROM host_hours WHERE hour < ?1",
+        [to_millis(hour_of(before))],
+    )?;
+    Ok(n as u64)
 }
 
 pub(crate) fn process_hosts(

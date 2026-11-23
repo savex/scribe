@@ -42,8 +42,14 @@ pub enum Command {
     /// Tracked hosts with counters and flags
     Hosts {
         /// Only hosts whose name contains this text
-        #[arg(long, value_name = "TEXT")]
+        #[arg(long, value_name = "TEXT", conflicts_with = "hourly")]
         filter: Option<String>,
+        /// One host's counters per hour instead of the list
+        #[arg(long, value_name = "HOST")]
+        hourly: Option<String>,
+        /// With --hourly: how far back, e.g. 7d (default 24h)
+        #[arg(long, value_name = "DURATION", requires = "hourly", value_parser = parse_duration)]
+        since: Option<Duration>,
         /// Print JSON
         #[arg(long)]
         json: bool,

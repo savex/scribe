@@ -7,7 +7,7 @@ use scribe_core::{FlowEvent, MetricSample, ModuleRecord, Security};
 
 /// Version of the stored record layout. Bump on incompatible changes.
 /// 2: module records, metric samples and module state (specs 10.3).
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 pub type HostId = i64;
 
@@ -53,6 +53,25 @@ pub struct ProcessHost {
     pub conn_count: u64,
     pub req_count: u64,
     pub bytes_out: u64,
+}
+
+/// One host's counters for one hour (FR-9; schema v4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostHour {
+    pub host: String,
+    /// Start of the hour.
+    pub hour: SystemTime,
+    pub conn_count: u64,
+    pub req_count: u64,
+    pub bytes_out: u64,
+}
+
+/// The start of the hour `t` falls in.
+pub fn hour_of(t: SystemTime) -> SystemTime {
+    let secs = t
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs - secs % 3600)
 }
 
 #[derive(Debug, Clone, Default)]

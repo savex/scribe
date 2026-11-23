@@ -41,7 +41,9 @@ fn ok(out: &Output, code: i32) -> String {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn every_command_works_against_a_running_daemon() {
-    let daemon = Daemon::start_with("caution", &my_admin_group(), two_flows()).await;
+    // The flows are from 2023: keep their hourly buckets.
+    let extra = format!("{}\n[storage.hours]\nkeep = ''", my_admin_group());
+    let daemon = Daemon::start_with("caution", &extra, two_flows()).await;
     let s = daemon.socket.clone();
     // Let both flows and the alert reach storage.
     crate::api::eventually(
@@ -80,6 +82,31 @@ async fn every_command_works_against_a_running_daemon() {
     .unwrap();
     assert_eq!(filtered["items"][0]["name"], "198.51.100.7");
     assert_eq!(filtered["items"][0]["unresolved"], true);
+
+    let hourly = ok(
+        &scribe(
+            &s,
+            &["hosts", "--hourly", "API.example.com", "--since", "36500d"],
+        )
+        .await,
+        0,
+    );
+    assert!(
+        hourly.contains("2023-11-14T22:00:00Z  1      0         512 B"),
+        "{hourly}"
+    );
+    assert!(
+        hourly.ends_with("over 1 hour: 1 connection, 0 requests, 512 B sent\n"),
+        "{hourly}"
+    );
+    let recent = ok(
+        &scribe(&s, &["hosts", "--hourly", "api.example.com"]).await,
+        0,
+    );
+    assert_eq!(
+        recent,
+        "api.example.com: no traffic counted in this period\n"
+    );
 
     let alerts: serde_json::Value =
         serde_json::from_str(&ok(&scribe(&s, &["alerts", "--json"]).await, 0)).unwrap();

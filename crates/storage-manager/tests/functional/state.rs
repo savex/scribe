@@ -88,6 +88,16 @@ impl StateStore for Switchable {
     fn alert_states(&self) -> BoxFuture<'_, Result<Vec<AlertState>>> {
         guarded!(self, self.inner.alert_states())
     }
+    fn host_hours<'a>(
+        &'a self,
+        h: &'a str,
+        s: std::time::SystemTime,
+    ) -> BoxFuture<'a, Result<Vec<scribe_storage_api::HostHour>>> {
+        guarded!(self, self.inner.host_hours(h, s))
+    }
+    fn prune_host_hours(&self, b: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
+        guarded!(self, self.inner.prune_host_hours(b))
+    }
     fn module_state<'a>(&'a self, m: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
         guarded!(self, self.inner.module_state(m))
     }

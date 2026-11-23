@@ -890,3 +890,47 @@ async fn alert_dedupe_and_acknowledgements_survive_a_restart() {
     let dir = daemon.stop().await;
     assert!(has(&audits(dir.path()).await, "acknowledged by"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn old_hourly_buckets_are_pruned() {
+    // The flows are from 2023, far beyond the default 90 days.
+    let daemon = Daemon::start("caution", two_flows()).await;
+    let mut client = daemon.client().await;
+    eventually(
+        || {
+            let mut c = client.clone();
+            async move {
+                c.get_status(pb::StatusRequest {})
+                    .await
+                    .unwrap()
+                    .into_inner()
+            }
+        },
+        |s| s.counters.as_ref().is_some_and(|c| c.flows == 2),
+    )
+    .await;
+    let hours = eventually(
+        || {
+            let mut c = client.clone();
+            async move {
+                c.list_host_hours(pb::ListHostHoursRequest {
+                    host: "api.example.com".into(),
+                    since_ms: Some(0),
+                })
+                .await
+                .unwrap()
+                .into_inner()
+            }
+        },
+        |h| h.items.is_empty(),
+    )
+    .await;
+    assert_eq!(hours.host, "api.example.com");
+    let hosts = client
+        .list_hosts(pb::ListHostsRequest::default())
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(hosts.items.len(), 2, "host totals are never pruned");
+    daemon.stop().await;
+}

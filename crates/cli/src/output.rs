@@ -452,3 +452,37 @@ pub fn audit(r: &pb::AuditReport) -> String {
     }
     out
 }
+
+/// `scribe hosts --hourly <host>`: one row per hour with traffic, then the totals.
+pub fn host_hours(h: &pb::HostHours) -> String {
+    if h.items.is_empty() {
+        return format!("{}: no traffic counted in this period\n", h.host);
+    }
+    let rows: Vec<Vec<String>> = h
+        .items
+        .iter()
+        .map(|b| {
+            vec![
+                rfc3339_ms(b.hour_ms),
+                b.conn_count.to_string(),
+                b.req_count.to_string(),
+                bytes(b.bytes_out),
+            ]
+        })
+        .collect();
+    let mut out = format!("{}\n", h.host);
+    out.push_str(&table(&["HOUR (UTC)", "CONNS", "REQUESTS", "SENT"], &rows));
+    let (c, r, b) = h.items.iter().fold((0, 0, 0), |(c, r, b), x| {
+        (c + x.conn_count, r + x.req_count, b + x.bytes_out)
+    });
+    let _ = writeln!(
+        out,
+        "{} over {}: {}, {} requests, {} sent",
+        h.host,
+        plural(h.items.len() as u64, "hour", "hours"),
+        plural(c, "connection", "connections"),
+        r,
+        bytes(b)
+    );
+    out
+}

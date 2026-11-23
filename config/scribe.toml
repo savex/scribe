@@ -160,6 +160,11 @@ dir = "spool"
 max_size = "512MiB"       # or a percentage of the volume, e.g. "2%"
 min_free_disk = "5%"      # stop growing the spool when free space falls below this
 
+# Hourly counters per host (connections, requests, bytes) in the state store; `scribe hosts
+# --hourly <host>` lists them. Older buckets are deleted every hour; "" keeps them forever.
+[storage.hours]
+keep = "90d"
+
 [[storage.sinks]]
 name = "local-history"
 kind = "sqlite"

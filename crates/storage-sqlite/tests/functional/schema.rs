@@ -100,3 +100,41 @@ fn the_v3_snapshot_reads_back() {
         [("plain.example.com", 1, 96), ("public.example.com", 1, 512)]
     );
 }
+
+#[test]
+fn v3_migrates_to_v4_with_empty_hourly_buckets() {
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(&snapshot(3, dir.path()));
+    block_on(s.migrate()).unwrap();
+    assert_eq!(s.schema_version().unwrap(), 4);
+    let hours = block_on(s.host_hours("api.example.com", std::time::UNIX_EPOCH)).unwrap();
+    assert!(hours.is_empty(), "hours before v4 were never counted");
+}
+
+#[test]
+fn the_v4_snapshot_reads_back() {
+    use std::time::{Duration, UNIX_EPOCH};
+    let dir = tempfile::tempdir().unwrap();
+    let s = store(&snapshot(4, dir.path()));
+    block_on(s.migrate()).unwrap();
+    let hours = block_on(s.host_hours("api.example.com", UNIX_EPOCH)).unwrap();
+    let rows: Vec<_> = hours
+        .iter()
+        .map(|b| (b.hour, b.conn_count, b.bytes_out))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            (
+                UNIX_EPOCH + Duration::from_millis(1_700_298_000_000),
+                3,
+                1536
+            ),
+            (
+                UNIX_EPOCH + Duration::from_millis(1_700_301_600_000),
+                1,
+                512
+            )
+        ]
+    );
+}
