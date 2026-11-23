@@ -1,22 +1,32 @@
 # scribe readiness by module
 
-As of the end of **phase 5** (2026-11-22, commits `39796b2`…`173e2bf` plus the docs commit), **`scribed` runs
-the whole pipeline**: sensor → enrichment (SNI, `Host`, DNS answers, QUIC) → modules → policy → storage, with
-per-host and per-process counters, alerts, audit events in a tamper-evident chain, hibernation and wakeup,
-config reload on SIGHUP, and service integration for systemd, launchd and Windows. All 19 daemon scenarios
-pass through the real pipeline. What's missing for real use is a sensor: the platform sensors are still stubs
-(phase 6 brings pcap). Product code coverage is 91.7%.
+As of the end of **phase 6** (2026-11-22, commits `f42a76b`…`b9a61ae` plus the docs commit), **scribe captures
+real traffic**: the pcap sensor decodes packets, tracks flows and feeds the pipeline on every system (macOS
+directly, Linux and Windows as the fallback behind their native sensors), with libpcap / Npcap loaded at run
+time. It passes the sensor conformance suite live on Linux, and every fixture runs through replay and the
+pipeline. Process attribution still waits for the native sensors (phases 7–9). Product code coverage is 90.6%.
 
 **How this was measured**
 - **Completion** is an estimate against each module's scope in [plan.md](plan.md).
 - **Coverage** is line coverage from `cargo test --workspace --all-features` alone, measured with LLVM
-  source-based coverage (rustup `llvm-tools`) on macOS, all rows re-measured after phase 5. 358 tests
+  source-based coverage (rustup `llvm-tools`) on macOS, all rows re-measured after phase 6. 387 tests
   passed and 4 were skipped (Postgres
   conformance needs a database; sensor conformance needs privileges).
 - Unit tests written inside source files (`#[cfg(test)]` modules) count as covered lines, which raises
   the percentages of `core`, `daemon` and `cli` somewhat. `crates/daemon/src/config/tests.rs` and
   `tests/` folders are excluded.
 - Linux- and Windows-only code (memory lookup, journald) is compile-checked from macOS but only runs in CI.
+
+## Phase 6 delivered (one commit per step)
+
+| Step | Commit | Result |
+|---|---|---|
+| 0. Build scripts | `5fc08d0` | `scripts/build/` for macOS (Terminal, Xcode), Linux (container or native) and Windows |
+| 1. Decoder | `f42a76b` | Link layers, IPv4 / IPv6, TCP / UDP; pcap file reader; SMK-13 |
+| 2. Flow tracker | `fc1b908` | First bytes, later requests, QUIC follow-ups, DNS responses, closes with bytes; replay; FUN-SN01 |
+| 3. Live capture | `bb0490e` | libpcap / Npcap at run time, non-blocking reads, device choice, native → pcap fallback |
+| 4. Conformance | `b9a61ae` | Stop / start case; pcap suite passes live on Linux; INT-09 through the pipeline |
+| 5. Docs | this commit | Spec 8.4.1, skill, plan, status, test list, readme |
 
 ## Phase 5 delivered (one commit per step)
 
@@ -123,8 +133,8 @@ earlier edit (`111411c`); they are restored.
 | `enrich` | 3 | **100%** | `Enricher`; TLS ClientHello, HTTP heads, DNS answers and cache (clearable), QUIC Initial decryption and reassembly | — | **96%** (609/638) |
 | `secrets` | 3, 11 | **~60%** | `file:` references with owner / mode checks and key generation; `keychain:`, `dpapi:`, `secret-service:` parsed | OS store backends (phase 11), Windows ACL checks (phase 13) | **88%** (156/177) |
 | `policy` | 4 | **100%** | Signals, threat lists, `Policy::decide`; reload setters, learn countdown pause | Alert state restored at start (phase 10) | **97%** (444/459) |
-| `daemon` (`scribed`) | 0, 0b, 5 | **~85%** | Config, logging (live level), the capture pipeline, run states and `Command`s, config reload (SIGHUP), audit chain, StrictModes, crash marker, systemd notify, Windows service, privilege drop | A real sensor (phases 6–9), the API (phase 10) | **92%** (2305/2516) |
-| `sensor-pcap` | 6 | **~2%** | Stub (returns `Unsupported`; `scribed` runs without capture) | Capture and flow reassembly | **70%** (7/10), stub only |
+| `daemon` (`scribed`) | 0, 0b, 5, 6 | **~90%** | Pipeline, run states, reload, audit chain, services; platform sensor with the pcap fallback | Native sensors (phases 7–9), the API (phase 10) | **91%** (2348/2569) |
+| `sensor-pcap` | 6 | **100%** | Decoder, flow tracker, pcap replay, live capture (libpcap / Npcap at run time), device choice; conformance passes live on Linux | — | **82%** (676/827; live capture runs as root, measured in the container suite, not here) |
 | `sensor-linux` (eBPF) | 7 | **~2%** | Stub, Linux only | eBPF programs, loader, process lookup | n/a (not built on macOS) |
 | `sensor-windows` (ETW) | 8 | **~2%** | Stub, Windows only | ETW session, DNS-client events, Npcap | n/a (not built on macOS) |
 | macOS Network Extension | 9 | **0%** | README only | Swift extension, XPC bridge | n/a |
@@ -133,7 +143,7 @@ earlier edit (`111411c`); they are restored.
 | UI (Tauri) | later | **0%** | Test folders and mock API data | Everything | n/a |
 | Packaging | 13 | **~20%** | Release archives with checksums and service files (systemd unit, launchd plist, Windows install script); release smoke test | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing, hardened units | n/a |
 
-**Product total:** 6,373 of 6,949 measurable lines covered (**91.7%**).
+**Product total:** 7,086 of 7,820 measurable lines covered (**90.6%**).
 The coverage targets in the test approach (≥ 80% for `core` and the daemon config) are met.
 
 ## Test infrastructure, CI and data
@@ -142,22 +152,22 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 |---|---|---|---|
 | `test-support` | **100%** | Test doubles (with process counters in `MemoryStore`), packet builders, pcap writer, fixture generator | **94%** (1598/1709) |
 | `storage-conformance` | **100%** | Suite every storage backend must pass, with module data, process counters and `unresolved` | **99%** (414/420) |
-| `sensor-conformance` | **100%** | Suite every sensor must pass (checks client bytes), plus the traffic generator | **41%** (86/210); the runner needs a real sensor |
+| `sensor-conformance` | **100%** | Suite every sensor must pass, now with stop / start; `names_flows` for sensors that leave naming to enrichment | **34%** (86/252); runs with a real sensor |
 | `module-conformance` | **100%** | Suite every module must pass | **85%** (245/289) |
 | Test data | **100%** | 16 pcap fixtures (2 QUIC), all checked end to end; RFC 9001 / 9369 sample packets; 19 scenarios (16 run), raw sensor samples, v1 and v2 database snapshots | Checked by the fixture, end-to-end, scenario and snapshot tests |
 | Fuzzing | **~60%** | 4 targets with seeds (`tls_client_hello`, `dns_message`, `quic_initial`, `http_request`); they compile on stable | Never run (needs Rust nightly) |
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
 | CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Tests passed on GitHub (2026-11-22, run `45072299330`); Release and the other workflows not run yet |
 
-**Overall:** 8,716 of 9,577 measurable lines covered (**91.0%**).
+**Overall:** 9,447 of 10,490 measurable lines covered (**90.1%**).
 
 ## What this means
 
-- **Phases 0, 0b and 1–5 are done.** Remaining effort: 74–92.5 days (89–111 with buffer); milestone M1: 20.5–24 days.
-- **The daemon is complete apart from capture and the API:** a sensor only has to send `Observation`s (and `DnsResponse`s) into the channel `serve()` gives it; the API (phase 10) sends the `Command`s that already work.
+- **Phases 0, 0b and 1–6 are done.** Remaining effort: 70.5–88 days (85–106 with buffer); milestone M1: 16–20.5 days (phases 10 and 11).
+- **`scribed` runs end to end with the pcap sensor:** what M1 still needs is the API and CLI (phase 10), which send the `Command`s that already work, and the alert outputs (phase 11).
 - **Next steps** (plan milestone M1):
   0. Run the Release workflow once (push the `v0.1.1` tag); Tests already passed on GitHub.
-  1. Phase 6: the pcap sensor, against the 16 fixtures and the sensor conformance suite.
+  1. Phase 10 (API and CLI) and phase 11 (alert outputs) to finish M1.
   2. Apply for Apple's Network Extension entitlement (plan risk 1).
 - **Not verified here:** the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests,
   the Postgres migration 0002 (no local Postgres; the Tests workflow loads it) and the fuzz targets (no nightly).

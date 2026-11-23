@@ -80,6 +80,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   names and security to enrichment for pcap. The pcap sensor passes the suite live on Linux (`scripts/build/
   linux.sh run …` as root in the container). INT-09: every fixture through pcap replay and the daemon
   pipeline, replacing the test-side frame reader (INT-18).
+- Phase 6 step 5: spec 8.4.1 (pcap sensor rules), FR-1 / FR-2 and fallback statuses, skill, plan (phase 6
+  done), status (coverage 90.6%), test list, readme.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

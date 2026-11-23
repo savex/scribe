@@ -78,7 +78,7 @@ Related documents: [plan](../../../workfiles/plan.md), [diagrams](../../../workf
 | macOS capture piece | Swift System Extension (`NEFilterDataProvider`) talking to the daemon over XPC | Decided |
 | Windows capture | ETW from user mode first; WFP driver / WinDivert only for later blocking | Decided |
 | Linux capture | eBPF with `aya`; kernel 5.8+, CO-RE; pcap fallback on older kernels | Decided (code is a stub) |
-| Fallback capture | libpcap (Linux, macOS) / Npcap (Windows), no process attribution | Decided |
+| Fallback capture | libpcap (Linux, macOS) / Npcap (Windows) loaded at run time with `libloading` (no SDK at build time; `SCRIBE_LIBPCAP` overrides), non-blocking reads, `[sensor] interface` (`""` = Linux `any` or the first device that is up); no process attribution; `FallbackSensor` puts it behind the native sensors; rules in specs 8.4.1 | Implemented (phase 6) |
 | UI technology | Tauri | Proposed |
 | Crypto library | `ring` 0.17 — HKDF, AES-128-GCM and QUIC header protection (`ring::aead::quic`) for QUIC Initial decryption; most downloaded option (839M total, 197M in 90 days on crates.io, 2026-10-26) and needs Rust 1.66 | Decided |
 | Async in interfaces | Boxed futures (`BoxFuture`), no `async-trait` crate | Decided |
@@ -111,7 +111,7 @@ Also `serde_json`, `rusqlite` 0.43 (bundled SQLite, phase 1); the storage manage
 | `scribe-core` | lib | Flow events, modes, alerts, clock, sensor interface, `VERSION` |
 | `scribe-enrich` | lib | `Enricher`: TLS ClientHello (SNI, ALPN, ECH), HTTP request heads and `Host`, DNS answers and cache, QUIC Initial decryption, security detection (full URL parsing is in `scribe-module-url`) |
 | `scribe-secrets` | lib | Secret references (`file:` now; keychain, DPAPI, Secret Service in phase 11), key generation |
-| `scribe-sensor-linux` / `-windows` / `-pcap` | lib | Capture sensors |
+| `scribe-sensor-linux` / `-windows` / `-pcap` | lib | Capture sensors; `-pcap` has `decode`, `flows` (tracker and `replay`), `file` (pcap reader) and `ffi` (run-time libpcap) |
 | `scribe-storage-api` | lib | `StateStore`, `EventSink`, `StorageFactory` |
 | `scribe-storage-manager` | lib | Registry, writer task per sink (batching, retention), spool and replay, outage buffer, cache, health |
 | `scribe-storage-sqlite` | lib | Default backend (feature `sqlite`, on by default); implemented, passes both conformance suites |

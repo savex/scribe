@@ -94,8 +94,8 @@ Every test follows these rules; review checks them.
 
 ## 4. Time budget
 
-**Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`, after phase 5): 361 tests
-(358 run, 3 ignored) plus doc examples in 44 test binaries, **1.4 s** wall clock; no test reaches the
+**Measured now** (Apple M2 Max, 12 cores, debug build, after compiling, `cargo nextest`, after phase 6): 390 tests
+(387 run, 3 ignored) plus doc examples in 44 test binaries, **1.4 s** wall clock; no test reaches the
 2 s warning. Before
 tagging, `cargo test` took 5 s, mostly in one test (`catches_every_fault`), now split into one test per
 fault with a shorter case for the slow-hook fault.
@@ -105,11 +105,11 @@ limit). Compile time is not included.
 
 | Tag | Tests now | Tests planned (M3) | Planned wall time | Per-test limit (warn / kill) |
 |---|---|---|---|---|
-| `smoke` | 13 | ~20 (+ 6 live) | ≤ 5 s | 2 s / 6 s |
-| `functional` | 311 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
+| `smoke` | 14 | ~20 (+ 6 live) | ≤ 5 s | 2 s / 6 s |
+| `functional` | 339 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
 | `integration` | 15 | ~25 | ≤ 15 s | 5 s / 10 s |
 | `scenario` | 22 | 26 | ≤ 10 s | 5 s / 10 s |
-| **Total** | **361** | **~400** | **≤ 60 s** (limit 120 s) | |
+| **Total** | **390** | **~400** | **≤ 60 s** (limit 120 s) | |
 
 **How the budget holds:** runs are parallel, so wall time ≈ the longer of (total test time ÷ cores) and
 the slowest single test. With ~400 tests averaging under 0.5 s and no test over 10 s, a 4-core CI runner
@@ -139,7 +139,7 @@ Columns: **ID**, **test** (current name, or planned name), **checks**, **isolati
 | SMK-10 | `windows_service_starts_and_stops` | `scribed` runs as a service and stops on service stop | Child process | 1 s | Phase 5 (Windows) |
 | SMK-11 | `api_answers_health` | In-process daemon on a temp socket answers `Health` | Temp socket | 0.2 s | Phase 10 |
 | SMK-12 | `cli_reaches_daemon` | `scribe daemon health` against SMK-11's daemon exits 0 | Temp socket | 0.2 s | Phase 10 |
-| SMK-13 | `pcap_decoder_reads_every_fixture` | The pcap decoder reads all 14 fixtures without error | Reads repo | 0.1 s | Phase 6 |
+| SMK-13 | `pcap_decoder_reads_every_fixture` | The pcap decoder reads every committed fixture in `testdata/pcap/` | Reads repo | < 10 ms | Exists |
 | SMK-14 | `policy_loads_default_scores` | Policy engine builds from the default config | In memory | < 10 ms | Phase 4 |
 | SMK-15 | `release_archive_layout` | A packed archive holds both binaries, readme and config | Temp dir | 0.5 s | Phase 13 |
 
@@ -221,7 +221,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-D01 | `pipeline::*` (12) | Pipeline writes, DNS answers, QUIC holding and timeout, run states, cache reset | `FakeClock` | < 10 ms | Exists |
 | FUN-D02 | `chain::*` (5) | Audit chain seal, verify, gaps, edits, restart, codec round trip; StrictModes | Temp dir | < 10 ms | Exists |
 | FUN-D03 | `service::*` (5), `daemon_user_is_unix_only`, `max_hibernate_*`, `reload_*` | Service files, privilege drop, systemd notify (Linux), config keys of phase 5, reload planner | Temp dir | < 10 ms | Exists |
-| FUN-SN01 | `pcap_decoder_matches_expected_flows` | Each pcap fixture decodes to its JSON expectations (`kind`, `head`) | Reads fixtures | 0.1 s | Phase 6 |
+| FUN-SN01 | `pcap_decoder_matches_expected_flows`, `decode::*` (7), `file::*` (5), `flows::*` (9), `sensor::*` (5) | Each fixture gives its `NewFlow` and `Payload` observations with the right first bytes; link types, fragments, IPv6 headers, pcap formats, timeouts, closes, local addresses, payload switch, limits, device choice | Reads fixtures | 0.1 s | Exists |
 | FUN-SN02 | `ebpf_samples_decode` | `testdata/events/linux-ebpf/*` → expected observations | Reads samples | < 10 ms | Phase 7 |
 | FUN-SN03 | `etw_samples_decode` | `testdata/events/windows-etw/*` → expected observations | Reads samples | < 10 ms | Phase 8 |
 | FUN-SN04 | `xpc_messages_decode` | `testdata/events/macos-ne/*` → expected observations; bad messages rejected | Reads samples | < 10 ms | Phase 9 |
@@ -294,7 +294,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | INT-06 | `module_output_is_stored_and_its_state_survives_a_restart` | SQLite `module_state` → module host start → module | The counter continues after a restart | Temp dir | (same test) | Exists |
 | INT-07 | `config_reload_applies_live_keys_and_refuses_broken_files` | Config file → reload → policy, modules | Live keys applied, restart keys reported, broken file refused | Temp dir | 50 ms | Exists |
 | INT-08 | `dns_answer_names_a_later_flow` | Enrichment DNS cache → TLS flow without SNI | `dns_cname_then_tls`, `dns_aaaa_then_tls` hostnames (packet builders; fixtures also in INT-18) | In memory | 20 ms | Exists (`tests/integration/enrich.rs`) |
-| INT-09 | `pcap_to_enriched_flows` | pcap decoder → enrichment → URL module | Each fixture's full JSON expectation incl. `notes.url`, `ech` | Reads fixtures | 0.1 s | Phase 6 |
+| INT-09 | `pcap_to_enriched_flows` | pcap replay → pipeline (enrichment, QUIC holding, URL module, policy) | Each fixture's full JSON expectation incl. `notes.url`, `ech` | Reads fixtures | 20 ms | Exists (`tests/integration/enrich.rs`) |
 | INT-10 | `pipeline_stores_flows_counters_and_alerts` | `FakeSensor` → enrichment → modules → policy → SQLite | Hosts, per-process counters, alert state, flow and alert events | Temp dir | 50 ms | Exists |
 | INT-11 | `policy_alert_reaches_outputs_and_store` | Policy → alert outputs + `AlertState` + alert event | Alert delivered once and stored | Temp dir | 30 ms | Phases 4, 11 |
 | INT-12 | `cli_api_daemon_round_trip` | CLI → local API (temp socket) → daemon → storage | `hosts`, `mode`, `baseline add` round-trip | Temp dir + socket | 0.3 s | Phase 10 |
@@ -305,7 +305,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | INT-17 | `ui_commands_against_mock_api` | Tauri commands → `MockApiServer` | Requests and error mapping | Temp socket | 0.2 s | Later (UI) |
 | INT-19 | `commands_drive_the_run_states` | `Command`s → running daemon → storage | Hibernate, reset, wakeup, status; audit events and the `hibernated` alert stored | Temp dir | 50 ms | Exists |
 | INT-20 | `an_unclean_stop_is_audited_and_the_chain_verifies` | Two daemon runs → audit chain | Unclean stop audited; the chain of both runs verifies | Temp dir | 100 ms | Exists |
-| INT-18 | `every_fixture_gives_its_expected_flows` | Fixture frames (test-side Ethernet / IP / TCP / UDP reader) → `Enricher` (DNS cache, QUIC reassembler) → URL module | Every fixture's expected flows: proto, destination, name, security, `notes.url`, `ech`, `kind` | Reads fixtures | 20 ms | Exists (`tests/integration/enrich.rs`); INT-09 replaces the reader with the pcap sensor in phase 6 |
+| INT-18 | → INT-09 | The test-side frame reader was replaced by the pcap sensor's replay in phase 6 | — | — | — | Merged into INT-09 |
 
 ### 5.4 Scenario
 
@@ -374,7 +374,7 @@ These stages keep their own time budgets (test approach section 11) and never bl
 
 | Stage | Tests | Budget |
 |---|---|---|
-| Privileged sensor conformance | `pcap_sensor_conforms` and the native sensors on each OS; Linux kernel matrix | < 2 h |
+| Privileged sensor conformance | `pcap_sensor_conforms` (passes as root in the Linux build container: `scripts/build/linux.sh run cargo nextest run -p scribe-sensor-conformance --run-ignored only`) and the native sensors on each OS; Linux kernel matrix | < 2 h |
 | End-to-end | `tests/e2e/` on installed packages | 1–2 days with the release checklist |
 | Fuzzing | `fuzz/` targets, 30 min each | < 2 h |
 | Performance, soak, volume | 1,000 connections/s; 24 h soak; 10M events | Before release |

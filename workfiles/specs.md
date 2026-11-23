@@ -138,8 +138,8 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 
 | ID | Requirement | Status | Verified by |
 |---|---|---|---|
-| FR-1 | Capture every outgoing TCP connection and UDP / QUIC flow, IPv4 and IPv6, on macOS, Linux and Windows | Stub | Sensor conformance suite; pcap fixtures |
-| FR-2 | Attribute each flow to its process (pid and path) where the sensor allows; the pcap fallback reports no process | Stub | Sensor conformance (`expect_process_info`) |
+| FR-1 | Capture every outgoing TCP connection and UDP / QUIC flow, IPv4 and IPv6, on macOS, Linux and Windows | Partly (pcap sensor on every OS, verified live on Linux; native sensors in phases 7–9) | Sensor conformance suite; pcap fixtures |
+| FR-2 | Attribute each flow to its process (pid and path) where the sensor allows; the pcap fallback reports no process | Partly (the pcap fallback reports no process; native sensors in phases 7–9) | Sensor conformance (`expect_process_info`) |
 | FR-3 | Find the host name in this order: TLS SNI, HTTP `Host` header, DNS cache (IP → queried name, CNAME chains map back to the queried name) | Implemented (`scribe_enrich::Enricher`; a name the sensor reports ranks after `Host`; wired to traffic in phase 5) | pcap fixtures `tls13_sni_ipv4`, `http_plain`, `dns_cname_then_tls`, `dns_aaaa_then_tls` |
 | FR-4 | Classify each flow as `tls`, `quic`, `plaintext` or `unknown` from its first bytes, never from the port | Implemented (TCP and UDP, QUIC long headers) | Functional tests in `enrich`; every fixture end to end |
 | FR-5 | For ECH, record the outer public name and flag the flow `ech` | Implemented | Fixture `tls_ech` |
@@ -298,7 +298,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | Kernel metrics module | `crates/module-kperf` (`scribe-module-kperf`, feature `kperf`) | Example of a later module: TCP retransmits, RTT, run-queue delay from kernel probes | module-api, sensors' `ProbeHost` | Idea (not planned) |
 | Linux sensor | `crates/sensor-linux` | eBPF probes with `aya`, process lookup | core | Stub |
 | Windows sensor | `crates/sensor-windows` | ETW kernel-network and DNS-client events, Npcap for payloads | core | Stub |
-| pcap sensor | `crates/sensor-pcap` | Fallback capture on every OS, no process info | core | Stub |
+| pcap sensor | `crates/sensor-pcap` | Capture on every OS (macOS today, the fallback on Linux and Windows), no process info; libpcap / Npcap loaded at run time | core | Implemented (phase 6) |
 | macOS extension | `macos/ScribeExtension` | Network Extension + XPC bridge | — | Planned |
 | Storage API | `crates/storage-api` | `StateStore`, `EventSink`, `StorageFactory`, data model, errors | core | Implemented (interfaces) |
 | Storage manager | `crates/storage-manager` | Backend registry, routing to sinks; later host cache, batching, spool, retention | storage-api, backends | Implemented (registry, writer tasks, spool, outage buffer, host cache, health)
@@ -482,11 +482,22 @@ The default mode is `learn`. Hosts added to the baseline in learn mode stay list
 
 | Situation | Behaviour | Status |
 |---|---|---|
-| Native sensor unavailable (old kernel, extension not approved) | Fall back to the pcap sensor; status reports no process info. Today `scribed` logs that capture isn't available and keeps running without a sensor | Planned (fallback), Implemented (keeps running) |
+| Native sensor unavailable (old kernel, extension not approved) | Fall back to the pcap sensor (`FallbackSensor`); status reports no process info. Without libpcap / Npcap either, `scribed` logs it and keeps running without a sensor | Implemented (phase 6) |
 | Event sink down | Spool to disk (`storage.spool`), replay in order; when `max_size` or `min_free_disk` is reached drop the oldest and count drops | Implemented (phase 2) |
 | State store unavailable | Keep the latest events in an in-memory buffer (`storage.buffer`); when full, drop the oldest to add the newest; count drops, report unhealthy, replay in order on recovery (FR-25) | Implemented (phase 2) |
 | Hostname hidden (ECH, DoH) | Track by IP or outer name, flag it | Implemented (phase 5) |
 | Invalid config | At start: refuse to start, report the error and line (Implemented). On reload: keep the running config, report the error and line (Planned) | Partly |
+
+### 8.4.1 pcap sensor (implemented in phase 6)
+
+| Item | Behaviour |
+|---|---|
+| Library | libpcap (`libpcap.A.dylib`, `libpcap.so.1`) or Npcap (`System32\\Npcap\\wpcap.dll`), loaded at run time; `SCRIBE_LIBPCAP` names another file. Missing library or no permission: the sensor reports why and `scribed` runs without capture |
+| Device | `[sensor] interface`; `""` = Linux `any`, else the first device that is up, not loopback, with an address. Filter `tcp or udp`, no promiscuous mode, non-blocking reads |
+| Direction | A TCP flow starts at the client's SYN; a UDP flow at the first datagram from an address of this machine (all devices' addresses). Connections open before capture started are not tracked |
+| First bytes | Reassembled by sequence number up to 4 KiB: a whole ClientHello, an HTTP head to the empty line, or the first segment; reported 1 s after the SYN with what arrived otherwise |
+| Later bytes | Plaintext HTTP requests as `Payload` when an enabled module needs payload (`Sensor::set_payload`); the next QUIC long-header datagrams as `Payload`; DNS answers (UDP from port 53) as `DnsResponse`; all other client bytes counted and reported by `Close` (FIN, RST, 5 min TCP / 60 s UDP idle, a full table of 65,536 flows) |
+| Time | From the packets, so a replay (`flows::replay`) behaves like live capture |
 
 ### 8.5 Daemon run states (implemented in the daemon in phase 5; commands in phase 10)
 
