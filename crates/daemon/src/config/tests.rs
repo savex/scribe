@@ -731,4 +731,17 @@ mod functional {
         let p = plan(&resolve_text(text), resolve_text(text));
         assert!(p.applied.is_empty() && p.needs_restart.is_empty());
     }
+
+    #[test]
+    fn daemon_user_is_unix_only() {
+        let text = "[daemon]\nuser = \"scribe\"\n";
+        assert_eq!(parse_ok(text).daemon.user, "scribe");
+        let windows = Context {
+            os: Os::Windows,
+            storage_kinds: vec!["sqlite"],
+            modules: vec![],
+        };
+        let err = parse(text, &file(), &windows).unwrap_err();
+        assert!(err.to_string().contains("daemon.user is for Unix"), "{err}");
+    }
 }

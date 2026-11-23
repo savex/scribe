@@ -6,4 +6,6 @@ pub mod config;
 pub mod logging;
 pub mod modules;
 pub mod pipeline;
+pub mod privileges;
 pub mod security;
+pub mod service;

@@ -58,12 +58,17 @@ pub struct Daemon {
     /// The longest `scribe daemon hibernate` may last; `""` = unlimited (warned at every start).
     #[serde(with = "optional_duration")]
     pub max_hibernate: Option<HumanDuration>,
+    /// Unix: continue as this user after start-up (`""` = stay as started). `data_dir` must
+    /// belong to it.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub user: String,
 }
 
 impl Default for Daemon {
     fn default() -> Self {
         Self {
             max_hibernate: Some(HumanDuration::from_secs(4 * 3600)),
+            user: String::new(),
         }
     }
 }

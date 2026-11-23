@@ -94,6 +94,14 @@ jobs:
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/scribed$exe" "target/${{ matrix.target }}/release/scribe$exe" "dist/$name/"
           cp readme.md config/scribe.toml "dist/$name/"
+          # Service files for this system (packaging/README.md).
+          mkdir -p "dist/$name/service"
+          cp packaging/README.md "dist/$name/service/"
+          case "${{ matrix.target }}" in
+            *linux*) cp packaging/linux/scribed.service "dist/$name/service/" ;;
+            *apple*) cp packaging/macos/io.github.savex.scribed.plist "dist/$name/service/" ;;
+            *windows*) cp packaging/windows/install-service.ps1 "dist/$name/" ;;
+          esac
           if [[ "${{ matrix.smoke }}" == "true" ]]; then
             got=$("dist/$name/scribe$exe" --version)
             [[ "$got" == "scribe $VERSION" ]] || { echo "::error::binary reports '$got', expected 'scribe $VERSION'"; exit 1; }

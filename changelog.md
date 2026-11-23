@@ -47,6 +47,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   (HMAC-SHA256, key `audit.key`, chain continues across restarts, `chain::verify` finds gaps and edits);
   `audit` events for start, stop and an unclean previous stop; `scribed` refuses to start when the config file
   or `data_dir` is writable by group or others.
+- Phase 5 step 7: service integration: systemd `Type=notify` readiness, a systemd unit and a launchd plist,
+  `scribed --service` for the Windows service control manager (`windows-service` 0.8) with an install script,
+  service files in the release archives, and `[daemon] user` to drop root privileges on Unix.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

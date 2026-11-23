@@ -1,0 +1,21 @@
+# systemd unit for scribed (plan phase 5). Install to /etc/systemd/system/, then
+#   systemctl daemon-reload && systemctl enable --now scribed
+# The hardened unit, the scribe user and groups and file modes come with the packages (plan phase 13).
+[Unit]
+Description=scribe outgoing connection tracker
+Documentation=https://github.com/savex/scribe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# scribed sends READY=1 once storage, the policy and the sensor are up, and STOPPING=1 on stop.
+Type=notify
+ExecStart=/usr/bin/scribed --config /etc/scribe/scribe.toml
+# Re-read the config; settings that need a restart are logged.
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

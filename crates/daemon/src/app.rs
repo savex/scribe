@@ -46,12 +46,26 @@ pub struct Args {
     /// Check the config, print the effective config and exit
     #[arg(long)]
     pub check_config: bool,
+
+    /// Run under the Windows service control manager (set by the installer; Windows only)
+    #[arg(long)]
+    pub service: bool,
 }
 
 /// Entry point of the `scribed` binary.
 pub fn main() -> ExitCode {
+    let args = Args::parse();
+    if args.service {
+        #[cfg(windows)]
+        return crate::service::run_windows_service();
+        #[cfg(not(windows))]
+        {
+            eprintln!("scribed: --service is for Windows; use the systemd unit or launchd plist in packaging/");
+            return ExitCode::from(EXIT_CONFIG);
+        }
+    }
     run(
-        Args::parse(),
+        args,
         std::env::var_os("SCRIBE_CONFIG"),
         std::env::var("SCRIBE_LOG").ok(),
     )
@@ -59,6 +73,16 @@ pub fn main() -> ExitCode {
 
 /// Runs scribed with explicit inputs, so tests don't depend on the process environment.
 pub fn run(args: Args, config_env: Option<OsString>, log_filter: Option<String>) -> ExitCode {
+    run_until(args, config_env, log_filter, shutdown_signal())
+}
+
+/// [`run`] that stops when `shutdown` completes (the Windows service stop request).
+pub fn run_until(
+    args: Args,
+    config_env: Option<OsString>,
+    log_filter: Option<String>,
+    shutdown: impl Future<Output = ()>,
+) -> ExitCode {
     let settings = match config::load_settings(args.config.as_deref(), config_env) {
         Ok(settings) => settings,
         Err(e) => {
@@ -86,7 +110,7 @@ pub fn run(args: Args, config_env: Option<OsString>, log_filter: Option<String>)
         .enable_all()
         .build()
         .context("cannot start the async runtime")
-        .and_then(|rt| rt.block_on(serve(settings, shutdown_signal())));
+        .and_then(|rt| rt.block_on(serve(settings, shutdown)));
     let code = match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -450,6 +474,13 @@ pub async fn serve_controlled(
     ));
     writer.apply(&storage, pipeline.profile(), started).await;
 
+    let user = settings.config.daemon.user.trim();
+    if !user.is_empty() {
+        crate::privileges::drop_to(user, &settings.data_dir)
+            .map_err(|e| anyhow::anyhow!("cannot run as {user}: {e}"))?;
+        info!(user, "running as {user}");
+    }
+    crate::service::notify("READY=1\nSTATUS=capturing");
     info!("scribed started; waiting for a stop signal");
     let mut running = settings.clone();
     let mut hup = hangup_signal();
@@ -526,6 +557,7 @@ pub async fn serve_controlled(
         }
     }
     info!("stop signal received; shutting down");
+    crate::service::notify("STOPPING=1");
 
     sensor.stop();
     drop(sensor);

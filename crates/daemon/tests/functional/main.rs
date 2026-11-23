@@ -8,3 +8,4 @@ mod module_host;
 mod modules;
 mod pipeline;
 mod scribed;
+mod service;

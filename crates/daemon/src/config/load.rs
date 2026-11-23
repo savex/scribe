@@ -271,6 +271,12 @@ pub fn validate(
             ),
         ));
     }
+    if ctx.os == Os::Windows && !config.daemon.user.trim().is_empty() {
+        return Err(at(
+            0..0,
+            "daemon.user is for Unix; on Windows the installer sets the service account (plan phase 13)".into(),
+        ));
+    }
     if config.log.max_size.get_ref().is_percent() {
         return Err(at(
             config.log.max_size.span(),

@@ -50,6 +50,10 @@ tracing-oslog.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 scribe-sensor-windows.workspace = true
+windows-service = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
 
 [dev-dependencies]
 scribe-module-url.workspace = true

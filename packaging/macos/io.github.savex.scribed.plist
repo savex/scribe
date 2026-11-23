@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd job for scribed (plan phase 5). Install to /Library/LaunchDaemons/, then
+    sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.savex.scribed.plist
+  launchd stops scribed with SIGTERM; `sudo launchctl kill HUP system/io.github.savex.scribed`
+  reloads the config. The notarized package installs this file (plan phase 13).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.github.savex.scribed</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/scribed</string>
+        <string>--config</string>
+        <string>/Library/Application Support/scribe/scribe.toml</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+    <key>StandardErrorPath</key>
+    <string>/Library/Logs/scribe/scribed.stderr.log</string>
+</dict>
+</plist>
