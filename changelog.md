@@ -24,6 +24,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `alerts ack`, `baseline` and `baseline add|rm`, `export`, `modules`, and `scribe daemon status|health|reset|
   hibernate|wakeup` with `--json`, `--watch`, `--timeout`, `--for` and the aliases; global `--socket` and
   `SCRIBE_SOCKET`; `scribe_core::time` (RFC 3339 and human durations).
+- Phase 10 step 5a: `scribed` restores acknowledgements and the dedupe state of recent alerts at start
+  (`StateStore::alert_states` with a conformance case); `scribe audit verify` (API `VerifyAudit`) checks the
+  chain of stored audit and alert records and names gaps, changed records and a missing tail.
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module

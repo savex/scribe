@@ -87,6 +87,11 @@ pub enum Command {
         #[command(subcommand)]
         command: DaemonCommand,
     },
+    /// The tamper-evident record of what was done to scribed
+    Audit {
+        #[command(subcommand)]
+        command: AuditCommand,
+    },
     /// Print the version
     Version,
 }
@@ -119,6 +124,16 @@ pub enum BaselineAction {
     Rm {
         #[arg(required = true)]
         hosts: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
+pub enum AuditCommand {
+    /// Check the chain of stored audit and alert records; exit 1 when it is broken
+    Verify {
+        /// Print JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -202,6 +217,9 @@ impl Command {
                     DaemonCommand::Wakeup => "wakeup",
                 }
             ),
+            Command::Audit {
+                command: AuditCommand::Verify { .. },
+            } => "audit verify".into(),
             Command::Version => "version".into(),
         }
     }

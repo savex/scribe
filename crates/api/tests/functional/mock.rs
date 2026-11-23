@@ -67,6 +67,10 @@ impl Scribe for Mock {
         unimplemented()
     }
 
+    async fn verify_audit(&self, _: Request<VerifyAuditRequest>) -> Reply<AuditReport> {
+        unimplemented()
+    }
+
     async fn list_modules(&self, _: Request<ListModulesRequest>) -> Reply<ModuleList> {
         unimplemented()
     }

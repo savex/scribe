@@ -231,6 +231,19 @@ pub(crate) fn put_alert_state(c: &Connection, s: &AlertState) -> rusqlite::Resul
     Ok(())
 }
 
+pub(crate) fn alert_states(c: &Connection) -> rusqlite::Result<Vec<AlertState>> {
+    let mut stmt =
+        c.prepare("SELECT key, last_alerted, acknowledged FROM alert_state ORDER BY key")?;
+    let rows = stmt.query_map([], |r| {
+        Ok(AlertState {
+            key: r.get(0)?,
+            last_alerted: from_millis(r.get(1)?),
+            acknowledged: r.get(2)?,
+        })
+    })?;
+    rows.collect()
+}
+
 pub(crate) fn get_alert_state(c: &Connection, key: &str) -> rusqlite::Result<Option<AlertState>> {
     c.query_row(
         "SELECT key, last_alerted, acknowledged FROM alert_state WHERE key = ?1",

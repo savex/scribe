@@ -170,6 +170,10 @@ impl StateStore for SqliteStore {
         Box::pin(self.db.with(move |c| state::get_alert_state(c, &key)))
     }
 
+    fn alert_states(&self) -> BoxFuture<'_, Result<Vec<AlertState>>> {
+        Box::pin(self.db.with(|c| state::alert_states(c)))
+    }
+
     fn module_state<'a>(&'a self, module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
         let module = module.to_owned();
         Box::pin(self.db.with(move |c| state::module_state(c, &module)))

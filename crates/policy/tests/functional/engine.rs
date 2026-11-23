@@ -344,3 +344,69 @@ fn a_paused_learn_timer_ends_later_by_the_pause() {
     p.resume_learn_timer(); // nothing paused: no change
     assert_eq!(p.learn_until(), Some(end + Duration::from_secs(1800)));
 }
+
+#[test]
+fn keys_turn_back_into_alerts() {
+    use scribe_policy::alert_from_key;
+    let t = std::time::SystemTime::UNIX_EPOCH;
+    for key in [
+        "docs.example.com|/usr/bin/curl",
+        "198.51.100.7|",
+        "2001:db8::1|/opt/a|b",
+        "plain.example.com|",
+    ] {
+        let alert = alert_from_key(key, t);
+        assert_eq!(alert_key(&alert), key, "{key}");
+        assert_eq!(alert.ts, t);
+    }
+    let ip = alert_from_key("198.51.100.7|", t);
+    assert_eq!((ip.host, ip.process_path), (None, None));
+    let piped = alert_from_key("2001:db8::1|/opt/a|b", t);
+    assert_eq!(piped.process_path.as_deref(), Some("/opt/a|b"));
+}
+
+#[test]
+fn restored_states_keep_acknowledgements_and_the_dedupe_window() {
+    use scribe_policy::alert_from_key;
+    let (mut p, clock) = policy(Mode::Alert, &[]);
+    let now = scribe_core::Clock::now(&clock);
+    let acked = || tls("192.0.2.12:443", "docs.example.com").process(100, "/usr/bin/curl");
+    let recent = || tls("192.0.2.13:443", "api.example.com").process(100, "/usr/bin/curl");
+    let old = || tls("192.0.2.14:443", "old.example.com").process(100, "/usr/bin/curl");
+    p.restore_alert(
+        alert_from_key(
+            "docs.example.com|/usr/bin/curl",
+            now - Duration::from_secs(86_400),
+        ),
+        true,
+    );
+    p.restore_alert(
+        alert_from_key(
+            "api.example.com|/usr/bin/curl",
+            now - Duration::from_secs(60),
+        ),
+        false,
+    );
+    p.restore_alert(
+        alert_from_key(
+            "old.example.com|/usr/bin/curl",
+            now - Duration::from_secs(86_400),
+        ),
+        false,
+    );
+    assert!(
+        reason(&mut p, acked()).is_none(),
+        "acknowledged before the restart"
+    );
+    assert!(
+        reason(&mut p, recent()).is_none(),
+        "still inside its dedupe window"
+    );
+    assert!(reason(&mut p, old()).is_some(), "its window has passed");
+    clock.advance(Duration::from_secs(86_400));
+    assert!(
+        reason(&mut p, recent()).is_some(),
+        "the window ends as usual"
+    );
+    assert!(reason(&mut p, acked()).is_none(), "acknowledged for good");
+}

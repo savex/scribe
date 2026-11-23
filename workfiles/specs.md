@@ -531,7 +531,8 @@ any ──(SIGTERM, Ctrl-C, service stop)──▶ stopping ──▶ stopped
   arrive while hibernating are dropped and counted (`dropped_hibernating`); held QUIC flows are judged before
   the pause. A second `hibernate` sets a new end (still capped) with an audit event and no new alert. The
   `hibernated` alert has no host and the destination `0.0.0.0:0`; its `daemon` note carries the caller and the
-  planned end. Alert state is saved but not restored at start yet (restored with acknowledgements in phase 10).
+  planned end. At start `scribed` restores the stored alert state (`StateStore::alert_states`): acknowledged
+  keys stay silent, and keys alerted inside the dedupe window aren't alerted again (phase 10).
 - **Restart:** hibernation doesn't survive a restart; `scribed` always starts in `running` (Proposed;
   the alternative of persisting it in the state store is open question 9).
 - **Stops and crashes:** a daemon stop, a crash found at the next start, and gaps in the audit sequence are

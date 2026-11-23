@@ -6,6 +6,8 @@ pub mod engine;
 pub mod signals;
 pub mod threat;
 
-pub use engine::{alert_key, alert_key_for, Decision, Policy, PolicyConfig, Scores};
+pub use engine::{
+    alert_from_key, alert_key, alert_key_for, Decision, Policy, PolicyConfig, Scores,
+};
 pub use signals::UsualPorts;
 pub use threat::{ThreatFormat, ThreatSet};

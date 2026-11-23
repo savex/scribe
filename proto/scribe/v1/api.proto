@@ -25,6 +25,9 @@ service Scribe {
   // Hosts, then the baseline; the CLI writes the file as the caller.
   rpc Export(ExportRequest) returns (stream ExportItem);
 
+  // Check the tamper-evident chain of stored audit and alert records (`scribe audit verify`).
+  rpc VerifyAudit(VerifyAuditRequest) returns (AuditReport);
+
   rpc ListModules(ListModulesRequest) returns (ModuleList);
   rpc GetModule(GetModuleRequest) returns (Module);
 
@@ -233,6 +236,30 @@ message ExportItem {
     Host host = 1;
     BaselineEntry baseline_entry = 2;
   }
+}
+
+// ------------------------------------------------------------------------------------------- audit
+
+message VerifyAuditRequest {}
+
+message AuditReport {
+  // Sealed audit and alert records found in storage.
+  uint64 records = 1;
+  // Lowest and highest sequence stored; records before `first_seq` may have aged out (retention).
+  uint64 first_seq = 2;
+  uint64 last_seq = 3;
+  // The last sequence scribed sealed.
+  uint64 sealed_seq = 4;
+  repeated AuditProblem problems = 5;
+}
+
+message AuditProblem {
+  // "gap" (records after `seq` up to `next` are missing), "mismatch" (record `seq` doesn't carry
+  // the HMAC of the one before: one of them was changed), "unlinked" (a record without a chain
+  // link), "missing_tail" (records after `seq` up to `next`, sealed by scribed, are not stored).
+  string kind = 1;
+  uint64 seq = 2;
+  uint64 next = 3;
 }
 
 // ----------------------------------------------------------------------------------------- modules

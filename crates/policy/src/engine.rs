@@ -141,6 +141,29 @@ pub fn alert_key_for(
     }
 }
 
+/// The alert a stored dedupe key stands for, as far as the key tells: the host (or destination
+/// IP) and the process. `alert_key` of the result is `key` again.
+pub fn alert_from_key(key: &str, last_alerted: SystemTime) -> Alert {
+    let (host, process) = key.split_once('|').unwrap_or((key, ""));
+    let (host, dst_ip) = match host.parse::<std::net::IpAddr>() {
+        Ok(ip) => (None, ip),
+        Err(_) => (
+            Some(host.to_owned()),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
+        ),
+    };
+    Alert {
+        ts: last_alerted,
+        host,
+        dst_ip,
+        dst_port: 0,
+        process_path: (!process.is_empty()).then(|| process.to_owned()),
+        score: 0,
+        reason: String::new(),
+        notes: Default::default(),
+    }
+}
+
 fn key(host: &str, process: Option<&str>) -> String {
     format!("{host}|{}", process.unwrap_or(""))
 }
@@ -268,6 +291,15 @@ impl Policy {
 
     pub fn remove_from_baseline(&mut self, host: &str) -> bool {
         self.baseline.remove(&host.to_ascii_lowercase())
+    }
+
+    /// Restore what was stored before a restart (specs 8.5): an acknowledged key stays silent; an
+    /// unacknowledged one is deduplicated until its window ends. A key raised since start wins.
+    pub fn restore_alert(&mut self, alert: Alert, acknowledged: bool) {
+        self.raised.entry(alert_key(&alert)).or_insert(Raised {
+            alert,
+            acknowledged,
+        });
     }
 
     /// Silence alerts for this alert's host + process for good.

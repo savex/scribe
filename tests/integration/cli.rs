@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::Output;
 
 use crate::api::{is_root, my_admin_group, two_flows, Daemon};
+use scribe_api::pb;
 
 const SCRIBE: &str = env!("CARGO_BIN_EXE_scribe-under-test");
 
@@ -195,5 +196,69 @@ async fn control_commands_outside_the_admin_group_exit_1() {
         assert!(stderr.contains("scribe-test-no-such-group"), "{stderr}");
         ok(&scribe(&s, &["status"]).await, 0);
     }
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn audit_verify_finds_deleted_and_edited_records() {
+    let daemon = Daemon::start_with("caution", &my_admin_group(), vec![]).await;
+    let s = daemon.socket.clone();
+    // start (1), hibernate (2) + its alert (3), wakeup (4), reset (5)
+    ok(
+        &scribe(&s, &["daemon", "hibernate", "--for", "1m"]).await,
+        0,
+    );
+    ok(&scribe(&s, &["daemon", "wakeup"]).await, 0);
+    ok(&scribe(&s, &["daemon", "reset", "--counters"]).await, 0);
+    let intact = ok(&scribe(&s, &["audit", "verify"]).await, 0);
+    assert_eq!(
+        intact,
+        "audit chain intact: 5 records, sequence 1 to 5 (last sealed 5)\n"
+    );
+    let dir = daemon.stop().await;
+
+    {
+        let db = rusqlite::Connection::open(dir.path().join("events.db")).unwrap();
+        // Drop the hibernate audit (2) and change the reset audit (5).
+        db.execute(
+            "DELETE FROM events WHERE id = (SELECT id FROM events WHERE kind = 'audit' AND payload LIKE '%hibernate by%')",
+            [],
+        )
+        .unwrap();
+        let changed = db
+            .execute(
+                "UPDATE events SET payload = replace(payload, 'runtime reset by', 'runtime reset for') WHERE kind = 'audit'",
+                [],
+            )
+            .unwrap();
+        assert!(changed > 0);
+    }
+
+    let daemon = Daemon::start_in(dir, "caution", &my_admin_group(), vec![]).await;
+    let s = daemon.socket.clone();
+    let out = scribe(&s, &["audit", "verify"]).await;
+    let report = ok(&out, 1);
+    assert!(
+        report.starts_with("audit chain broken: 2 problems"),
+        "{report}"
+    );
+    assert!(
+        report.contains("gap: records 2 to 2 are missing"),
+        "{report}"
+    );
+    assert!(
+        report.contains("mismatch: record 6 doesn't carry the HMAC of record 5"),
+        "the record after the edited one no longer matches: {report}"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&ok(&scribe(&s, &["audit", "verify", "--json"]).await, 1)).unwrap();
+    assert_eq!(json["problems"].as_array().unwrap().len(), 2);
+    let mut client = daemon.client().await;
+    let direct = client
+        .verify_audit(pb::VerifyAuditRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(direct.problems[0].kind, "gap");
     daemon.stop().await;
 }

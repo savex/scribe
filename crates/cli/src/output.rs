@@ -401,3 +401,54 @@ pub fn run_state(s: &pb::Status) -> String {
         None => format!("{}\n", s.run_state),
     }
 }
+
+/// `scribe audit verify`: intact, or what is wrong with the chain.
+pub fn audit(r: &pb::AuditReport) -> String {
+    let mut out = String::new();
+    if r.problems.is_empty() {
+        let _ = writeln!(
+            out,
+            "audit chain intact: {}, sequence {} to {} (last sealed {})",
+            plural(r.records, "record", "records"),
+            r.first_seq,
+            r.last_seq,
+            r.sealed_seq
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "audit chain broken: {} ({} stored, sequence {} to {}, last sealed {})",
+            plural(r.problems.len() as u64, "problem", "problems"),
+            plural(r.records, "record", "records"),
+            r.first_seq,
+            r.last_seq,
+            r.sealed_seq
+        );
+        for p in &r.problems {
+            let line = match p.kind.as_str() {
+                "gap" => format!("gap: records {} to {} are missing", p.seq + 1, p.next - 1),
+                "mismatch" => format!(
+                    "mismatch: record {} doesn't carry the HMAC of record {} (one of them was changed)",
+                    p.seq,
+                    p.seq.saturating_sub(1)
+                ),
+                "unlinked" => "unlinked: a record without a chain link".to_owned(),
+                "missing_tail" => format!(
+                    "missing tail: records {} to {} were sealed but are not stored",
+                    p.seq + 1,
+                    p.next
+                ),
+                other => format!("{other}: {} {}", p.seq, p.next),
+            };
+            let _ = writeln!(out, "  {line}");
+        }
+    }
+    if r.first_seq > 1 {
+        let _ = writeln!(
+            out,
+            "records before {} are not stored (retention removes old records)",
+            r.first_seq
+        );
+    }
+    out
+}

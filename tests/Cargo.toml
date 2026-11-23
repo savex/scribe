@@ -63,6 +63,7 @@ tonic-health.workspace = true
 tokio-stream.workspace = true
 anyhow.workspace = true
 libc.workspace = true
+rusqlite.workspace = true
 clap.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

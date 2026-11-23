@@ -55,6 +55,8 @@ pub struct Snapshot {
     pub module_drops: BTreeMap<String, u64>,
     /// Modules built into this `scribed`, enabled or not.
     pub modules_built: Vec<&'static str>,
+    /// The last sequence number sealed into the audit chain.
+    pub sealed_seq: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -399,6 +401,48 @@ pub fn health(snap: Option<&Snapshot>, view: &StorageView, layout: &Layout) -> p
     }
 }
 
+/// What `VerifyAudit` reports for `events` (audit and alert records) and the last sealed sequence.
+pub fn audit_report(
+    key: &ring::hmac::Key,
+    events: &[StoredEvent],
+    sealed_seq: u64,
+) -> pb::AuditReport {
+    use crate::chain::{verify, ChainProblem};
+    let seqs: Vec<u64> = events
+        .iter()
+        .filter_map(|e| match e {
+            StoredEvent::Audit(a) => a.link.as_ref().map(|l| l.seq),
+            StoredEvent::Alert(a) => a.link.as_ref().map(|l| l.seq),
+            _ => None,
+        })
+        .collect();
+    let first_seq = seqs.iter().copied().min().unwrap_or(0);
+    let last_seq = seqs.iter().copied().max().unwrap_or(0);
+    let problem = |kind: &str, seq: u64, next: u64| pb::AuditProblem {
+        kind: kind.into(),
+        seq,
+        next,
+    };
+    let mut problems: Vec<pb::AuditProblem> = verify(key, events)
+        .into_iter()
+        .map(|p| match p {
+            ChainProblem::Gap { after, next } => problem("gap", after, next),
+            ChainProblem::Mismatch { seq } => problem("mismatch", seq, 0),
+            ChainProblem::Unlinked => problem("unlinked", 0, 0),
+        })
+        .collect();
+    if sealed_seq > last_seq {
+        problems.push(problem("missing_tail", last_seq, sealed_seq));
+    }
+    pb::AuditReport {
+        records: seqs.len() as u64,
+        first_seq,
+        last_seq,
+        sealed_seq,
+        problems,
+    }
+}
+
 fn host_message(h: &Host, listed: &HashSet<String>, processes: &[String]) -> pb::Host {
     pb::Host {
         name: h.name.clone(),
@@ -465,6 +509,8 @@ pub struct Api {
     pub stopping: watch::Receiver<bool>,
     pub policy: AccessPolicy,
     pub layout: Layout,
+    /// The audit chain key, for `VerifyAudit`.
+    pub audit_key: ring::hmac::Key,
 }
 
 type Reply<T> = Result<Response<T>, RpcStatus>;
@@ -607,6 +653,9 @@ impl Api {
         Box::pin(ReceiverStream::new(rx))
     }
 }
+
+/// Audit and alert records read per page while verifying the chain.
+const VERIFY_PAGE: usize = 10_000;
 
 /// Alerts read per page while looking one up by id.
 const FIND_PAGE: usize = 1000;
@@ -849,6 +898,42 @@ impl Scribe for Api {
                 }
             })
         })))
+    }
+
+    async fn verify_audit(
+        &self,
+        request: Request<pb::VerifyAuditRequest>,
+    ) -> Reply<pb::AuditReport> {
+        self.policy.check(&request, Access::Read)?;
+        // Records still queued for the sinks are written first.
+        self.storage.flush().await;
+        let sealed_seq = self.snapshot().await?.sealed_seq;
+        let mut events = Vec::new();
+        let mut offset = 0;
+        loop {
+            let query = EventQuery {
+                kinds: vec![EventKind::Audit, EventKind::Alert],
+                offset,
+                limit: Some(VERIFY_PAGE),
+                ..Default::default()
+            };
+            let page = self
+                .storage
+                .query(&query)
+                .await
+                .map_err(|e| storage_error("audit records", e))?;
+            let n = page.items.len();
+            events.extend(page.items);
+            if n < VERIFY_PAGE {
+                break;
+            }
+            offset += n;
+        }
+        Ok(Response::new(audit_report(
+            &self.audit_key,
+            &events,
+            sealed_seq,
+        )))
     }
 
     async fn list_modules(

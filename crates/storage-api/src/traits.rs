@@ -52,6 +52,11 @@ pub trait StateStore: Send + Sync {
 
     fn put_alert_state<'a>(&'a self, state: &'a AlertState) -> BoxFuture<'a, Result<()>>;
     fn get_alert_state<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>>;
+    /// Every stored alert state, ordered by key: the daemon restores dedupe and acknowledgements
+    /// from it at start.
+    fn alert_states(&self) -> BoxFuture<'_, Result<Vec<AlertState>>> {
+        not_implemented("alert_states")
+    }
 
     /// Every key a module stored; empty for a module that stored nothing.
     fn module_state<'a>(&'a self, module: &'a str) -> BoxFuture<'a, Result<ModuleState>>;

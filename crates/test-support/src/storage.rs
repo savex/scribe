@@ -226,6 +226,14 @@ impl StateStore for MemoryStore {
         Box::pin(async move { Ok(self.alerts.lock().unwrap().get(key).cloned()) })
     }
 
+    fn alert_states(&self) -> BoxFuture<'_, Result<Vec<AlertState>>> {
+        Box::pin(async move {
+            let mut all: Vec<AlertState> = self.alerts.lock().unwrap().values().cloned().collect();
+            all.sort_by(|a, b| a.key.cmp(&b.key));
+            Ok(all)
+        })
+    }
+
     fn module_state<'a>(&'a self, module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
         Box::pin(async move {
             Ok(self

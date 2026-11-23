@@ -322,6 +322,10 @@ impl StateStore for BufferedState {
         self.inner.get_alert_state(key)
     }
 
+    fn alert_states(&self) -> BoxFuture<'_, Result<Vec<AlertState>>> {
+        self.inner.alert_states()
+    }
+
     fn module_state<'a>(&'a self, module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
         self.inner.module_state(module)
     }

@@ -116,6 +116,10 @@ impl StateStore for PostgresStore {
         not_implemented("postgres: get_alert_state")
     }
 
+    fn alert_states(&self) -> BoxFuture<'_, Result<Vec<AlertState>>> {
+        not_implemented("postgres: alert_states")
+    }
+
     fn module_state<'a>(&'a self, _module: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
         not_implemented("postgres: module_state")
     }

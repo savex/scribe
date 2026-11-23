@@ -553,10 +553,11 @@ pub async fn serve_full(
         }
     };
     let listed = baseline.len();
-    let policy = Policy::new(settings.policy_config(), clock.clone())
+    let mut policy = Policy::new(settings.policy_config(), clock.clone())
         .with_baseline(baseline)
         .with_known_processes::<Vec<String>, String>(known_processes)
         .with_threats(threats);
+    restore_alerts(&mut policy, storage.state(), clock.now()).await;
     info!(
         mode = %policy.mode(),
         profile = %settings.profile,
@@ -655,6 +656,7 @@ pub async fn serve_full(
                     admin_group: settings.config.api.admin_group.get_ref().clone(),
                 },
                 layout: Layout::of(&settings),
+                audit_key: writer.chain.key().clone(),
             };
             Some(ApiServer::spawn(listener, api, stop_api))
         }
@@ -715,6 +717,7 @@ pub async fn serve_full(
                                 .map(|id| (id.to_owned(), queue.dropped_by(id)))
                                 .collect(),
                             modules_built: modules_built.clone(),
+                            sealed_seq: writer.chain.seq(),
                         };
                         let _ = reply.send(Box::new(snapshot));
                         continue;
@@ -1050,6 +1053,42 @@ pub fn load_threats(settings: &Settings) -> anyhow::Result<ThreatSet> {
         warn!(list = %name, "threat list downloads arrive in plan phase 11; list \"{name}\" is not used yet");
     }
     Ok(set)
+}
+
+/// Bring back acknowledgements, and dedupe for alerts still inside their window, from the state
+/// store (specs 8.5), so a restart doesn't repeat alerts someone already handled.
+async fn restore_alerts(
+    policy: &mut Policy,
+    state: &dyn scribe_storage_api::StateStore,
+    now: SystemTime,
+) {
+    let states = match state.alert_states().await {
+        Ok(states) => states,
+        Err(StorageError::NotImplemented(_)) => return,
+        Err(e) => {
+            warn!("cannot read the stored alert state ({e}); acknowledged alerts may repeat");
+            return;
+        }
+    };
+    let window = policy.config().dedupe_window;
+    let (mut acknowledged, mut recent) = (0usize, 0usize);
+    for s in states {
+        let fresh = now
+            .duration_since(s.last_alerted)
+            .map_or(true, |age| age < window);
+        if s.acknowledged || fresh {
+            policy.restore_alert(
+                scribe_policy::alert_from_key(&s.key, s.last_alerted),
+                s.acknowledged,
+            );
+            if s.acknowledged {
+                acknowledged += 1;
+            } else {
+                recent += 1;
+            }
+        }
+    }
+    info!(acknowledged, recent, "alert state restored");
 }
 
 /// Marks a running daemon in `data_dir`; still there at the next start means a crash or kill.

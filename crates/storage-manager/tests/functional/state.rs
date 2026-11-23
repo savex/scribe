@@ -85,6 +85,9 @@ impl StateStore for Switchable {
     fn get_alert_state<'a>(&'a self, k: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>> {
         guarded!(self, self.inner.get_alert_state(k))
     }
+    fn alert_states(&self) -> BoxFuture<'_, Result<Vec<AlertState>>> {
+        guarded!(self, self.inner.alert_states())
+    }
     fn module_state<'a>(&'a self, m: &'a str) -> BoxFuture<'a, Result<ModuleState>> {
         guarded!(self, self.inner.module_state(m))
     }

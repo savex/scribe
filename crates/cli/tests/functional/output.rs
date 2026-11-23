@@ -274,3 +274,44 @@ fn modules_list_every_built_module() {
     );
     assert!(text.contains("kperf   1        no"), "{text}");
 }
+
+#[test]
+fn the_audit_report_names_each_problem() {
+    let intact = pb::AuditReport {
+        records: 42,
+        first_seq: 1,
+        last_seq: 42,
+        sealed_seq: 42,
+        problems: vec![],
+    };
+    assert_eq!(
+        output::audit(&intact),
+        "audit chain intact: 42 records, sequence 1 to 42 (last sealed 42)\n"
+    );
+    let problem = |kind: &str, seq, next| pb::AuditProblem {
+        kind: kind.into(),
+        seq,
+        next,
+    };
+    let broken = pb::AuditReport {
+        records: 40,
+        first_seq: 5,
+        last_seq: 44,
+        sealed_seq: 46,
+        problems: vec![
+            problem("gap", 12, 15),
+            problem("mismatch", 20, 0),
+            problem("unlinked", 0, 0),
+            problem("missing_tail", 44, 46),
+        ],
+    };
+    assert_eq!(
+        output::audit(&broken),
+        "audit chain broken: 4 problems (40 records stored, sequence 5 to 44, last sealed 46)\n\
+         \x20 gap: records 13 to 14 are missing\n\
+         \x20 mismatch: record 20 doesn't carry the HMAC of record 19 (one of them was changed)\n\
+         \x20 unlinked: a record without a chain link\n\
+         \x20 missing tail: records 45 to 46 were sealed but are not stored\n\
+         records before 5 are not stored (retention removes old records)\n"
+    );
+}

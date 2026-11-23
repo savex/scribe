@@ -92,7 +92,16 @@ impl Daemon {
         extra: &str,
         observations: Vec<Observation>,
     ) -> Self {
-        let dir = tempfile::tempdir().unwrap();
+        Self::start_in(tempfile::tempdir().unwrap(), mode, extra, observations).await
+    }
+
+    /// Starts scribed in `dir`, e.g. one a stopped daemon handed back.
+    pub(crate) async fn start_in(
+        dir: tempfile::TempDir,
+        mode: &str,
+        extra: &str,
+        observations: Vec<Observation>,
+    ) -> Self {
         let socket = dir.path().join("run/api.sock");
         let (commands, rx) = mpsc::channel(8);
         let (stop, stopped) = oneshot::channel::<()>();
@@ -818,4 +827,66 @@ async fn a_second_daemon_on_the_same_socket_runs_without_the_api() {
         .await
         .unwrap();
     first.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn alert_dedupe_and_acknowledgements_survive_a_restart() {
+    let flows = two_flows;
+    let daemon = Daemon::start_with("caution", &my_admin_group(), flows()).await;
+    let client = daemon.client().await;
+    let first = eventually(
+        || {
+            let mut c = client.clone();
+            async move {
+                c.list_alerts(pb::ListAlertsRequest::default())
+                    .await
+                    .unwrap()
+                    .into_inner()
+            }
+        },
+        |page| page.items.len() == 1,
+    )
+    .await;
+    let id = first.items[0].id;
+    let dir = daemon.stop().await;
+
+    // Restarted inside the dedupe window: the same flows raise nothing new.
+    let daemon = Daemon::start_in(dir, "caution", &my_admin_group(), flows()).await;
+    let mut client = daemon.client().await;
+    let status = eventually(
+        || {
+            let mut c = client.clone();
+            async move {
+                c.get_status(pb::StatusRequest {})
+                    .await
+                    .unwrap()
+                    .into_inner()
+            }
+        },
+        |s| s.counters.as_ref().is_some_and(|c| c.flows == 2),
+    )
+    .await;
+    assert_eq!(
+        status.counters.unwrap().alerts,
+        0,
+        "deduplicated across the restart"
+    );
+    client.ack_alert(pb::AckAlertRequest { id }).await.unwrap();
+    let dir = daemon.stop().await;
+
+    let daemon = Daemon::start_in(dir, "caution", &my_admin_group(), vec![]).await;
+    let alerts = daemon
+        .client()
+        .await
+        .list_alerts(pb::ListAlertsRequest::default())
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(alerts.items.len(), 1);
+    assert!(
+        alerts.items[0].acknowledged,
+        "the acknowledgement is stored"
+    );
+    let dir = daemon.stop().await;
+    assert!(has(&audits(dir.path()).await, "acknowledged by"));
 }

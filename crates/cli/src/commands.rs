@@ -9,7 +9,9 @@ use scribe_api::pb;
 use tokio_stream::StreamExt;
 
 use crate::client::{call_failure, connect, Failure, CALL_TIMEOUT};
-use crate::{output, AlertsAction, BaselineAction, Command, DaemonCommand, StatusArgs};
+use crate::{
+    output, AlertsAction, AuditCommand, BaselineAction, Command, DaemonCommand, StatusArgs,
+};
 
 type Outcome = Result<ExitCode, Failure>;
 
@@ -27,6 +29,26 @@ pub async fn run(command: &Command, socket: &Path) -> Outcome {
     match command {
         Command::Status(args) => status(socket, args).await,
         Command::Daemon { command } => daemon(command, socket).await,
+        Command::Audit {
+            command: AuditCommand::Verify { json: as_json },
+        } => {
+            let report = connect(socket, CALL_TIMEOUT)
+                .await?
+                .verify_audit(pb::VerifyAuditRequest {})
+                .await
+                .map_err(call_failure)?
+                .into_inner();
+            print(&if *as_json {
+                json(&report)? + "\n"
+            } else {
+                output::audit(&report)
+            });
+            Ok(if report.problems.is_empty() {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::from(crate::EXIT_FAILURE)
+            })
+        }
         Command::Version => unreachable!("handled before connecting"),
         other => data(other, socket).await,
     }
@@ -172,7 +194,7 @@ async fn data(command: &Command, socket: &Path) -> Outcome {
                 output::modules(&list)
             });
         }
-        Command::Status(_) | Command::Daemon { .. } | Command::Version => {
+        Command::Status(_) | Command::Daemon { .. } | Command::Audit { .. } | Command::Version => {
             unreachable!("dispatched by run")
         }
     }

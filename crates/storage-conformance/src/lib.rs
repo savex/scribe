@@ -432,6 +432,21 @@ async fn alert_state_round_trip(store: &dyn StateStore) {
         .expect("get")
         .expect("exists");
     assert!(got.acknowledged);
+
+    let other = AlertState {
+        key: "a|/usr/bin/curl".into(),
+        last_alerted: now(),
+        acknowledged: false,
+    };
+    store.put_alert_state(&other).await.expect("put another");
+    let all = store.alert_states().await.expect("alert_states");
+    let keys: Vec<&str> = all.iter().map(|s| s.key.as_str()).collect();
+    assert_eq!(
+        keys,
+        ["a|/usr/bin/curl", "k"],
+        "every state, ordered by key"
+    );
+    assert!(all[1].acknowledged && !all[0].acknowledged);
 }
 
 async fn module_state_round_trip(store: &dyn StateStore) {
