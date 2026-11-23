@@ -172,7 +172,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 | Test data | **100%** | 16 pcap fixtures (2 QUIC), all checked end to end; RFC 9001 / 9369 sample packets; 19 scenarios (all run), raw sensor samples, v1–v4 database snapshots, 10 UI mock API scenarios checked against the protocol | Checked by the fixture, end-to-end, scenario and snapshot tests |
 | Fuzzing | **~60%** | 4 targets with seeds (`tls_client_hello`, `dns_message`, `quic_initial`, `http_request`); they compile on stable | Never run (needs Rust nightly) |
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
-| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migrations 0001–0004 and their seeds | Tests green on Linux, macOS and Windows (run `45202847881`, 2026-11-23); Release and the other workflows not run yet |
+| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migrations 0001–0004 and their seeds | Tests green on Linux, macOS and Windows after phase 10 (run `45226370809`, 2026-11-23: 460 / 459 / 414 tests; Postgres job loads migrations 1–4); Release and the other workflows not run yet |
 
 **Overall:** 12,664 of 14,067 measurable lines covered (**90.0%**).
 
@@ -181,10 +181,10 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 - **Phases 0, 0b, 1–6 and 10 are done.** Remaining effort: 59–75.5 days (71–91 with buffer); milestone M1: 5.5–7 days (phase 11).
 - **`scribed` runs end to end with the pcap sensor and is controlled through `scribe`:** every CLI command works over the local API (Unix socket; named pipe on Windows). What M1 still needs is the alert outputs (phase 11).
 - **Next steps** (plan milestone M1):
-  0. Run the Tests workflow on all three systems (the named pipe has only been compiled here), then the Release workflow once (push the `v0.1.1` tag).
+  0. Run the Release workflow once (push the `v0.1.1` tag); Tests passed on all three systems after phase 10 (run `45226370809`).
   1. Phase 11 (alert outputs) to finish M1.
   2. Apply for Apple's Network Extension entitlement (plan risk 1).
 - **Not verified here:** the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests,
-  the Postgres migrations 0002–0004 (no local Postgres; the Tests workflow loads them), the Windows named pipe (compiled here, run only on the Windows runner) and the fuzz targets (no nightly).
+  the Postgres backend beyond loading its migrations (run `45226370809` loads 0001–0004 and the seeds), the Windows named pipe outside the Windows runner (its tests passed there in run `45226370809`) and the fuzz targets (no nightly).
   Local Linux / Windows compile checks leave out crates with C code (bundled SQLite, `ring`: the daemon, `enrich`,
   `secrets`, `module-url`, test crates); the Tests workflow builds and passes them natively.

@@ -41,6 +41,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   the mocks now use the API's JSON (epoch-ms `*_ms` fields, `degraded` only as a health result) and a smoke
   test parses them against the protocol; CLI scenario tests play every UI scenario; specs, plan, status,
   test list, test approach and readme record phase 10 as done.
+- Plan and status record Tests run `45226370809` (after phase 10) as green on Linux, macOS and Windows,
+  named pipe and Postgres migrations 1–4 included.
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module
