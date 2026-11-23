@@ -22,6 +22,7 @@ tokio-stream.workspace = true
 hyper-util = { workspace = true, features = ["tokio"], optional = true }
 tower = { workspace = true, features = ["util"], optional = true }
 thiserror.workspace = true
+serde.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true

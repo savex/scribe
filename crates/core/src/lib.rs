@@ -9,6 +9,7 @@ pub mod mode;
 pub mod module;
 pub mod platform;
 pub mod sensor;
+pub mod time;
 pub mod units;
 
 /// Version from the nearest `v*` git tag, e.g. `1.2.0` or `1.2.0+3.gabc1234` (see `build.rs`).

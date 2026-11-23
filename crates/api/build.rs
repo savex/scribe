@@ -1,5 +1,6 @@
 //! Generates the gRPC code from `proto/scribe/v1/api.proto`. `protox` parses the protocol in Rust,
 //! so building needs no `protoc`. Only the sides the enabled features need are generated.
+//! Every message also derives `serde::Serialize` (snake_case field names, as in the .proto).
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,6 +12,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build_server(std::env::var_os("CARGO_FEATURE_SERVER").is_some())
         .build_client(std::env::var_os("CARGO_FEATURE_CLIENT").is_some())
         .build_transport(false)
+        // `scribe … --json` prints the messages with the protocol's own field names.
+        .type_attribute(".scribe.v1", "#[derive(serde::Serialize)]")
         .compile_fds(fds)?;
     Ok(())
 }

@@ -3,6 +3,8 @@
 
 #[cfg(unix)]
 mod api;
+#[cfg(unix)]
+mod cli;
 mod daemon;
 mod enrich;
 mod storage;

@@ -20,6 +20,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 10 step 3: the API control calls (mode, baseline edits, alert acknowledgement, reset with config reload,
   hibernate, wakeup) for root and `[api] admin_group`, each stored as an `audit` event with the caller, refusals
   too; `StateStore::remove_from_baseline` with a storage conformance case.
+- Phase 10 step 4: every `scribe` command works over the local API: `status`, `hosts`, `mode`, `alerts` and
+  `alerts ack`, `baseline` and `baseline add|rm`, `export`, `modules`, and `scribe daemon status|health|reset|
+  hibernate|wakeup` with `--json`, `--watch`, `--timeout`, `--for` and the aliases; global `--socket` and
+  `SCRIBE_SOCKET`; `scribe_core::time` (RFC 3339 and human durations).
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module

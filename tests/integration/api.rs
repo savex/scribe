@@ -19,7 +19,7 @@ use tonic::transport::Channel;
 
 const WAIT: Duration = Duration::from_secs(10);
 
-fn config_text(dir: &Path, mode: &str, extra: &str) -> String {
+pub(crate) fn config_text(dir: &Path, mode: &str, extra: &str) -> String {
     format!(
         "mode = '{mode}'\ndata_dir = '{}'\n{extra}\n[log]\nfile = ''\n",
         dir.display()
@@ -27,7 +27,7 @@ fn config_text(dir: &Path, mode: &str, extra: &str) -> String {
 }
 
 /// Settings from `dir/scribe.toml`, written first, so a reload reads the same file.
-fn settings_with(dir: &Path, mode: &str, extra: &str) -> Settings {
+pub(crate) fn settings_with(dir: &Path, mode: &str, extra: &str) -> Settings {
     let path = dir.join("scribe.toml");
     let text = config_text(dir, mode, extra);
     std::fs::write(&path, &text).unwrap();
@@ -41,24 +41,24 @@ fn settings_with(dir: &Path, mode: &str, extra: &str) -> Settings {
     .unwrap()
 }
 
-fn settings(dir: &Path, mode: &str) -> Settings {
+pub(crate) fn settings(dir: &Path, mode: &str) -> Settings {
     settings_with(dir, mode, "")
 }
 
 /// `[api]` naming a group the test user is in, so control calls are allowed.
-fn my_admin_group() -> String {
+pub(crate) fn my_admin_group() -> String {
     // SAFETY: getuid / getgid have no preconditions.
     let me = scribe_api::unix::identify(unsafe { libc::getuid() }, unsafe { libc::getgid() }, None);
     format!("[api]\nadmin_group = '{}'", me.groups[0])
 }
 
-fn is_root() -> bool {
+pub(crate) fn is_root() -> bool {
     // SAFETY: getuid has no preconditions.
     unsafe { libc::getuid() == 0 }
 }
 
 /// A TLS flow to a named host and a raw-IP flow (an alert in caution mode).
-fn two_flows() -> Vec<Observation> {
+pub(crate) fn two_flows() -> Vec<Observation> {
     let mut tls = flow("192.0.2.10:443")
         .process(100, "/usr/bin/curl")
         .bytes(512)
@@ -74,20 +74,24 @@ fn two_flows() -> Vec<Observation> {
     vec![tls, raw]
 }
 
-struct Daemon {
-    dir: tempfile::TempDir,
-    socket: PathBuf,
+pub(crate) struct Daemon {
+    pub(crate) dir: tempfile::TempDir,
+    pub(crate) socket: PathBuf,
     commands: mpsc::Sender<Command>,
     stop: Option<oneshot::Sender<()>>,
     task: tokio::task::JoinHandle<anyhow::Result<()>>,
 }
 
 impl Daemon {
-    async fn start(mode: &str, observations: Vec<Observation>) -> Self {
+    pub(crate) async fn start(mode: &str, observations: Vec<Observation>) -> Self {
         Self::start_with(mode, "", observations).await
     }
 
-    async fn start_with(mode: &str, extra: &str, observations: Vec<Observation>) -> Self {
+    pub(crate) async fn start_with(
+        mode: &str,
+        extra: &str,
+        observations: Vec<Observation>,
+    ) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("run/api.sock");
         let (commands, rx) = mpsc::channel(8);
@@ -121,7 +125,7 @@ impl Daemon {
         }
     }
 
-    async fn client(&self) -> ScribeClient<Channel> {
+    pub(crate) async fn client(&self) -> ScribeClient<Channel> {
         unix::connect(
             &self.socket,
             ServerCheck::RootOrSelf,
@@ -145,7 +149,7 @@ impl Daemon {
     }
 
     /// Stops scribed and hands back its folder (storage stays readable).
-    async fn stop(mut self) -> tempfile::TempDir {
+    pub(crate) async fn stop(mut self) -> tempfile::TempDir {
         let _ = self.stop.take().unwrap().send(());
         tokio::time::timeout(WAIT, self.task)
             .await
@@ -157,7 +161,7 @@ impl Daemon {
 }
 
 /// Every audit message stored in `dir`'s event history.
-async fn audits(dir: &Path) -> Vec<String> {
+pub(crate) async fn audits(dir: &Path) -> Vec<String> {
     use scribe_storage_api::{EventQuery, EventSink, StoredEvent};
     let sink = scribe_tests::sqlite_sink("local-history", &dir.join("events.db"));
     sink.query(&EventQuery::default())
@@ -172,12 +176,12 @@ async fn audits(dir: &Path) -> Vec<String> {
         .collect()
 }
 
-fn has(audits: &[String], part: &str) -> bool {
+pub(crate) fn has(audits: &[String], part: &str) -> bool {
     audits.iter().any(|m| m.contains(part))
 }
 
 /// Polls `get` until `done` holds for its value.
-async fn eventually<T, F, Fut>(mut get: F, done: impl Fn(&T) -> bool) -> T
+pub(crate) async fn eventually<T, F, Fut>(mut get: F, done: impl Fn(&T) -> bool) -> T
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = T>,

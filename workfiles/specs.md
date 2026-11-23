@@ -216,21 +216,22 @@ Started by the service manager as root / SYSTEM: systemd unit `scribed` (Linux),
 
 ### 6.2 `scribe` (CLI)
 
-Talks to `scribed` through the local API.
+Talks to `scribed` through the local API: `--socket <path>` (global), else `SCRIBE_SOCKET`, else the OS
+default (section 6.3). `--json` prints the API messages with their protocol field names.
 
 | Command | Effect | Status |
 |---|---|---|
-| `scribe version`, `--version`, `-V` | Print `scribe <version>` | Implemented |
-| `scribe status` | Short form of `scribe daemon status` (section 6.2.1) | Stub |
-| `scribe hosts [--json]` | Tracked hosts with counters and flags (`unresolved`, `ech`) | Stub |
-| `scribe mode <learn\|caution\|alert>` | Switch mode | Stub (mode name checking works) |
-| `scribe alerts [--json]` | List alerts, with their notes (e.g. the URL) | Planned |
-| `scribe alerts ack <id>` | Acknowledge an alert | Planned |
-| `scribe baseline [--json]` | List the active profile's baseline | Planned |
-| `scribe baseline add\|rm <host>` | Edit the active profile's baseline | Planned |
-| `scribe export` | Dump hosts and baseline | Stub |
-| `scribe daemon <command>` | Inspect and control the running daemon (section 6.2.1) | Planned |
-| `scribe modules [--json]` | Modules built into this `scribed`: id, version, enabled, state, health, drops | Planned (phase 10; `ModuleHost::status` provides the data) |
+| `scribe version`, `--version`, `-V` | Print `scribe <version>` (needs no daemon) | Implemented |
+| `scribe status [--json] [--watch <interval>]` | Short form of `scribe daemon status` (section 6.2.1) | Implemented (phase 10) |
+| `scribe hosts [--filter <text>] [--json]` | Tracked hosts with counters, what was seen (`tls`, `plain`), flags (`listed`, `unresolved`, `ech`) and processes | Implemented (phase 10; `ech` stays off until host records keep it) |
+| `scribe mode <learn\|caution\|alert>` | Switch mode; prints `mode: <old> -> <new>` | Implemented (phase 10) |
+| `scribe alerts [--json]` | List alerts (id = chain sequence), with their notes (e.g. the URL) below each | Implemented (phase 10) |
+| `scribe alerts ack <id>` | Acknowledge an alert; acknowledging twice says so and exits `0` | Implemented (phase 10) |
+| `scribe baseline [--json]` | List the active profile's baseline | Implemented (phase 10) |
+| `scribe baseline add\|rm <host>…` | Edit the active profile's baseline (`remove` alias); prints added / removed / unchanged | Implemented (phase 10) |
+| `scribe export [-o <file>]` | Hosts and baseline as one JSON document, to stdout or a file the CLI creates `0600` as the caller | Implemented (phase 10) |
+| `scribe daemon <command>` | Inspect and control the running daemon (section 6.2.1) | Implemented (phase 10) |
+| `scribe modules [--json]` | Modules built into this `scribed`: id, version, enabled, state, health, over budget, drops | Implemented (phase 10) |
 | `scribe <module> …` | Subcommands a module adds, e.g. `scribe url list --host api.example.com`, later `scribe metrics show tcp.retrans`; exit `1` with *module url is not enabled* when the daemon lacks it | Planned (phase 10) |
 
 Exit codes: `0` success, `1` failure (including "not implemented yet"), `2` usage error. `scribed` uses the same codes, with `2` also for configuration errors.
@@ -238,7 +239,7 @@ Exit codes: `0` success, `1` failure (including "not implemented yet"), `2` usag
 #### 6.2.1 `scribe daemon` subcommands
 
 Commands that look at or steer the running `scribed` itself, rather than the data it collects. All of them
-are **Planned** for phase 10, on daemon support built in phase 5 (section 8.5). Every command fails with
+are **Implemented** (phase 10, on daemon support built in phase 5, section 8.5). Every command fails with
 exit code `1` and the message *scribed is not running or its socket is not reachable* when the daemon
 can't be reached. `status` and `health` take `--json` for scripts.
 
