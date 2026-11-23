@@ -26,7 +26,7 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.os == 'all' && '["ubuntu-latest","macos-latest","windows-latest"]' || format('["{0}-latest"]', inputs.os)) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 

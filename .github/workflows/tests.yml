@@ -26,7 +26,7 @@ jobs:
     name: Lint, fixtures, version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
@@ -50,7 +50,7 @@ jobs:
     name: Minimum Rust version (from Cargo.toml)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Read rust-version
         id: msrv
         run: |
@@ -72,7 +72,7 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.os == 'all' && '["ubuntu-latest","macos-latest","windows-latest"]' || format('["{0}-latest"]', inputs.os)) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
@@ -92,7 +92,7 @@ jobs:
         run: cargo test --workspace --all-features --locked --doc
       - name: Default features only (SQLite)
         run: cargo nextest run -p scribe-daemon --locked --profile ci
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: junit-${{ matrix.os }}
@@ -102,7 +102,7 @@ jobs:
     name: SQLite backend
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Schema snapshots are intact
@@ -136,7 +136,7 @@ jobs:
       PGPASSWORD: scribe
       SCRIBE_TEST_POSTGRES_URL: postgres://scribe:scribe@localhost:5432/scribe_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Migrations and schema snapshot load cleanly

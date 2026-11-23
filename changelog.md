@@ -84,12 +84,16 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   done), status (coverage 90.6%), test list, readme.
 
 ### Changed
+- Workflows use the Node.js 24 action versions (`checkout@v5`, `upload-artifact@v6`, `download-artifact@v7`,
+  `setup-node@v5`); the config template notes how to write Windows paths in TOML.
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),
   warns when they differ, refuses a version that is not newer, and turns Unreleased into the release section.
   `scripts/version.sh` gains `versions`, `highest`, `nearest-tag`, `changelog-version`, `newer`, `compare` and
   `changelog`; `latest-tag` is now the highest tag, not the nearest. Tests run `scripts/test-version.sh`.
 
 ### Fixed
+- Config, secrets and URL-module tests are portable to Windows (absolute paths, `\` joins, TOML escapes), the
+  9 failures in Tests run 2; plan, status and skill no longer cite Version tracking run `45072299330` as green Tests.
 - Changelog: the `0.1.0-alpha.1` release had no section (the workflow did not write one).
 - Plan and status cited phase 4 commit ids from before the rebase onto the release commit.
 - `Cargo.lock` listed `scribe-policy` at 0.1.1 after the rebase onto the release; `--locked` builds failed.

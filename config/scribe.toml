@@ -18,7 +18,9 @@
 #             memory limits: percent of total physical RAM
 #             disk limits:   percent of the size of the volume holding the path
 #             percentages are resolved once at startup and logged
-#   path      relative paths are resolved against data_dir (which itself must be absolute)
+#   path      relative paths are resolved against data_dir (which itself must be absolute).
+#             Windows paths: use single quotes ('C:\ProgramData\scribe') or forward slashes
+#             ("C:/ProgramData/scribe"); in double quotes a backslash starts an escape ("\U…").
 
 version = 1
 

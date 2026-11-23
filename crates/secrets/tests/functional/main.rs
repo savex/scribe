@@ -16,11 +16,20 @@ fn chmod(path: &Path, mode: u32) {
 
 #[test]
 fn references_parse_and_print_back() {
+    // `file:` and `dpapi:` need paths that are absolute on this system (a drive on Windows).
+    let (key, blob) = if cfg!(windows) {
+        (
+            "C:/ProgramData/scribe/url_hash.key",
+            "C:/ProgramData/scribe/pg.bin",
+        )
+    } else {
+        ("/var/lib/scribe/url_hash.key", "/var/lib/scribe/pg.bin")
+    };
     for text in [
-        "file:/var/lib/scribe/url_hash.key",
-        "keychain:scribe/postgres",
-        "dpapi:/ProgramData/scribe/pg.bin",
-        "secret-service:scribe-postgres",
+        format!("file:{key}"),
+        "keychain:scribe/postgres".to_owned(),
+        format!("dpapi:{blob}"),
+        "secret-service:scribe-postgres".to_owned(),
     ] {
         let r: SecretRef = text.parse().unwrap();
         assert_eq!(r.to_string(), text);

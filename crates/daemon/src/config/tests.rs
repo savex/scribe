@@ -58,8 +58,33 @@ impl SystemFacts for BrokenHost {
     }
 }
 
+/// Linux's default paths, made absolute for the host running the tests (see [`host_path`]).
 fn linux_defaults() -> DefaultPaths {
-    DefaultPaths::for_os(Os::Linux, Path::new("/usr/bin/scribed"))
+    let mut d = DefaultPaths::for_os(Os::Linux, Path::new("/usr/bin/scribed"));
+    for p in [&mut d.config_file, &mut d.data_dir, &mut d.log_file] {
+        *p = PathBuf::from(host_path(&p.to_string_lossy()));
+    }
+    d
+}
+
+/// A Unix absolute path as an absolute path on this host: unchanged on Unix, on drive `C:` on
+/// Windows (where a path needs a drive to be absolute). Forward slashes, so it fits in TOML strings.
+fn host_path(unix: &str) -> String {
+    if cfg!(windows) {
+        format!("C:{unix}")
+    } else {
+        unix.to_owned()
+    }
+}
+
+/// `host_path(root)` joined with `rel` the way this host joins paths.
+fn joined(root: &str, rel: &str) -> PathBuf {
+    Path::new(&host_path(root)).join(rel)
+}
+
+/// How a path is written in the effective TOML: a quoted string with backslashes escaped.
+fn in_toml(path: &Path) -> String {
+    toml::Value::String(path.display().to_string()).to_string()
 }
 
 fn resolve_text(text: &str) -> Settings {
@@ -199,7 +224,7 @@ mod functional {
     #[test]
     fn accepts_a_full_custom_config() {
         let c = parse_ok(
-            r#"
+            &r#"
         mode = "caution"
         profile = "work"
         data_dir = "/srv/scribe"
@@ -246,7 +271,8 @@ mod functional {
         rotate = "size"
         max_size = "10MiB"
         keep = 3
-        "#,
+        "#
+            .replace("/srv/scribe", &host_path("/srv/scribe")),
         );
         assert_eq!(c.mode, Mode::Caution);
         assert_eq!(
@@ -397,24 +423,32 @@ mod functional {
     #[test]
     fn resolves_paths_against_data_dir() {
         let s = resolve_text("");
-        assert_eq!(s.data_dir, Path::new("/var/lib/scribe"));
+        assert_eq!(s.data_dir, Path::new(&host_path("/var/lib/scribe")));
         assert_eq!(s.storage.state.kind, "sqlite");
-        assert_eq!(s.storage.state.options["path"], "/var/lib/scribe/state.db");
         assert_eq!(
-            s.storage.sinks[0].backend.options["path"],
-            "/var/lib/scribe/events.db"
+            Path::new(&s.storage.state.options["path"]),
+            joined("/var/lib/scribe", "state.db")
         );
-        assert_eq!(s.limits.spool_dir, Path::new("/var/lib/scribe/spool"));
+        assert_eq!(
+            Path::new(&s.storage.sinks[0].backend.options["path"]),
+            joined("/var/lib/scribe", "events.db")
+        );
+        assert_eq!(s.limits.spool_dir, joined("/var/lib/scribe", "spool"));
         assert_eq!(
             s.log.file.as_deref(),
-            Some(Path::new("/var/log/scribe/scribed.log"))
+            Some(Path::new(&host_path("/var/log/scribe/scribed.log")))
         );
 
-        let s = resolve_text(
-        "data_dir = \"/srv/s\"\n[storage.state]\npath = \"/abs/state.db\"\n[log]\nfile = \"logs/d.log\"\n",
-    );
-        assert_eq!(s.storage.state.options["path"], "/abs/state.db");
-        assert_eq!(s.log.file.as_deref(), Some(Path::new("/srv/s/logs/d.log")));
+        let s = resolve_text(&format!(
+            "data_dir = \"{}\"\n[storage.state]\npath = \"{}\"\n[log]\nfile = \"logs/d.log\"\n",
+            host_path("/srv/s"),
+            host_path("/abs/state.db")
+        ));
+        assert_eq!(s.storage.state.options["path"], host_path("/abs/state.db"));
+        assert_eq!(
+            s.log.file.as_deref(),
+            Some(joined("/srv/s", "logs/d.log").as_path())
+        );
     }
 
     #[test]
@@ -456,7 +490,10 @@ mod functional {
 
         let err = resolve(Config::default(), file(), &linux_defaults(), &BrokenHost).unwrap_err();
         assert!(
-            err.message.contains("volume holding /var/lib/scribe/spool"),
+            err.message.contains(&format!(
+                "volume holding {}",
+                joined("/var/lib/scribe", "spool").display()
+            )),
             "{err}"
         );
 
@@ -486,14 +523,20 @@ mod functional {
         let toml_text = s.effective_toml();
         assert!(toml_text.starts_with("# Effective scribed configuration (source: scribe.toml)"));
         assert!(
-            toml_text.contains("data_dir = \"/var/lib/scribe\""),
+            toml_text.contains(&format!(
+                "data_dir = {}",
+                in_toml(Path::new(&host_path("/var/lib/scribe")))
+            )),
             "{toml_text}"
         );
         assert!(
-            toml_text.contains("/var/lib/scribe/state.db"),
+            toml_text.contains(&in_toml(&joined("/var/lib/scribe", "state.db"))),
             "{toml_text}"
         );
-        assert!(toml_text.contains("/var/lib/scribe/t.txt"), "{toml_text}");
+        assert!(
+            toml_text.contains(&in_toml(&joined("/var/lib/scribe", "t.txt"))),
+            "{toml_text}"
+        );
         assert!(
             toml_text.contains("# storage.spool.min_free_disk = 5%"),
             "{toml_text}"
@@ -651,13 +694,14 @@ mod functional {
 
     #[test]
     fn threat_files_are_made_absolute_and_url_lists_are_set_aside() {
-        let s = resolve_text(
-        "data_dir = \"/var/lib/scribe\"\n[[policy.threat_lists]]\nname = \"local\"\npath = \"threats/d.txt\"\nformat = \"domains\"\n[[policy.threat_lists]]\nname = \"remote\"\nurl = \"https://example.com/h\"\nformat = \"hosts\"\nrefresh = \"24h\"\n",
-    );
+        let s = resolve_text(&format!(
+            "data_dir = \"{}\"\n[[policy.threat_lists]]\nname = \"local\"\npath = \"threats/d.txt\"\nformat = \"domains\"\n[[policy.threat_lists]]\nname = \"remote\"\nurl = \"https://example.com/h\"\nformat = \"hosts\"\nrefresh = \"24h\"\n",
+            host_path("/var/lib/scribe")
+        ));
         let (files, skipped) = s.threat_files();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].0, "local");
-        assert_eq!(files[0].1, PathBuf::from("/var/lib/scribe/threats/d.txt"));
+        assert_eq!(files[0].1, joined("/var/lib/scribe", "threats/d.txt"));
         assert_eq!(files[0].2, scribe_policy::ThreatFormat::Domains);
         assert_eq!(skipped, vec!["remote".to_owned()]);
     }
@@ -687,9 +731,10 @@ mod functional {
     fn reload_splits_live_and_restart_changes() {
         use crate::config::reload::plan;
         let running = resolve_text("mode = \"learn\"\n[log]\nlevel = \"info\"\n");
-        let new = resolve_text(
-            "mode = \"alert\"\nprofile = \"work\"\ndata_dir = \"/srv/scribe\"\n[policy]\nthreshold = 40\n[modules.url]\nquery = \"strip\"\n[daemon]\nmax_hibernate = \"1h\"\n[log]\nlevel = \"debug\"\nformat = \"json\"\n[storage.cache]\nmax_hosts = 10\n",
-        );
+        let new = resolve_text(&format!(
+            "mode = \"alert\"\nprofile = \"work\"\ndata_dir = \"{}\"\n[policy]\nthreshold = 40\n[modules.url]\nquery = \"strip\"\n[daemon]\nmax_hibernate = \"1h\"\n[log]\nlevel = \"debug\"\nformat = \"json\"\n[storage.cache]\nmax_hosts = 10\n",
+            host_path("/srv/scribe")
+        ));
         let p = plan(&running, new);
         assert_eq!(
             p.applied,

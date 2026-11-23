@@ -120,8 +120,9 @@ fn hash_key_can_point_at_a_secret_file() {
     let dir = tempfile::tempdir().unwrap();
     let key = dir.path().join("custom.key");
     let mut m = UrlModule::default();
+    // A TOML literal string: Windows paths have backslashes, which a basic string reads as escapes.
     let text = format!(
-        "[modules.url]\nquery = \"hash\"\nhash_key = \"file:{}\"\n",
+        "[modules.url]\nquery = \"hash\"\nhash_key = 'file:{}'\n",
         key.display()
     );
     m.configure(&ConfigDoc::new(&text)).unwrap();

@@ -26,7 +26,7 @@ jobs:
       matrix:
         target: ${{ fromJSON(inputs.target == 'all' && '["tls_client_hello","dns_message","quic_initial","http_request"]' || format('["{0}"]', inputs.target)) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
         with:
@@ -38,7 +38,7 @@ jobs:
         run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=${{ inputs.seconds }}
       - name: Upload crash inputs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}

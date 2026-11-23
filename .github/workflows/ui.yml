@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Check for UI project
         id: detect
@@ -27,7 +27,7 @@ jobs:
             echo "::notice::ui/package.json not found; UI is not implemented yet, skipping."
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.detect.outputs.present == 'true'
         with:
           node-version: 20
@@ -46,7 +46,7 @@ jobs:
           npx playwright install --with-deps chromium
           npx playwright test tests/e2e tests/visual
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure() && steps.detect.outputs.present == 'true'
         with:
           name: playwright-report
