@@ -1190,6 +1190,7 @@ dependencies = [
  "clap",
  "scribe-api",
  "scribe-core",
+ "scribe-module-url",
  "serde",
  "serde_json",
  "tempfile",
@@ -1285,17 +1286,26 @@ dependencies = [
 name = "scribe-module-url"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "clap",
+ "prost",
+ "protox",
  "ring",
+ "scribe-api",
  "scribe-core",
  "scribe-enrich",
  "scribe-module-api",
  "scribe-module-conformance",
+ "scribe-module-url",
  "scribe-secrets",
  "scribe-test-support",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "toml",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
 ]
 
 [[package]]

@@ -93,6 +93,12 @@ pub enum Command {
         #[command(subcommand)]
         command: DaemonCommand,
     },
+    /// Plaintext HTTP requests the URL module stored (needs the module enabled in scribed)
+    #[cfg(feature = "url")]
+    Url {
+        #[command(subcommand)]
+        command: scribe_module_url::api::UrlCommand,
+    },
     /// The tamper-evident record of what was done to scribed
     Audit {
         #[command(subcommand)]
@@ -226,6 +232,8 @@ impl Command {
             Command::Audit {
                 command: AuditCommand::Verify { .. },
             } => "audit verify".into(),
+            #[cfg(feature = "url")]
+            Command::Url { .. } => "url list".into(),
             Command::Version => "version".into(),
         }
     }

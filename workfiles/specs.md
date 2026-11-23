@@ -232,7 +232,7 @@ default (section 6.3). `--json` prints the API messages with their protocol fiel
 | `scribe export [-o <file>]` | Hosts and baseline as one JSON document, to stdout or a file the CLI creates `0600` as the caller | Implemented (phase 10) |
 | `scribe daemon <command>` | Inspect and control the running daemon (section 6.2.1) | Implemented (phase 10) |
 | `scribe modules [--json]` | Modules built into this `scribed`: id, version, enabled, state, health, over budget, drops | Implemented (phase 10) |
-| `scribe <module> …` | Subcommands a module adds, e.g. `scribe url list --host api.example.com`, later `scribe metrics show tcp.retrans`; exit `1` with *module url is not enabled* when the daemon lacks it | Planned (phase 10) |
+| `scribe <module> …` | Subcommands a module adds, e.g. `scribe url list [--host api.example.com] [--limit] [--since] [--json]`, later `scribe metrics show tcp.retrans`; exit `1` with *module url is not enabled in this scribed* when the daemon lacks it | Implemented (phase 10: `scribe url list`) |
 
 Exit codes: `0` success, `1` failure (including "not implemented yet"), `2` usage error. `scribed` uses the same codes, with `2` also for configuration errors.
 
@@ -392,7 +392,7 @@ pub trait Module: Send + Sync {
 
 - `[modules] enabled = ["url"]` and one `[modules.<id>]` section per module, checked by the module itself. It receives the section as `Spanned<toml::Value>`, so errors keep their line and column; `configure` reports live or needs-restart for `reset --config` (section 8.5.2).
 - `privacy.url_query` moves to `[modules.url] query` (section 12.2); the old key stays as a deprecated alias for one version.
-- API: `ListModules` and `ModuleStatus` in the core service; per-module services in `proto/scribe/v1/modules/<id>.proto`.
+- API: `ListModules` and `GetModule` in the core service; per-module services in `proto/scribe/v1/modules/<id>.proto`, built by the module crate and served only while the module is enabled; a module reads its stored records through `RecordReader` (implemented in phase 10).
 - CLI: `scribe modules`; each module crate may add a `clap` subcommand behind its `client` feature (`scribe url …`). `scribe daemon status` gets a per-module section with health, counters and drops.
 
 #### 7.4.6 URL module (`crates/module-url`)

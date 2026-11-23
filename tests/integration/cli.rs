@@ -289,3 +289,59 @@ async fn audit_verify_finds_deleted_and_edited_records() {
     assert_eq!(direct.problems[0].kind, "gap");
     daemon.stop().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn module_subcommands_reach_the_module_service() {
+    use scribe_core::FlowKind;
+    use scribe_test_support::flow;
+    let mut get = flow("192.0.2.30:80")
+        .process(300, "/usr/bin/wget")
+        .http_get("http://shop.example.com/cart?item=7")
+        .observe();
+    get.event.kind = FlowKind::NewFlow;
+    let daemon = Daemon::start_with("caution", "", vec![get]).await;
+    let s = daemon.socket.clone();
+    let listed = crate::api::eventually(
+        || async {
+            text(
+                &scribe(&s, &["url", "list", "--host", "SHOP.example.com"])
+                    .await
+                    .stdout,
+            )
+        },
+        |out| out.contains("shop.example.com"),
+    )
+    .await;
+    let line = listed.lines().last().unwrap();
+    assert!(
+        line.contains("  GET     http://shop.example.com/cart?"),
+        "{listed}"
+    );
+    assert!(
+        !line.contains("item=7"),
+        "the default query mode doesn't keep values: {line}"
+    );
+    let json: serde_json::Value =
+        serde_json::from_str(&ok(&scribe(&s, &["url", "list", "--json"]).await, 0)).unwrap();
+    assert_eq!(json["items"][0]["host"], "shop.example.com");
+    let other = ok(
+        &scribe(&s, &["url", "list", "--host", "other.example.net"]).await,
+        0,
+    );
+    assert_eq!(other, "no requests stored\n");
+    daemon.stop().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_module_that_is_not_enabled_is_named() {
+    let daemon = Daemon::start_with("caution", "[modules]\nenabled = []", vec![]).await;
+    let out = scribe(&daemon.socket, &["url", "list"]).await;
+    ok(&out, 1);
+    assert_eq!(
+        text(&out.stderr),
+        "scribe: module url is not enabled in this scribed\n"
+    );
+    let modules = ok(&scribe(&daemon.socket, &["modules"]).await, 0);
+    assert!(modules.contains("url     1        no"), "{modules}");
+    daemon.stop().await;
+}

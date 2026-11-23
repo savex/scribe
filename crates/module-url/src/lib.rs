@@ -6,6 +6,8 @@
 //! per-install key: `hash_key` (a secret reference) or, by default, `file:<data_dir>/url_hash.key`,
 //! created on first start.
 
+#[cfg(any(feature = "server", feature = "client"))]
+pub mod api;
 pub mod parse;
 pub mod privacy;
 

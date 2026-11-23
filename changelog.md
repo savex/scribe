@@ -34,6 +34,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 10 step 6a: the local API on Windows over the named pipe `\\.\pipe\scribed` (access list, first
   instance only, no remote clients, caller identity from the client's process token, clients check the server
   runs as SYSTEM); `scribe_api::transport` hides the platform from the daemon and the CLI.
+- Phase 10 step 6b: per-module API services: `scribe_module_api::RecordReader`, the URL module's
+  `scribe.v1.modules.url.Url` service (served only while the module is enabled) and `scribe url list`;
+  `scribe modules` shows the version of disabled modules too.
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module

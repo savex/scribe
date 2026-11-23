@@ -54,7 +54,8 @@ pub struct Snapshot {
     /// Module output dropped because the queue was full, per module.
     pub module_drops: BTreeMap<String, u64>,
     /// Modules built into this `scribed`, enabled or not.
-    pub modules_built: Vec<&'static str>,
+    /// Id and version of each.
+    pub modules_built: Vec<(&'static str, u32)>,
     /// The last sequence number sealed into the audit chain.
     pub sealed_seq: u64,
 }
@@ -342,7 +343,7 @@ pub fn modules(snap: &Snapshot) -> Vec<pb::Module> {
     snap.modules_built
         .iter()
         .map(
-            |id| match snap.status.modules.iter().find(|m| m.id == *id) {
+            |(id, version)| match snap.status.modules.iter().find(|m| m.id == *id) {
                 Some(m) => pb::Module {
                     id: m.id.to_owned(),
                     version: m.version,
@@ -359,6 +360,7 @@ pub fn modules(snap: &Snapshot) -> Vec<pb::Module> {
                 },
                 None => pb::Module {
                     id: (*id).to_owned(),
+                    version: *version,
                     enabled: false,
                     state: "stopped".into(),
                     health: "not enabled".into(),
@@ -1140,6 +1142,51 @@ impl Scribe for Api {
     }
 }
 
+/// Module records read back from the event sinks, for module services ([`RecordReader`]).
+pub struct StoredRecords(pub Arc<Storage>);
+
+impl scribe_module_api::RecordReader for StoredRecords {
+    fn records<'a>(
+        &'a self,
+        kind: &'a str,
+        host: Option<&'a str>,
+        since: Option<SystemTime>,
+        limit: usize,
+    ) -> scribe_module_api::BoxFuture<'a, Result<Vec<scribe_core::ModuleRecord>, String>> {
+        Box::pin(async move {
+            let mut kept = std::collections::VecDeque::with_capacity(limit.min(1024));
+            let mut offset = 0;
+            loop {
+                let query = EventQuery {
+                    since,
+                    kinds: vec![EventKind::Module(kind.to_owned().into())],
+                    offset,
+                    limit: Some(FIND_PAGE),
+                    ..Default::default()
+                };
+                let page = self.0.query(&query).await.map_err(|e| e.to_string())?;
+                let n = page.items.len();
+                for event in page.items {
+                    if let StoredEvent::Module(r) = event {
+                        if host.is_none_or(|h| r.host.as_deref() == Some(h)) {
+                            if kept.len() == limit {
+                                kept.pop_front();
+                            }
+                            if limit > 0 {
+                                kept.push_back(r);
+                            }
+                        }
+                    }
+                }
+                if n < FIND_PAGE {
+                    return Ok(kept.into());
+                }
+                offset += n;
+            }
+        })
+    }
+}
+
 /// The running API server.
 pub struct ApiServer {
     stop: watch::Sender<bool>,
@@ -1151,13 +1198,16 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 
 impl ApiServer {
     /// Serves `api` and `grpc.health.v1` on `listener`.
+    /// `modules` holds the services of the enabled modules.
     pub fn spawn(
         listener: scribe_api::transport::Listener,
         api: Api,
         stop: watch::Sender<bool>,
+        modules: tonic::service::Routes,
     ) -> Self {
         let (reporter, health_service) = tonic_health::server::health_reporter();
-        let routes = tonic::service::Routes::new(scribe_api::service(api.clone()))
+        let routes = modules
+            .add_service(scribe_api::service(api.clone()))
             .add_service(health_service);
         let mut stopping = api.stopping.clone();
         let mut watcher = api.stopping.clone();

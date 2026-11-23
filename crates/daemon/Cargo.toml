@@ -17,7 +17,7 @@ default = ["sqlite", "url"]
 sqlite = ["scribe-storage-manager/sqlite"]
 postgres = ["scribe-storage-manager/postgres"]
 # Modules (specs 7.4); `url` is on by default.
-url = ["dep:scribe-module-url"]
+url = ["dep:scribe-module-url", "scribe-module-url/server"]
 
 [dependencies]
 scribe-core.workspace = true

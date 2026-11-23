@@ -5,6 +5,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+# The module's API service, for scribed (specs 7.4.5).
+server = ["dep:scribe-api", "scribe-api/server", "dep:tonic", "dep:tonic-prost", "dep:prost"]
+# The `scribe url …` subcommand, for the CLI.
+client = ["dep:scribe-api", "scribe-api/client", "dep:tonic", "dep:tonic-prost", "dep:prost", "dep:clap"]
+
 [dependencies]
 scribe-core.workspace = true
 scribe-module-api.workspace = true
@@ -14,8 +20,19 @@ ring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
+scribe-api = { workspace = true, optional = true }
+tonic = { workspace = true, features = ["codegen"], optional = true }
+tonic-prost = { workspace = true, optional = true }
+prost = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+
+[build-dependencies]
+tonic-prost-build.workspace = true
+protox.workspace = true
 
 [dev-dependencies]
+scribe-module-url = { path = ".", features = ["server", "client"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "time"] }
 tempfile.workspace = true
 scribe-module-conformance.workspace = true
 scribe-test-support.workspace = true

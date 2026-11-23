@@ -21,6 +21,23 @@ pub use config::{ConfigDoc, SectionError};
 pub use manifest::{Access, Call, Manifest, ManifestError, Needs, Privilege, RecordKind};
 pub use scribe_core::{MetricSample, ModuleRecord, Notes};
 
+/// Boxed future for the object-safe traits here.
+pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+
+/// Read access to stored module records, for a module's API service (specs 7.4.5). The daemon
+/// implements it over its event sinks, so a module never depends on storage.
+pub trait RecordReader: Send + Sync {
+    /// Up to `limit` records of `kind` (e.g. `url.request`), newest last: only those for `host`
+    /// when given, and only from `since` on when given.
+    fn records<'a>(
+        &'a self,
+        kind: &'a str,
+        host: Option<&'a str>,
+        since: Option<SystemTime>,
+        limit: usize,
+    ) -> BoxFuture<'a, Result<Vec<ModuleRecord>, String>>;
+}
+
 /// How a new config was applied.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reload {

@@ -650,14 +650,26 @@ pub async fn serve_full(
                 layout: Layout::of(&settings),
                 audit_key: writer.chain.key().clone(),
             };
-            Some(ApiServer::spawn(listener, api, stop_api))
+            let enabled = settings.config.modules.enabled.get_ref();
+            #[allow(unused_mut)]
+            let mut modules = tonic::service::Routes::default();
+            #[cfg(feature = "url")]
+            if enabled.iter().any(|id| id == scribe_module_url::ID) {
+                let reader = Arc::new(crate::api::StoredRecords(storage.clone()));
+                modules = modules.add_service(scribe_module_url::api::service(reader));
+            }
+            let _ = enabled;
+            Some(ApiServer::spawn(listener, api, stop_api, modules))
         }
         None => {
             drop((stop_api, stopping_api));
             None
         }
     };
-    let modules_built: Vec<&'static str> = modules::builtin().iter().map(|m| m.id).collect();
+    let modules_built: Vec<(&'static str, u32)> = modules::builtin()
+        .iter()
+        .map(|m| (m.id, (m.make)().manifest().version))
+        .collect();
     let mut config_loaded = clock.now();
     let mut rates = Rates::default();
     let hours_keep = settings.config.storage.hours.keep.map(Duration::from);

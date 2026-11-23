@@ -12,6 +12,11 @@ path = "src/lib.rs"
 name = "scribe"
 path = "src/main.rs"
 
+[features]
+default = ["url"]
+# Module subcommands (specs 7.4.5): `scribe url …`.
+url = ["dep:scribe-module-url"]
+
 [dependencies]
 scribe-core.workspace = true
 scribe-api = { workspace = true, features = ["client"] }
@@ -21,6 +26,7 @@ tokio-stream.workspace = true
 tonic.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+scribe-module-url = { workspace = true, features = ["client"], optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

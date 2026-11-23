@@ -1,0 +1,30 @@
+// The URL module's service (crates/module-url, specs 7.4.6): served by scribed only while the
+// module is enabled. Same transport, identity and limits as scribe.v1.Scribe.
+syntax = "proto3";
+
+package scribe.v1.modules.url;
+
+service Url {
+  // Stored plaintext HTTP requests (`scribe url list`), newest last. A read call.
+  rpc List(ListRequest) returns (RequestList);
+}
+
+message ListRequest {
+  // Only requests to this host; empty for all.
+  string host = 1;
+  // At most this many, the newest; 0 for 100.
+  uint32 limit = 2;
+  optional int64 since_ms = 3;
+}
+
+message RequestList {
+  repeated Request items = 1;
+}
+
+message Request {
+  int64 ts_ms = 1;
+  string host = 2;
+  string method = 3;
+  // As stored, after `[modules.url] query` was applied.
+  string url = 4;
+}

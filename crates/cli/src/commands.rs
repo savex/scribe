@@ -49,6 +49,21 @@ pub async fn run(command: &Command, socket: &Path) -> Outcome {
                 ExitCode::from(crate::EXIT_FAILURE)
             })
         }
+        #[cfg(feature = "url")]
+        Command::Url { command } => {
+            let channel = scribe_api::transport::channel(
+                socket,
+                scribe_api::ServerCheck::RootOrSelf,
+                CALL_TIMEOUT,
+            )
+            .await
+            .map_err(|e| crate::client::transport_failure(socket, e))?;
+            let text = scribe_module_url::api::run(command, channel)
+                .await
+                .map_err(|s| module_failure(scribe_module_url::ID, s))?;
+            print(&text);
+            Ok(ExitCode::SUCCESS)
+        }
         Command::Version => unreachable!("handled before connecting"),
         other => data(other, socket).await,
     }
@@ -222,11 +237,23 @@ async fn data(command: &Command, socket: &Path) -> Outcome {
                 output::modules(&list)
             });
         }
+        #[cfg(feature = "url")]
+        Command::Url { .. } => unreachable!("dispatched by run"),
         Command::Status(_) | Command::Daemon { .. } | Command::Audit { .. } | Command::Version => {
             unreachable!("dispatched by run")
         }
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// A module call that failed: a scribed without the module answers `unimplemented`.
+#[cfg_attr(not(feature = "url"), allow(dead_code))]
+fn module_failure(id: &str, status: tonic::Status) -> Failure {
+    if status.code() == tonic::Code::Unimplemented {
+        Failure::new(format!("module {id} is not enabled in this scribed"))
+    } else {
+        call_failure(status)
+    }
 }
 
 /// Writes the export as the caller, readable only by them (it lists every host contacted).
