@@ -9,7 +9,8 @@ use scribe_api::access::{Access, AccessPolicy};
 use scribe_api::pb::scribe_client::ScribeClient;
 use scribe_api::pb::scribe_server::Scribe;
 use scribe_api::pb::*;
-use scribe_api::unix::{self, ServerCheck};
+use scribe_api::transport;
+use scribe_api::ServerCheck;
 use tokio::sync::oneshot;
 use tokio_stream::Stream;
 use tonic::transport::Channel;
@@ -121,8 +122,22 @@ impl Scribe for Mock {
     }
 }
 
-/// A mock server on a socket in its own temp dir; stops when dropped.
+/// A socket in `dir` on Unix; a pipe name unique to this process and call on Windows.
+pub fn endpoint(dir: &Path) -> PathBuf {
+    if cfg!(windows) {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        PathBuf::from(format!(r"\\.\pipe\scribe-test-{}-{n}", std::process::id()))
+    } else {
+        dir.join("api.sock")
+    }
+}
+
+/// A mock server on its own socket (pipe on Windows); stops when dropped.
 pub struct Running {
+    /// Holds the socket on Unix; unused by a pipe.
+    #[allow(dead_code)]
     pub dir: tempfile::TempDir,
     pub socket: PathBuf,
     stop: Option<oneshot::Sender<()>>,
@@ -132,12 +147,12 @@ pub struct Running {
 impl Running {
     pub async fn start(policy: AccessPolicy) -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let socket = dir.path().join("api.sock");
-        let listener = unix::bind(&socket).unwrap();
-        let routes = tonic::service::Routes::new(unix::service(Mock { policy }));
+        let socket = endpoint(dir.path());
+        let listener = transport::bind(&socket, &[]).unwrap();
+        let routes = tonic::service::Routes::new(scribe_api::service(Mock { policy }));
         let (stop, stopped) = oneshot::channel::<()>();
         let task = tokio::spawn(async move {
-            unix::serve(listener, routes, async {
+            transport::serve(listener, routes, async {
                 let _ = stopped.await;
             })
             .await
@@ -162,7 +177,7 @@ impl Running {
 }
 
 pub async fn connect(socket: &Path) -> ScribeClient<Channel> {
-    unix::connect(socket, ServerCheck::RootOrSelf, Duration::from_secs(5))
+    transport::connect(socket, ServerCheck::RootOrSelf, Duration::from_secs(5))
         .await
         .unwrap()
 }

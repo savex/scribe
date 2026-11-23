@@ -369,10 +369,10 @@ async fn next_of(
 /// Commands waiting from the local API.
 const API_COMMANDS: usize = 64;
 
-/// Opens the API socket; on failure scribed keeps capturing without it (and says why).
-#[cfg(unix)]
-fn bind_api(path: &std::path::Path) -> Option<tokio::net::UnixListener> {
-    match scribe_api::unix::bind(path) {
+/// Opens the API socket (named pipe on Windows) and lets `groups` in; on failure scribed keeps
+/// capturing without it (and says why).
+fn bind_api(path: &std::path::Path, groups: &[&str]) -> Option<scribe_api::transport::Listener> {
+    match scribe_api::transport::bind(path, groups) {
         Ok(listener) => {
             info!(socket = %path.display(), "local API listening");
             Some(listener)
@@ -382,15 +382,6 @@ fn bind_api(path: &std::path::Path) -> Option<tokio::net::UnixListener> {
             None
         }
     }
-}
-
-#[cfg(not(unix))]
-fn bind_api(path: &std::path::Path) -> Option<()> {
-    warn!(
-        socket = %path.display(),
-        "the named-pipe API arrives in plan phase 10 step 6; scribe cannot reach this scribed yet"
-    );
-    None
 }
 
 /// Flows and stored events per second over the last minute (`scribe daemon status`).
@@ -642,8 +633,9 @@ pub async fn serve_full(
     // The socket is opened before dropping privileges: its folder belongs to root.
     let (stop_api, stopping_api) = tokio::sync::watch::channel(false);
     let mut api_commands = None;
-    let api_server = match api_socket.as_deref().and_then(bind_api) {
-        #[cfg(unix)]
+    let admin_group = settings.config.api.admin_group.get_ref().clone();
+    let groups = [scribe_api::transport::READ_GROUP, admin_group.as_str()];
+    let api_server = match api_socket.as_deref().and_then(|p| bind_api(p, &groups)) {
         Some(listener) => {
             let (tx, rx) = tokio::sync::mpsc::channel(API_COMMANDS);
             api_commands = Some(rx);
@@ -653,15 +645,13 @@ pub async fn serve_full(
                 alerts: alerts_tx.clone(),
                 stopping: stopping_api,
                 policy: scribe_api::access::AccessPolicy {
-                    admin_group: settings.config.api.admin_group.get_ref().clone(),
+                    admin_group: admin_group.clone(),
                 },
                 layout: Layout::of(&settings),
                 audit_key: writer.chain.key().clone(),
             };
             Some(ApiServer::spawn(listener, api, stop_api))
         }
-        #[cfg(not(unix))]
-        Some(()) => None,
         None => {
             drop((stop_api, stopping_api));
             None
@@ -841,7 +831,8 @@ pub async fn serve_full(
     crate::service::notify("STOPPING=1");
     if let Some(server) = api_server {
         server.shutdown().await;
-        // Only the daemon that bound the socket removes it.
+        // Only the daemon that bound the socket removes it (a pipe goes away by itself).
+        #[cfg(unix)]
         if let Some(path) = api_socket.as_deref() {
             let _ = std::fs::remove_file(path);
         }

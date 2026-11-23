@@ -1,9 +1,10 @@
-//! Functional tests of the API transport: calls over a real Unix socket in a temp dir, the caller
-//! identity attached by the server, access checks, socket ownership checks and limits.
+//! Functional tests of the API transport: calls over a real Unix socket in a temp dir (a named
+//! pipe on Windows), the caller identity attached by the server, access checks, ownership checks
+//! and limits.
 
 #[cfg(unix)]
 mod access;
-#[cfg(unix)]
 mod mock;
+mod pipe;
 #[cfg(unix)]
 mod socket;

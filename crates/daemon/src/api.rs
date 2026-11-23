@@ -1151,10 +1151,13 @@ const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 
 impl ApiServer {
     /// Serves `api` and `grpc.health.v1` on `listener`.
-    #[cfg(unix)]
-    pub fn spawn(listener: tokio::net::UnixListener, api: Api, stop: watch::Sender<bool>) -> Self {
+    pub fn spawn(
+        listener: scribe_api::transport::Listener,
+        api: Api,
+        stop: watch::Sender<bool>,
+    ) -> Self {
         let (reporter, health_service) = tonic_health::server::health_reporter();
-        let routes = tonic::service::Routes::new(scribe_api::unix::service(api.clone()))
+        let routes = tonic::service::Routes::new(scribe_api::service(api.clone()))
             .add_service(health_service);
         let mut stopping = api.stopping.clone();
         let mut watcher = api.stopping.clone();
@@ -1181,7 +1184,7 @@ impl ApiServer {
                     }
                 }
             });
-            let result = scribe_api::unix::serve(listener, routes, async move {
+            let result = scribe_api::transport::serve(listener, routes, async move {
                 let _ = stopping.wait_for(|s| *s).await;
             })
             .await;

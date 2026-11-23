@@ -27,6 +27,15 @@ serde.workspace = true
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_System_Pipes",
+  "Win32_System_Threading",
+] }
+
 [build-dependencies]
 tonic-prost-build.workspace = true
 protox.workspace = true

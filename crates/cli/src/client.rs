@@ -44,8 +44,6 @@ pub fn unreachable(socket: &Path, detail: &str) -> Failure {
 }
 
 /// What a transport error means to the user.
-// Used on Windows once the named-pipe transport arrives (phase 10 step 6).
-#[cfg_attr(not(unix), allow(dead_code))]
 pub fn transport_failure(socket: &Path, e: TransportError) -> Failure {
     match e {
         TransportError::Io { source, .. }
@@ -81,18 +79,7 @@ pub fn call_failure(status: tonic::Status) -> Failure {
 
 /// A client for scribed at `socket`; `timeout` bounds connecting and each call.
 pub async fn connect(socket: &Path, timeout: Duration) -> Result<ScribeClient<Channel>, Failure> {
-    #[cfg(unix)]
-    {
-        scribe_api::unix::connect(socket, scribe_api::unix::ServerCheck::RootOrSelf, timeout)
-            .await
-            .map_err(|e| transport_failure(socket, e))
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = timeout;
-        Err(unreachable(
-            socket,
-            "the named-pipe API arrives in plan phase 10 step 6",
-        ))
-    }
+    scribe_api::transport::connect(socket, scribe_api::ServerCheck::RootOrSelf, timeout)
+        .await
+        .map_err(|e| transport_failure(socket, e))
 }

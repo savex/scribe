@@ -15,8 +15,12 @@ pub mod pb {
 pub mod access;
 mod convert;
 pub mod limits;
+#[cfg(any(feature = "server", feature = "client"))]
+pub mod transport;
 #[cfg(all(unix, any(feature = "server", feature = "client")))]
 pub mod unix;
+#[cfg(all(windows, any(feature = "server", feature = "client")))]
+pub mod windows;
 
 pub use convert::{mode_from_api, mode_to_api};
 
@@ -38,6 +42,24 @@ pub fn default_socket() -> &'static str {
 
 /// Environment variable clients read for another socket path (tests, a second daemon).
 pub const SOCKET_ENV: &str = "SCRIBE_SOCKET";
+
+/// Which servers a client accepts (specs 12.1.1: the real `scribed` runs as root / SYSTEM).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServerCheck {
+    /// Run by root / SYSTEM or by the calling user itself (a user can't be fooled by their own
+    /// server; tests and development daemons run unprivileged).
+    RootOrSelf,
+    /// Run by root / SYSTEM only.
+    Root,
+}
+
+/// The `Scribe` service with the message size limit applied.
+#[cfg(feature = "server")]
+pub fn service<T: pb::scribe_server::Scribe>(api: T) -> pb::scribe_server::ScribeServer<T> {
+    pb::scribe_server::ScribeServer::new(api)
+        .max_decoding_message_size(limits::MAX_MESSAGE)
+        .max_encoding_message_size(limits::MAX_MESSAGE)
+}
 
 /// Errors setting up the transport.
 #[derive(Debug, thiserror::Error)]

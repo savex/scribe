@@ -22,15 +22,7 @@ pub fn current_uid() -> u32 {
     unsafe { libc::getuid() }
 }
 
-/// Which socket owners a client accepts (specs 12.1.1: the real `scribed` runs as root).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServerCheck {
-    /// Owned by root or by the calling user (a user can't be fooled by their own socket; tests and
-    /// development daemons run unprivileged).
-    RootOrSelf,
-    /// Owned by root only.
-    Root,
-}
+pub use crate::ServerCheck;
 
 /// Refuses `path` unless it is a socket whose owner `check` accepts.
 pub fn check_server(path: &Path, check: ServerCheck) -> Result<(), TransportError> {
@@ -113,14 +105,15 @@ mod client {
 }
 
 #[cfg(feature = "server")]
-pub use server::{bind, identify, serve, service};
+pub use crate::service;
+#[cfg(feature = "server")]
+pub use server::{bind, identify, serve};
 
 #[cfg(feature = "server")]
 mod server {
     use super::*;
     use crate::access::Caller;
     use crate::limits;
-    use crate::pb::scribe_server::{Scribe, ScribeServer};
     use std::ffi::CStr;
     use std::future::Future;
     use std::os::unix::fs::PermissionsExt;
@@ -131,13 +124,6 @@ mod server {
     use tokio_stream::StreamExt;
     use tonic::service::Routes;
     use tonic::transport::server::Connected;
-
-    /// The `Scribe` service with the message size limit applied.
-    pub fn service<T: Scribe>(api: T) -> ScribeServer<T> {
-        ScribeServer::new(api)
-            .max_decoding_message_size(limits::MAX_MESSAGE)
-            .max_encoding_message_size(limits::MAX_MESSAGE)
-    }
 
     /// Listens at `path`. A missing directory is created `0750` (the installer sets its group);
     /// a stale socket left by a crash is replaced; a live one, or anything that isn't a socket,
