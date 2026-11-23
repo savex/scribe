@@ -540,7 +540,7 @@ impl Pipeline {
 }
 
 /// Where [`store`] writes: the running storage manager, or test doubles.
-pub trait Store {
+pub trait Store: Sync {
     fn publish(&self, events: &[StoredEvent]);
     fn state(&self) -> &dyn StateStore;
 }

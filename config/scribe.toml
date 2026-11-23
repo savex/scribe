@@ -121,6 +121,19 @@ max_hibernate = "4h"
 # user = "scribe"
 
 
+# ─── Local API ───────────────────────────────────────────────────────────────
+
+[api]
+# Where `scribe` and the UI reach scribed. "" = the OS default: Linux /run/scribe/api.sock,
+# macOS /var/run/scribe/api.sock, Windows \\.\pipe\scribed. The socket's folder is root:scribe 0750:
+# members of the scribe group may read (status, hosts, alerts, export).
+socket = ""
+# Members of this group may also make control calls (mode, alerts ack, baseline add / rm,
+# daemon reset / hibernate / wakeup); root and Administrators always may. Every control call is
+# logged and stored as an audit event, refused ones too.
+admin_group = "scribe-admin"
+
+
 # ─── Storage ─────────────────────────────────────────────────────────────────
 
 [storage.state]

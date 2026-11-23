@@ -145,6 +145,12 @@ pub fn parse(text: &str, source: &Source, ctx: &Context) -> Result<Config, Confi
     Ok(config)
 }
 
+/// A socket path (Unix) or pipe name (`\\.\pipe\…` on Windows) that doesn't depend on the
+/// working directory.
+fn api_socket_is_absolute(socket: &str) -> bool {
+    std::path::Path::new(socket).is_absolute() || socket.starts_with(r"\\.\pipe\")
+}
+
 /// Rules that span several fields or depend on the build and OS.
 pub fn validate(
     config: &Config,
@@ -174,6 +180,20 @@ pub fn validate(
                 ),
             ));
         }
+    }
+
+    let socket = config.api.socket.get_ref();
+    if !socket.is_empty() && !api_socket_is_absolute(socket) {
+        return Err(at(
+            config.api.socket.span(),
+            format!("api socket must be an absolute path, got \"{socket}\""),
+        ));
+    }
+    if config.api.admin_group.get_ref().trim().is_empty() {
+        return Err(at(
+            config.api.admin_group.span(),
+            "api admin_group must name a group".into(),
+        ));
     }
 
     let bits = *config.policy.entropy.min_bits_per_char.get_ref();

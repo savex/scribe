@@ -66,6 +66,8 @@ pub struct Settings {
     /// The checked config as written (relative paths, percentages).
     pub config: Config,
     pub data_dir: PathBuf,
+    /// Where the local API listens: `[api] socket`, or the OS default.
+    pub api_socket: PathBuf,
     pub mode: Mode,
     pub profile: String,
     pub storage: StorageConfig,
@@ -223,7 +225,12 @@ pub fn resolve(
         ));
     }
 
+    let api_socket = match config.api.socket.get_ref().as_str() {
+        "" => PathBuf::from(scribe_api::default_socket()),
+        socket => PathBuf::from(socket),
+    };
     Ok(Settings {
+        api_socket,
         limits: Limits {
             cache_hosts: config.storage.cache.max_hosts.get(),
             cache_memory,
@@ -334,6 +341,7 @@ impl Settings {
         c.data_dir = Some(Spanned::new(0..0, self.data_dir.clone()));
         c.log.file = Some(self.log.file.clone().unwrap_or_default());
         c.storage.spool.dir = self.limits.spool_dir.clone();
+        c.api.socket = Spanned::new(0..0, self.api_socket.display().to_string());
         let fix = |kind: StorageKind, path: &mut Option<PathBuf>| {
             if kind == StorageKind::Sqlite {
                 *path = path.as_deref().map(abs);

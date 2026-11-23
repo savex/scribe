@@ -28,6 +28,10 @@ ring.workspace = true
 scribe-storage-api.workspace = true
 scribe-storage-manager.workspace = true
 scribe-module-api.workspace = true
+scribe-api = { workspace = true, features = ["server"] }
+tonic.workspace = true
+tonic-health.workspace = true
+tokio-stream.workspace = true
 serde_json.workspace = true
 scribe-module-url = { workspace = true, optional = true }
 scribe-sensor-pcap.workspace = true

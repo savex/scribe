@@ -14,6 +14,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 10 step 1: `scribe-api` crate with the local API protocol (`proto/scribe/v1/api.proto`, generated
   without `protoc` through `protox`), the Unix socket transport, caller identity from the socket and the access
   policy for control calls, and transport limits.
+- Phase 10 step 2: `scribed` serves the local API read calls (status with critical metrics, health and
+  `grpc.health.v1`, hosts, alerts, alert stream, baseline, export, modules) on `[api] socket`; new `[api]`
+  config section (`socket`, `admin_group`); `Storage::query`; per-module drop counts; `scribe_policy::alert_key_for`.
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module

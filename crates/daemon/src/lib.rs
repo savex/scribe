@@ -1,5 +1,6 @@
 //! scribed internals, kept in a library so they can be tested directly.
 
+pub mod api;
 pub mod app;
 pub mod chain;
 pub mod config;

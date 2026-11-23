@@ -31,6 +31,7 @@ pub struct Config {
     pub log: Log,
     pub daemon: Daemon,
     pub sensor: SensorConfig,
+    pub api: Api,
 }
 
 impl Default for Config {
@@ -47,6 +48,7 @@ impl Default for Config {
             log: Log::default(),
             daemon: Daemon::default(),
             sensor: SensorConfig::default(),
+            api: Api::default(),
         }
     }
 }
@@ -60,6 +62,29 @@ pub struct SensorConfig {
     /// pcap capture device; `""` = automatic (Linux `any`, else the first device that is up with
     /// an address). Ignored by the native sensors.
     pub interface: String,
+}
+
+// ─── Local API ──────────────────────────────────────────────────────────────
+
+/// `[api]`: the local API socket and who may make control calls (specs 6.3, 12.1.1).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Api {
+    /// Unix socket path or Windows pipe name; `""` = the OS default (`/run/scribe/api.sock`,
+    /// `/var/run/scribe/api.sock`, `\\.\pipe\scribed`). Must be absolute.
+    pub socket: Spanned<String>,
+    /// Members may make control calls (reset, hibernate, wakeup, mode, ack, baseline edits)
+    /// besides root / Administrators.
+    pub admin_group: Spanned<String>,
+}
+
+impl Default for Api {
+    fn default() -> Self {
+        Self {
+            socket: Spanned::new(0..0, String::new()),
+            admin_group: Spanned::new(0..0, "scribe-admin".to_owned()),
+        }
+    }
 }
 
 // ─── Daemon ─────────────────────────────────────────────────────────────────

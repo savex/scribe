@@ -54,7 +54,7 @@ pub fn check_server(path: &Path, check: ServerCheck) -> Result<(), TransportErro
 }
 
 #[cfg(feature = "client")]
-pub use client::connect;
+pub use client::{channel, connect};
 
 #[cfg(feature = "client")]
 mod client {
@@ -72,6 +72,17 @@ mod client {
         check: ServerCheck,
         timeout: Duration,
     ) -> Result<ScribeClient<Channel>, TransportError> {
+        let channel = channel(path, check, timeout).await?;
+        Ok(ScribeClient::new(channel).max_decoding_message_size(crate::limits::MAX_MESSAGE))
+    }
+
+    /// The connection [`connect`] makes, for other services on the same socket
+    /// (`grpc.health.v1`, module services).
+    pub async fn channel(
+        path: &Path,
+        check: ServerCheck,
+        timeout: Duration,
+    ) -> Result<Channel, TransportError> {
         check_server(path, check)?;
         let path: PathBuf = path.to_owned();
         // The URI is required by the HTTP layer and never resolved.
@@ -87,7 +98,7 @@ mod client {
             }))
             .await
             .map_err(|e| TransportError::Connect(source_chain(&e)))?;
-        Ok(ScribeClient::new(channel).max_decoding_message_size(crate::limits::MAX_MESSAGE))
+        Ok(channel)
     }
 
     fn source_chain(e: &dyn std::error::Error) -> String {

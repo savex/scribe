@@ -121,14 +121,24 @@ pub struct Policy {
 
 /// The dedupe key of an alert: host + process.
 pub fn alert_key(alert: &Alert) -> String {
-    key(
-        alert
-            .host
-            .clone()
-            .unwrap_or_else(|| alert.dst_ip.to_string())
-            .as_str(),
+    alert_key_for(
+        alert.host.as_deref(),
+        alert.dst_ip,
         alert.process_path.as_deref(),
     )
+}
+
+/// [`alert_key`] from an alert's parts (a stored `AlertRecord`): the host, or the destination IP
+/// when there is no name, and the process.
+pub fn alert_key_for(
+    host: Option<&str>,
+    dst_ip: std::net::IpAddr,
+    process: Option<&str>,
+) -> String {
+    match host {
+        Some(h) => key(h, process),
+        None => key(&dst_ip.to_string(), process),
+    }
 }
 
 fn key(host: &str, process: Option<&str>) -> String {

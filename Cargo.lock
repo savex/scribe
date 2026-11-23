@@ -1211,6 +1211,7 @@ dependencies = [
  "clap",
  "libc",
  "ring",
+ "scribe-api",
  "scribe-core",
  "scribe-enrich",
  "scribe-module-api",
@@ -1228,7 +1229,10 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "toml",
+ "tonic",
+ "tonic-health",
  "tracing",
  "tracing-appender",
  "tracing-journald",
@@ -1415,7 +1419,9 @@ dependencies = [
 name = "scribe-tests"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "anyhow",
  "clap",
+ "scribe-api",
  "scribe-cli",
  "scribe-core",
  "scribe-daemon",
@@ -1435,6 +1441,9 @@ dependencies = [
  "serde_yaml_ng",
  "tempfile",
  "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-health",
 ]
 
 [[package]]
@@ -1707,6 +1716,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1814,6 +1824,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "tonic-health"
+version = "0.14.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc97d645691d64d96db1afe386d0d2918ac84ab56e2c91e153f22f6349a378cd"
+dependencies = [
+ "prost",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
 ]
 
 [[package]]

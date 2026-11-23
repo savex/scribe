@@ -2,13 +2,13 @@
 //!
 //! Exit codes: 0 success, 1 runtime failure, 2 usage or configuration error.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::ffi::OsString;
 use std::future::Future;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context as _;
 use clap::Parser;
@@ -16,12 +16,13 @@ use scribe_core::{Clock, Observation, Sensor, SystemClock, VERSION};
 use scribe_enrich::Enricher;
 use scribe_module_api::ConfigDoc;
 use scribe_policy::{Policy, ThreatSet};
-use scribe_storage_api::{StorageError, StoredEvent};
+use scribe_storage_api::{AlertRecord, StorageError, StoredEvent};
 use scribe_storage_manager::{
     BufferLimits, CacheLimits, Registry, RunOptions, SpoolOptions, Storage, StorageManager,
 };
 use tracing::{error, info, warn};
 
+use crate::api::{Api, ApiServer, Layout, SensorInfo, Snapshot};
 use crate::chain::Chain;
 use crate::config::{self, Settings};
 use crate::logging;
@@ -127,7 +128,20 @@ pub fn run_until(
 /// completes.
 pub async fn serve(settings: Settings, shutdown: impl Future<Output = ()>) -> anyhow::Result<()> {
     let sensor = platform_sensor(&settings);
-    serve_with(settings, sensor, shutdown).await
+    let options = ServeOptions {
+        commands: None,
+        api_socket: Some(settings.api_socket.clone()),
+    };
+    serve_full(settings, sensor, options, shutdown).await
+}
+
+/// What [`serve_full`] runs besides capture.
+#[derive(Debug, Default)]
+pub struct ServeOptions {
+    /// Commands from the caller (tests); the local API sends its own.
+    pub commands: Option<tokio::sync::mpsc::Receiver<Command>>,
+    /// Serve the local API here. [`serve`] uses `[api] socket`; tests pass a temp path or none.
+    pub api_socket: Option<PathBuf>,
 }
 
 /// Observations waiting between the sensor thread and the pipeline.
@@ -161,6 +175,10 @@ pub enum Command {
     Reload {
         caller: String,
         reply: tokio::sync::oneshot::Sender<Result<ReloadReport, String>>,
+    },
+    /// Everything the API reports from the loop: status, sensor, config and rates.
+    Describe {
+        reply: tokio::sync::oneshot::Sender<Box<Snapshot>>,
     },
 }
 
@@ -301,10 +319,122 @@ async fn next_command(rx: &mut Option<tokio::sync::mpsc::Receiver<Command>>) -> 
 /// [`serve_with`] that also takes [`Command`]s.
 pub async fn serve_controlled(
     settings: Settings,
-    mut sensor: Box<dyn Sensor>,
-    mut commands: Option<tokio::sync::mpsc::Receiver<Command>>,
+    sensor: Box<dyn Sensor>,
+    commands: Option<tokio::sync::mpsc::Receiver<Command>>,
     shutdown: impl Future<Output = ()>,
 ) -> anyhow::Result<()> {
+    let options = ServeOptions {
+        commands,
+        api_socket: None,
+    };
+    serve_full(settings, sensor, options, shutdown).await
+}
+
+/// The next command from the caller or from the local API.
+async fn next_of(
+    a: &mut Option<tokio::sync::mpsc::Receiver<Command>>,
+    b: &mut Option<tokio::sync::mpsc::Receiver<Command>>,
+) -> Option<Command> {
+    tokio::select! {
+        Some(cmd) = next_command(a) => Some(cmd),
+        Some(cmd) = next_command(b) => Some(cmd),
+        else => None,
+    }
+}
+
+/// Commands waiting from the local API.
+const API_COMMANDS: usize = 64;
+
+/// Opens the API socket; on failure scribed keeps capturing without it (and says why).
+#[cfg(unix)]
+fn bind_api(path: &std::path::Path) -> Option<tokio::net::UnixListener> {
+    match scribe_api::unix::bind(path) {
+        Ok(listener) => {
+            info!(socket = %path.display(), "local API listening");
+            Some(listener)
+        }
+        Err(e) => {
+            warn!("local API not available ({e}); scribe and the UI cannot reach this scribed");
+            None
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn bind_api(path: &std::path::Path) -> Option<()> {
+    warn!(
+        socket = %path.display(),
+        "the named-pipe API arrives in plan phase 10 step 6; scribe cannot reach this scribed yet"
+    );
+    None
+}
+
+/// Flows and stored events per second over the last minute (`scribe daemon status`).
+#[derive(Default)]
+struct Rates {
+    samples: VecDeque<(SystemTime, u64, u64)>,
+}
+
+const RATE_WINDOW: Duration = Duration::from_secs(60);
+
+impl Rates {
+    fn sample(&mut self, now: SystemTime, flows: u64, events: u64) {
+        self.samples.push_back((now, flows, events));
+        while let Some((t, ..)) = self.samples.front() {
+            match now.duration_since(*t) {
+                Ok(age) if age > RATE_WINDOW => {
+                    self.samples.pop_front();
+                }
+                _ => break,
+            }
+        }
+    }
+
+    fn per_second(&self) -> (f64, f64) {
+        let (Some(first), Some(last)) = (self.samples.front(), self.samples.back()) else {
+            return (0.0, 0.0);
+        };
+        let secs = last
+            .0
+            .duration_since(first.0)
+            .unwrap_or_default()
+            .as_secs_f64();
+        if secs <= 0.0 {
+            return (0.0, 0.0);
+        }
+        (
+            last.1.saturating_sub(first.1) as f64 / secs,
+            last.2.saturating_sub(first.2) as f64 / secs,
+        )
+    }
+}
+
+/// Events queued for storage so far (the busiest sink's count).
+fn events_queued(storage: &Storage) -> u64 {
+    storage
+        .sink_status()
+        .iter()
+        .map(|s| s.queued)
+        .max()
+        .unwrap_or(0)
+}
+
+/// Running without process info on a system that has a native sensor.
+fn is_fallback(sensor: &dyn Sensor) -> bool {
+    cfg!(any(target_os = "linux", windows)) && !sensor.has_process_info()
+}
+
+/// [`serve`] with every part chosen by the caller.
+pub async fn serve_full(
+    settings: Settings,
+    mut sensor: Box<dyn Sensor>,
+    options: ServeOptions,
+    shutdown: impl Future<Output = ()>,
+) -> anyhow::Result<()> {
+    let ServeOptions {
+        mut commands,
+        api_socket,
+    } = options;
     info!(version = VERSION, "scribed starting");
     for line in settings.summary() {
         info!("{line}");
@@ -331,8 +461,9 @@ pub async fn serve_controlled(
     }
 
     let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+    let started_at = clock.now();
     let limits = &settings.limits;
-    let storage = manager.start(RunOptions {
+    let storage = Arc::new(manager.start(RunOptions {
         clock: clock.clone(),
         spool: Some(SpoolOptions::new(
             &limits.spool_dir,
@@ -348,7 +479,7 @@ pub async fn serve_controlled(
             max_memory: limits.cache_memory,
         },
         ..RunOptions::default()
-    });
+    }));
 
     let mut host = ModuleHost::new(
         modules::instantiate(
@@ -434,19 +565,26 @@ pub async fn serve_controlled(
         .context("cannot start the sensor thread")?;
     let restart_tx = sensor_tx.clone();
     sensor.set_payload(pipeline.modules().needs_payload());
-    match sensor.start(sensor_tx) {
-        Ok(()) => info!(
-            sensor = sensor.name(),
-            process_info = sensor.has_process_info(),
-            "capture started"
-        ),
-        Err(e) => warn!(
-            sensor = sensor.name(),
-            "capture is not available ({e}); scribed runs without a sensor"
-        ),
-    }
+    let mut capturing = match sensor.start(sensor_tx) {
+        Ok(()) => {
+            info!(
+                sensor = sensor.name(),
+                process_info = sensor.has_process_info(),
+                "capture started"
+            );
+            true
+        }
+        Err(e) => {
+            warn!(
+                sensor = sensor.name(),
+                "capture is not available ({e}); scribed runs without a sensor"
+            );
+            false
+        }
+    };
 
-    let mut writer = Writer::new(chain);
+    let (alerts_tx, _) = tokio::sync::broadcast::channel::<AlertRecord>(crate::api::ALERT_BACKLOG);
+    let mut writer = Writer::new(chain, alerts_tx.clone());
     let mut started = Writes::default();
     if let Some(previous) = unclean {
         warn!(
@@ -476,6 +614,37 @@ pub async fn serve_controlled(
     ));
     writer.apply(&storage, pipeline.profile(), started).await;
 
+    // The socket is opened before dropping privileges: its folder belongs to root.
+    let (stop_api, stopping_api) = tokio::sync::watch::channel(false);
+    let mut api_commands = None;
+    let api_server = match api_socket.as_deref().and_then(bind_api) {
+        #[cfg(unix)]
+        Some(listener) => {
+            let (tx, rx) = tokio::sync::mpsc::channel(API_COMMANDS);
+            api_commands = Some(rx);
+            let api = Api {
+                commands: tx,
+                storage: storage.clone(),
+                alerts: alerts_tx.clone(),
+                stopping: stopping_api,
+                policy: scribe_api::access::AccessPolicy {
+                    admin_group: settings.config.api.admin_group.get_ref().clone(),
+                },
+                layout: Layout::of(&settings),
+            };
+            Some(ApiServer::spawn(listener, api, stop_api))
+        }
+        #[cfg(not(unix))]
+        Some(()) => None,
+        None => {
+            drop((stop_api, stopping_api));
+            None
+        }
+    };
+    let modules_built: Vec<&'static str> = modules::builtin().iter().map(|m| m.id).collect();
+    let mut config_loaded = clock.now();
+    let mut rates = Rates::default();
+
     let user = settings.config.daemon.user.trim();
     if !user.is_empty() {
         crate::privileges::drop_to(user, &settings.data_dir)
@@ -496,9 +665,36 @@ pub async fn serve_controlled(
                 let writes = pipeline.process(obs);
                 writer.apply(&storage, pipeline.profile(), writes).await;
             }
-            Some(cmd) = next_command(&mut commands) => {
+            Some(cmd) = next_of(&mut commands, &mut api_commands) => {
                 let was = pipeline.is_hibernating();
                 let reply = match cmd {
+                    Command::Describe { reply } => {
+                        let (flows_per_s, events_per_s) = rates.per_second();
+                        let snapshot = Snapshot {
+                            status: pipeline.status(),
+                            sensor: SensorInfo {
+                                name: sensor.name().to_owned(),
+                                process_info: sensor.has_process_info(),
+                                capturing,
+                                fallback: is_fallback(sensor.as_ref()),
+                            },
+                            started: started_at,
+                            now: clock.now(),
+                            config_path: running.source.to_string(),
+                            config_loaded,
+                            flows_per_s,
+                            events_per_s,
+                            module_drops: pipeline
+                                .modules()
+                                .ids()
+                                .into_iter()
+                                .map(|id| (id.to_owned(), queue.dropped_by(id)))
+                                .collect(),
+                            modules_built: modules_built.clone(),
+                        };
+                        let _ = reply.send(Box::new(snapshot));
+                        continue;
+                    }
                     Command::Hibernate { for_, caller, reply } => {
                         let writes = pipeline.hibernate(for_, &caller);
                         writer.apply(&storage, pipeline.profile(), writes).await;
@@ -528,6 +724,7 @@ pub async fn serve_controlled(
                         let result = match result {
                             Ok((report, writes)) => {
                                 writer.apply(&storage, pipeline.profile(), writes).await;
+                                config_loaded = clock.now();
                                 Ok(report)
                             }
                             Err(e) => {
@@ -539,12 +736,15 @@ pub async fn serve_controlled(
                         continue;
                     }
                 };
-                follow_state(was, &pipeline, sensor.as_mut(), &restart_tx);
+                follow_state(was, &pipeline, sensor.as_mut(), &restart_tx, &mut capturing);
                 let _ = reply.send(pipeline.status());
             }
             _ = hangup(&mut hup) => {
                 match reload(&mut running, &mut pipeline, &storage, clock.as_ref(), "SIGHUP").await {
-                    Ok((_, writes)) => writer.apply(&storage, pipeline.profile(), writes).await,
+                    Ok((_, writes)) => {
+                        writer.apply(&storage, pipeline.profile(), writes).await;
+                        config_loaded = clock.now();
+                    }
                     Err(e) => warn!("config reload (SIGHUP) rejected; the running config stays: {e}"),
                 }
             }
@@ -552,14 +752,23 @@ pub async fn serve_controlled(
                 let was = pipeline.is_hibernating();
                 let writes = pipeline.tick();
                 writer.apply(&storage, pipeline.profile(), writes).await;
-                follow_state(was, &pipeline, sensor.as_mut(), &restart_tx);
+                follow_state(was, &pipeline, sensor.as_mut(), &restart_tx, &mut capturing);
                 pipeline.modules_mut().tick();
-                drain.run(&queue, &storage).await;
+                drain.run(queue.take(), &storage).await;
+                rates.sample(clock.now(), pipeline.counters().flows, events_queued(&storage));
             }
         }
     }
     info!("stop signal received; shutting down");
     crate::service::notify("STOPPING=1");
+    if let Some(server) = api_server {
+        server.shutdown().await;
+        // Only the daemon that bound the socket removes it.
+        if let Some(path) = api_socket.as_deref() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    drop(api_commands);
 
     sensor.stop();
     drop(sensor);
@@ -585,7 +794,7 @@ pub async fn serve_controlled(
 
     let host = pipeline.modules_mut();
     host.stop();
-    drain.run(&queue, &storage).await;
+    drain.run(queue.take(), &storage).await;
     for status in host.status() {
         info!(module = status.id, "module {} stopped", status.id);
     }
@@ -596,7 +805,14 @@ pub async fn serve_controlled(
         );
     }
 
-    storage.shutdown().await;
+    drop(writer);
+    match Arc::try_unwrap(storage) {
+        Ok(storage) => storage.shutdown().await,
+        Err(storage) => {
+            warn!("storage is still in use at shutdown; flushing it instead");
+            storage.flush().await;
+        }
+    }
     let _ = std::fs::remove_file(&marker);
     info!("scribed stopped");
     Ok(())
@@ -609,9 +825,9 @@ struct Drain {
 }
 
 impl Drain {
-    async fn run(&mut self, queue: &OutputQueue, storage: &Storage) {
+    async fn run(&mut self, items: Vec<Output>, storage: &Storage) {
         let mut events: Vec<StoredEvent> = Vec::new();
-        for item in queue.take() {
+        for item in items {
             match item {
                 Output::Event(e) => events.push(e),
                 Output::State { module, key, value } => {
@@ -786,19 +1002,29 @@ fn audit(ts: std::time::SystemTime, message: String) -> StoredEvent {
 struct Writer {
     chain: Chain,
     failing: bool,
+    /// Sealed alerts for `WatchAlerts` clients.
+    alerts: tokio::sync::broadcast::Sender<AlertRecord>,
 }
 
 impl Writer {
-    fn new(chain: Chain) -> Self {
+    fn new(chain: Chain, alerts: tokio::sync::broadcast::Sender<AlertRecord>) -> Self {
         Self {
             chain,
             failing: false,
+            alerts,
         }
     }
 
     async fn apply(&mut self, storage: &Storage, profile: &str, mut writes: Writes) {
         if let Err(e) = self.chain.seal(&mut writes.events) {
             warn!("cannot save the audit chain state: {e}");
+        }
+        if self.alerts.receiver_count() > 0 {
+            for event in &writes.events {
+                if let StoredEvent::Alert(a) = event {
+                    let _ = self.alerts.send(a.clone());
+                }
+            }
         }
         for alert in &writes.alerts {
             warn!(
@@ -832,10 +1058,12 @@ fn follow_state(
     pipeline: &Pipeline,
     sensor: &mut dyn Sensor,
     tx: &std::sync::mpsc::Sender<Observation>,
+    capturing: &mut bool,
 ) {
     match (was_hibernating, pipeline.is_hibernating()) {
         (false, true) => {
             sensor.stop();
+            *capturing = false;
             if let pipeline::DaemonState::Hibernating { until, caller, .. } = pipeline.state() {
                 warn!(
                     caller = %caller,
@@ -845,7 +1073,10 @@ fn follow_state(
             }
         }
         (true, false) => match sensor.start(tx.clone()) {
-            Ok(()) => info!(sensor = sensor.name(), "woke up: capture started again"),
+            Ok(()) => {
+                *capturing = true;
+                info!(sensor = sensor.name(), "woke up: capture started again");
+            }
             Err(e) => warn!(
                 sensor = sensor.name(),
                 "woke up, but capture is not available: {e}"

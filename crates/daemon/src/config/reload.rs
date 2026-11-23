@@ -67,6 +67,8 @@ pub fn plan(running: &Settings, new: Settings) -> ReloadPlan {
         }
     };
     restart("data_dir", running.data_dir != new.data_dir);
+    restart("api", old.api != cfg.api);
+    restart("sensor", old.sensor != cfg.sensor);
     restart("storage.state", old.storage.state != cfg.storage.state);
     restart("storage.sinks", old.storage.sinks != cfg.storage.sinks);
     restart(

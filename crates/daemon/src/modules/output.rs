@@ -28,6 +28,8 @@ pub struct QueueEmitter {
     module: &'static str,
     tx: SyncSender<Output>,
     dropped: Arc<AtomicU64>,
+    /// This module's share of `dropped`.
+    own: Arc<AtomicU64>,
 }
 
 impl QueueEmitter {
@@ -36,6 +38,7 @@ impl QueueEmitter {
             Ok(()) => {}
             Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {
                 self.dropped.fetch_add(1, Ordering::Relaxed);
+                self.own.fetch_add(1, Ordering::Relaxed);
             }
         }
     }
@@ -64,6 +67,7 @@ pub struct OutputQueue {
     tx: SyncSender<Output>,
     rx: Receiver<Output>,
     dropped: Arc<AtomicU64>,
+    per_module: std::sync::Mutex<Vec<(&'static str, Arc<AtomicU64>)>>,
 }
 
 impl OutputQueue {
@@ -73,15 +77,37 @@ impl OutputQueue {
             tx,
             rx,
             dropped: Arc::default(),
+            per_module: std::sync::Mutex::default(),
         }
     }
 
     pub fn emitter(&self, module: &'static str) -> Arc<dyn Emitter> {
+        let own = {
+            let mut per_module = self.per_module.lock().unwrap_or_else(|e| e.into_inner());
+            match per_module.iter().find(|(id, _)| *id == module) {
+                Some((_, counter)) => counter.clone(),
+                None => {
+                    let counter = Arc::new(AtomicU64::new(0));
+                    per_module.push((module, counter.clone()));
+                    counter
+                }
+            }
+        };
         Arc::new(QueueEmitter {
             module,
             tx: self.tx.clone(),
             dropped: self.dropped.clone(),
+            own,
         })
+    }
+
+    /// Items of `module` dropped because the queue was full.
+    pub fn dropped_by(&self, module: &str) -> u64 {
+        let per_module = self.per_module.lock().unwrap_or_else(|e| e.into_inner());
+        per_module
+            .iter()
+            .find(|(id, _)| *id == module)
+            .map_or(0, |(_, c)| c.load(Ordering::Relaxed))
     }
 
     /// Everything queued so far.

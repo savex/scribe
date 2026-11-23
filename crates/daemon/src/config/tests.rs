@@ -99,6 +99,9 @@ const BAD: &[(&str, &str, usize)] = &[
     ("mode = \"paranoid\"\n", "unknown variant `paranoid`", 1),
     ("version = 2\n", "unsupported config version 2", 1),
     ("data_dir = \"relative/dir\"\n", "data_dir must be an absolute path", 1),
+    ("[api]\nsocket = \"run/api.sock\"\n", "api socket must be an absolute path", 2),
+    ("[api]\nadmin_group = \" \"\n", "api admin_group must name a group", 2),
+    ("[api]\nport = 50051\n", "unknown field `port`", 2),
     ("[policy]\nthen = \"learn\"\n", "unknown variant `learn`", 2),
     ("[policy]\ndedupe_window = \"10x\"\n", "invalid duration \"10x\"", 2),
     ("[policy]\ndedupe_window = \"0s\"\n", "must be greater than zero", 2),
@@ -732,7 +735,7 @@ mod functional {
         use crate::config::reload::plan;
         let running = resolve_text("mode = \"learn\"\n[log]\nlevel = \"info\"\n");
         let new = resolve_text(&format!(
-            "mode = \"alert\"\nprofile = \"work\"\ndata_dir = \"{}\"\n[policy]\nthreshold = 40\n[modules.url]\nquery = \"strip\"\n[daemon]\nmax_hibernate = \"1h\"\n[log]\nlevel = \"debug\"\nformat = \"json\"\n[storage.cache]\nmax_hosts = 10\n",
+            "mode = \"alert\"\nprofile = \"work\"\ndata_dir = \"{}\"\n[policy]\nthreshold = 40\n[modules.url]\nquery = \"strip\"\n[daemon]\nmax_hibernate = \"1h\"\n[log]\nlevel = \"debug\"\nformat = \"json\"\n[storage.cache]\nmax_hosts = 10\n[sensor]\ninterface = \"eth1\"\n[api]\nadmin_group = \"wheel\"\n",
             host_path("/srv/scribe")
         ));
         let p = plan(&running, new);
@@ -751,6 +754,8 @@ mod functional {
             p.needs_restart,
             [
                 "data_dir",
+                "api",
+                "sensor",
                 "storage limits (cache, buffer, spool)",
                 "log (file, output, format, rotation)"
             ]
@@ -767,6 +772,26 @@ mod functional {
             running.config.storage.cache
         );
         assert_ne!(p.settings.config.modules, running.config.modules);
+        assert_eq!(p.settings.config.api, running.config.api);
+    }
+
+    #[test]
+    fn the_api_socket_defaults_per_os_and_can_be_set() {
+        let s = resolve_text("");
+        assert_eq!(s.api_socket, PathBuf::from(scribe_api::default_socket()));
+        assert_eq!(s.config.api.admin_group.get_ref(), "scribe-admin");
+        let socket = host_path("/srv/scribe/api.sock");
+        let set = resolve_text(&format!("[api]\nsocket = '{socket}'\n"));
+        assert_eq!(set.api_socket, PathBuf::from(&socket));
+        assert!(
+            set.effective_toml().contains(&in_toml(Path::new(&socket))),
+            "{}",
+            set.effective_toml()
+        );
+        if cfg!(windows) {
+            let pipe = resolve_text("[api]\nsocket = '\\\\.\\pipe\\scribed-test'\n");
+            assert_eq!(pipe.api_socket, PathBuf::from(r"\\.\pipe\scribed-test"));
+        }
     }
 
     #[test]

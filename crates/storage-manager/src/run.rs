@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use scribe_core::{Clock, SystemClock};
-use scribe_storage_api::{Health, StateStore, StoredEvent};
+use scribe_storage_api::{EventQuery, Health, Page, StateStore, StorageError, StoredEvent};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -210,6 +210,20 @@ impl Storage {
         }
         for wait in waits {
             let _ = wait.await;
+        }
+    }
+
+    /// Read stored events back (`scribe alerts`, the API): asks the first sink that supports
+    /// queries and is subscribed to every kind in `query` (all sinks when `kinds` is empty).
+    pub async fn query(&self, query: &EventQuery) -> scribe_storage_api::Result<Page<StoredEvent>> {
+        let sink = self.sinks.iter().find(|s| {
+            s.sink.capabilities().queryable && query.kinds.iter().all(|k| s.config.accepts(k))
+        });
+        match sink {
+            Some(s) => s.sink.query(query).await,
+            None => Err(StorageError::Unsupported(
+                "query: no sink that keeps these events can be queried",
+            )),
         }
     }
 
