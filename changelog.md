@@ -11,6 +11,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- Phase 10 step 1: `scribe-api` crate with the local API protocol (`proto/scribe/v1/api.proto`, generated
+  without `protoc` through `protox`), the Unix socket transport, caller identity from the socket and the access
+  policy for control calls, and transport limits.
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module

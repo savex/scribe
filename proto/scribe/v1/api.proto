@@ -1,0 +1,294 @@
+// Local API between scribed and its clients (scribe CLI, desktop UI). workfiles/specs.md 6.3.
+//
+// Served over a Unix socket (Linux, macOS) or a named pipe (Windows); there is no TCP listener.
+// The caller's identity comes from the OS per connection, never from message fields. Read calls are
+// open to everyone who can open the socket; control calls (marked below) need root / Administrators
+// or the admin group, and each one is stored as an `audit` event, refused ones too.
+//
+// Times are Unix epoch milliseconds (`*_ms`), durations whole seconds (`*_s`).
+// Raise API_VERSION (crates/api/src/lib.rs) on any incompatible change.
+syntax = "proto3";
+
+package scribe.v1;
+
+service Scribe {
+  // Run state, live counters and critical metrics (`scribe daemon status`, `scribe status`).
+  rpc GetStatus(StatusRequest) returns (Status);
+  // healthy / degraded / unhealthy with reasons (`scribe daemon health`). Also served as grpc.health.v1.
+  rpc Health(HealthRequest) returns (HealthReply);
+
+  rpc ListHosts(ListHostsRequest) returns (HostPage);
+  rpc ListAlerts(ListAlertsRequest) returns (AlertPage);
+  // New alerts as they are raised, until the client hangs up.
+  rpc WatchAlerts(WatchAlertsRequest) returns (stream Alert);
+  rpc GetBaseline(GetBaselineRequest) returns (Baseline);
+  // Hosts, then the baseline; the CLI writes the file as the caller.
+  rpc Export(ExportRequest) returns (stream ExportItem);
+
+  rpc ListModules(ListModulesRequest) returns (ModuleList);
+  rpc GetModule(GetModuleRequest) returns (Module);
+
+  // Control calls.
+  rpc AckAlert(AckAlertRequest) returns (AckAlertReply);
+  rpc SetMode(SetModeRequest) returns (SetModeReply);
+  rpc EditBaseline(EditBaselineRequest) returns (EditBaselineReply);
+  rpc Reset(ResetRequest) returns (ResetReply);
+  rpc Hibernate(HibernateRequest) returns (Status);
+  rpc Wakeup(WakeupRequest) returns (Status);
+}
+
+// ------------------------------------------------------------------------------------------ status
+
+message StatusRequest {}
+
+message Status {
+  uint32 api_version = 1;
+  string daemon_version = 2;
+  // "running" or "hibernating"; degraded is a health result (Health).
+  string run_state = 3;
+  optional int64 hibernating_since_ms = 4;
+  optional int64 hibernating_until_ms = 5;
+  string hibernated_by = 6;
+  uint64 uptime_s = 7;
+  string config_path = 8;
+  int64 config_loaded_ms = 9;
+  // "learn", "caution" or "alert".
+  string mode = 10;
+  string profile = 11;
+  optional int64 learn_until_ms = 12;
+  Sensor sensor = 13;
+  Storage storage = 14;
+  int64 counters_since_ms = 15;
+  Counters counters = 16;
+  // The metrics that need attention, listed first by clients.
+  repeated Critical critical = 17;
+  repeated Module modules = 18;
+  uint64 held_quic = 19;
+  uint64 dns_entries = 20;
+}
+
+message Sensor {
+  string name = 1;
+  bool process_info = 2;
+  // "ok", "fallback" or "detached".
+  string health = 3;
+  bool fallback = 4;
+}
+
+message Storage {
+  StorageTarget state = 1;
+  repeated StorageTarget sinks = 2;
+}
+
+message StorageTarget {
+  string name = 1;
+  string kind = 2;
+  // "ok", "degraded" or "down".
+  string health = 3;
+  string detail = 4;
+}
+
+message Counters {
+  uint64 observations = 1;
+  uint64 flows = 2;
+  uint64 payloads = 3;
+  uint64 dns_responses = 4;
+  uint64 alerts = 5;
+  uint64 new_hosts = 6;
+  uint64 quic_unfinished = 7;
+  uint64 dropped_hibernating = 8;
+  double flows_per_s = 9;
+  double events_per_s = 10;
+  uint64 drops = 11;
+}
+
+message Critical {
+  // e.g. "drops", "sink_unhealthy", "sink_spooling", "fallback_sensor", "hibernating".
+  string kind = 1;
+  string detail = 2;
+}
+
+message HealthRequest {}
+
+message HealthReply {
+  enum Level {
+    LEVEL_UNSPECIFIED = 0;
+    HEALTHY = 1;
+    DEGRADED = 2;
+    UNHEALTHY = 3;
+  }
+  Level level = 1;
+  repeated string reasons = 2;
+}
+
+// ------------------------------------------------------------------------------------------- hosts
+
+message ListHostsRequest {
+  // Substring of the host name; empty for all.
+  string name_contains = 1;
+  uint64 offset = 2;
+  // 0 for all remaining.
+  uint64 limit = 3;
+}
+
+message HostPage {
+  repeated Host items = 1;
+  optional uint64 total = 2;
+}
+
+message Host {
+  string name = 1;
+  // In the active profile's baseline.
+  bool on_list = 2;
+  int64 first_seen_ms = 3;
+  int64 last_seen_ms = 4;
+  uint64 conn_count = 5;
+  uint64 req_count = 6;
+  uint64 bytes_out = 7;
+  bool tls_seen = 8;
+  bool plaintext_seen = 9;
+  repeated string processes = 10;
+  bool unresolved = 11;
+  bool ech = 12;
+}
+
+// ------------------------------------------------------------------------------------------ alerts
+
+message ListAlertsRequest {
+  uint64 offset = 1;
+  // 0 for all remaining.
+  uint64 limit = 2;
+  optional int64 since_ms = 3;
+}
+
+message AlertPage {
+  repeated Alert items = 1;
+  optional uint64 total = 2;
+}
+
+message Alert {
+  // Sequence number in the alert chain; what AckAlert takes.
+  uint64 id = 1;
+  int64 ts_ms = 2;
+  optional string host = 3;
+  // "ip:port".
+  string dst = 4;
+  optional string process_path = 5;
+  uint32 score = 6;
+  string reason = 7;
+  bool acknowledged = 8;
+  // Module notes, e.g. "url" → the request URL.
+  map<string, string> notes = 9;
+}
+
+message WatchAlertsRequest {}
+
+message AckAlertRequest {
+  uint64 id = 1;
+}
+
+message AckAlertReply {
+  // False when it was acknowledged already.
+  bool changed = 1;
+}
+
+// ---------------------------------------------------------------------------------------- baseline
+
+message GetBaselineRequest {
+  // Empty for the active profile.
+  string profile = 1;
+}
+
+message Baseline {
+  string profile = 1;
+  repeated BaselineEntry entries = 2;
+}
+
+message BaselineEntry {
+  string host = 1;
+  // "learned" or "manual".
+  string source = 2;
+  int64 added_at_ms = 3;
+}
+
+message EditBaselineRequest {
+  // Hosts to add to and remove from the active profile's baseline.
+  repeated string add = 1;
+  repeated string remove = 2;
+}
+
+message EditBaselineReply {
+  repeated string added = 1;
+  repeated string removed = 2;
+  // Already there (add) or not there (remove).
+  repeated string unchanged = 3;
+}
+
+// ------------------------------------------------------------------------------------------ export
+
+message ExportRequest {}
+
+message ExportItem {
+  oneof item {
+    Host host = 1;
+    BaselineEntry baseline_entry = 2;
+  }
+}
+
+// ----------------------------------------------------------------------------------------- modules
+
+message ListModulesRequest {}
+
+message ModuleList {
+  repeated Module items = 1;
+}
+
+message GetModuleRequest {
+  string id = 1;
+}
+
+message Module {
+  string id = 1;
+  uint32 version = 2;
+  bool enabled = 3;
+  // "running", "paused", "failed" or "stopped".
+  string state = 4;
+  // "ok" or the reason it isn't.
+  string health = 5;
+  uint64 over_budget = 6;
+  uint64 drops = 7;
+}
+
+// --------------------------------------------------------------------------------- daemon controls
+
+message SetModeRequest {
+  string mode = 1;
+}
+
+message SetModeReply {
+  string previous = 1;
+  string mode = 2;
+}
+
+message ResetRequest {
+  // None set means all three.
+  bool counters = 1;
+  bool caches = 2;
+  bool config = 3;
+}
+
+message ResetReply {
+  // What was reset: "counters", "caches", "config".
+  repeated string done = 1;
+  // Config keys applied live, and those that need a restart.
+  repeated string applied = 2;
+  repeated string needs_restart = 3;
+  Status status = 4;
+}
+
+message HibernateRequest {
+  // Seconds; absent for daemon.max_hibernate.
+  optional uint64 for_s = 1;
+}
+
+message WakeupRequest {}

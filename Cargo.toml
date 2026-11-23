@@ -27,6 +27,7 @@ scribe-daemon = { path = "crates/daemon" }
 scribe-cli = { path = "crates/cli" }
 scribe-secrets = { path = "crates/secrets" }
 scribe-policy = { path = "crates/policy" }
+scribe-api = { path = "crates/api" }
 
 # Third-party. Keep versions compatible with `rust-version` (policy: follow dependencies).
 tokio = { version = "1.54", default-features = false }
@@ -50,5 +51,15 @@ tempfile = "3"
 ring = "0.17"
 # libpcap / Npcap, loaded at run time by the pcap sensor.
 libloading = "0.9"
+# Local API (phase 10): gRPC over a Unix socket / named pipe. `protox` compiles the .proto files in
+# Rust, so building needs no `protoc`.
+tonic = { version = "0.14.9", default-features = false }
+tonic-prost = "0.14.9"
+tonic-prost-build = { version = "0.14.9", default-features = false }
+prost = "0.14"
+protox = "0.10"
+tokio-stream = { version = "0.1.19", default-features = false }
+hyper-util = { version = "0.1.21", default-features = false }
+tower = { version = "0.5", default-features = false }
 # Scenario files (tests only); maintained fork of the deprecated serde_yaml.
 serde_yaml_ng = "0.10"
