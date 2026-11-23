@@ -10,6 +10,17 @@ publish = false
 name = "gen-fixtures"
 path = "src/bin/gen_fixtures.rs"
 
+# Serves a UI mock scenario for UI development: `cargo run -p scribe-test-support --features mock-api
+# --bin scribe-mock-api -- typical /tmp/scribe-mock.sock`.
+[[bin]]
+name = "scribe-mock-api"
+path = "src/bin/mock_api.rs"
+required-features = ["mock-api"]
+
+[features]
+# `MockApiServer`: the local API answered from `ui/tests/mocks/api-scenarios/`.
+mock-api = ["dep:scribe-api", "dep:tonic", "dep:tokio", "dep:tokio-stream"]
+
 [dependencies]
 scribe-core.workspace = true
 scribe-storage-api.workspace = true
@@ -17,6 +28,10 @@ scribe-module-api.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 ring.workspace = true
+scribe-api = { workspace = true, features = ["server"], optional = true }
+tonic = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal", "sync"], optional = true }
+tokio-stream = { workspace = true, optional = true }
 
 [dev-dependencies]
 scribe-storage-conformance.workspace = true

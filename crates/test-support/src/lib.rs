@@ -14,6 +14,8 @@
 pub mod alerts;
 pub mod clock;
 pub mod fixtures;
+#[cfg(feature = "mock-api")]
+pub mod mock_api;
 pub mod modules;
 pub mod packets;
 pub mod sensor;
@@ -21,6 +23,8 @@ pub mod storage;
 
 pub use alerts::RecordingAlertSink;
 pub use clock::FakeClock;
+#[cfg(feature = "mock-api")]
+pub use mock_api::{MockApiServer, Scenario};
 pub use modules::{
     module_context, Fault, MisbehavingModule, NoopModule, RecordingEmitter, TagModule, TicksModule,
 };

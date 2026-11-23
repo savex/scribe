@@ -2,8 +2,21 @@
   "scenario": "daemon-restart",
   "extends": "typical.json",
   "timeline": [
-    { "at_ms": 3000, "action": "drop_connection" },
-    { "at_ms": 3000, "action": "refuse_connections", "for_ms": 4000 },
-    { "at_ms": 7000, "action": "accept_connections", "status_override": { "mode": "caution" } }
+    {
+      "at_ms": 3000,
+      "action": "drop_connection"
+    },
+    {
+      "at_ms": 3000,
+      "action": "refuse_connections",
+      "for_ms": 4000
+    },
+    {
+      "at_ms": 7000,
+      "action": "accept_connections",
+      "status_override": {
+        "mode": "caution"
+      }
+    }
   ]
 }

@@ -132,16 +132,24 @@ scribed --check-config                     # show the settings in use and exit
 scribed --config /etc/scribe/scribe.toml   # run until stopped
 ```
 
-Planned commands for daily use:
+Daily use (`scribe` talks to `scribed` over a local socket; members of the `scribe` group may read,
+root and `scribe-admin` may also change things):
 
 ```sh
 scribe status                       # is scribed running, and how busy is it?
 scribe hosts                        # hosts seen, with counters and flags
+scribe hosts --hourly example.com   # one host's traffic per hour
 scribe mode caution                 # switch mode
-scribe alerts                       # list alerts
+scribe alerts                       # list alerts, with the URL for plaintext requests
+scribe alerts ack 12                # stop an alert from repeating
 scribe baseline add example.com     # mark a host as known
+scribe url list --host example.com  # plaintext requests the URL module stored
 scribe daemon hibernate --for 30m   # pause processing for a while
+scribe daemon health                # healthy / degraded / unhealthy, for scripts
+scribe audit verify                 # check the tamper-evident audit trail
 ```
+
+Most commands take `--json`.
 
 ### Configuration
 
@@ -180,9 +188,10 @@ Every setting is explained in [config/scribe.toml](config/scribe.toml).
 | The daemon pipeline: counters, alerts, hibernation, config reload, audit trail | Done |
 | Running as a service (systemd, launchd, Windows) | Done |
 | Live capture with the pcap sensor (every system; no process info) | Done |
-| Command-line queries and the local API | Next |
+| Command-line queries and the local API (Unix socket, Windows named pipe) | Done |
+| Alert outputs (notifications, log, webhook) | Next |
 | Native sensors for Linux, Windows and macOS (process attribution) | Planned |
-| Alert outputs, PostgreSQL, installers | Planned |
+| PostgreSQL, installers | Planned |
 
 Details: [workfiles/status.md](workfiles/status.md) and [workfiles/plan.md](workfiles/plan.md).
 Changes: [changelog.md](changelog.md).
@@ -245,7 +254,9 @@ crates/
   *-conformance/        test suites every storage backend, sensor and module must pass
   test-support/         test helpers, packet builders, fixture generator
   daemon/               the scribed service
+  api/                  local API: protocol, socket / named-pipe transport, caller identity
   cli/                  the scribe command
+proto/                  gRPC protocol files
 macos/                  Network Extension (planned)
 ui/                     optional desktop app (planned)
 config/                 default configuration

@@ -2,8 +2,16 @@
   "scenario": "alert-burst",
   "extends": "typical.json",
   "stream": {
-    "alerts": { "rate_per_second": 100, "duration_seconds": 10,
-                "template": { "host": "burst-{n}.example.net", "dst": "192.0.2.77:443", "process_path": "/tmp/updater",
-                              "score": 70, "reason": "unlisted_host" } }
+    "alerts": {
+      "rate_per_second": 100,
+      "duration_seconds": 10,
+      "template": {
+        "host": "burst-{n}.example.net",
+        "dst": "192.0.2.77:443",
+        "process_path": "/tmp/updater",
+        "score": 70,
+        "reason": "unlisted_host"
+      }
+    }
   }
 }

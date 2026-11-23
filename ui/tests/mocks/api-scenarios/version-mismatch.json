@@ -1,4 +1,7 @@
 {
   "scenario": "version-mismatch",
-  "status": { "api_version": 99, "daemon_version": "9.0.0", "min_ui_api_version": 99 }
+  "status": {
+    "api_version": 99,
+    "daemon_version": "9.0.0"
+  }
 }

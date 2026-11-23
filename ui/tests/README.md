@@ -14,8 +14,21 @@ Desktop smoke test (`tauri-driver`) runs on Linux and Windows only; on macOS it 
 
 ## Mock API scenarios
 
-Each JSON file sets the mock's responses. Field names follow the planned API messages
-(`Status`, `Host`, `Alert`) and change with `proto/` once it exists.
+Each JSON file sets the mock's responses. The API sections (`status`, `hosts`, `alerts`, `baseline`, an
+alert `template`, a `status_override`) are the messages of `proto/scribe/v1/api.proto` as JSON: same field
+names, times as epoch milliseconds (`*_ms`). The smoke test `ui_mocks` parses every file against them and
+refuses unknown fields, so the mocks change together with `proto/`. `degraded` is a health result, never a
+`run_state` (`running` or `hibernating`).
+
+`MockApiServer` (`crates/test-support`, feature `mock-api`) serves a scenario over the real transport;
+control calls change its state. For UI development:
+
+```bash
+cargo run -p scribe-test-support --features mock-api --bin scribe-mock-api -- typical /tmp/scribe-mock.sock
+```
+
+then `SCRIBE_SOCKET=/tmp/scribe-mock.sock scribe status` (or point the UI at the socket). `connect`,
+`stream` and `timeline` are for the UI's own harness and aren't played by the mock server.
 
 | File | Proves the UI handles |
 |---|---|

@@ -142,6 +142,7 @@ Columns: **ID**, **test** (current name, or planned name), **checks**, **isolati
 | SMK-13 | `pcap_decoder_reads_every_fixture` | The pcap decoder reads every committed fixture in `testdata/pcap/` | Reads repo | < 10 ms | Exists |
 | SMK-14 | `policy_loads_default_scores` | Policy engine builds from the default config | In memory | < 10 ms | Phase 4 |
 | SMK-15 | `release_archive_layout` | A packed archive holds both binaries, readme and config | Temp dir | 0.5 s | Phase 13 |
+| SMK-16 | `ui_mocks::every_mock_scenario_matches_the_api_messages`, `the_check_catches_a_field_the_api_does_not_have` | Every UI mock scenario parses as the API messages (unknown fields refused), run states are `running` / `hibernating`, `extends` targets exist | Reads repo | < 10 ms | Exists |
 
 **Live smoke** (crate `scribe-live-smoke`, phase 10; runs against a live daemon, read-only, ≤ 10 calls):
 
@@ -152,7 +153,7 @@ Columns: **ID**, **test** (current name, or planned name), **checks**, **isolati
 | SMK-L3 | `live_versions_match` | CLI and daemon report the same version | 0.1 s | Phase 10 |
 | SMK-L4 | `live_hosts_page` | `hosts --json --limit 1` returns a page | 0.1 s | Phase 10 |
 | SMK-L5 | `live_modules_running` | `modules --json` lists `url` as running | 0.1 s | Phase 10 |
-| SMK-L6 | `live_grpc_health` | `grpc.health.v1` reports `SERVING` | 0.1 s | Phase 10 |
+| SMK-L6 | `live_grpc_health` | `grpc.health.v1` reports `SERVING` | 0.1 s | Phase 13 (live suite); covered against a test daemon by `api::the_standard_health_service_answers` |
 
 ### 5.2 Functional
 
@@ -198,12 +199,13 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 
 | ID | Test | Checks | Isolation | Time | Status |
 |---|---|---|---|---|---|
-| FUN-CL01 | `cli::tests::*` (4), `commands_report_they_are_not_implemented_yet` | Every command parses; bad input rejected; exit codes | In memory / child | < 0.1 s | Exists |
-| FUN-CL02 | `daemon_subcommands_parse` | `daemon status/health/reset/hibernate/wakeup`, `modules`, `--json` | In memory | < 10 ms | Phase 10 |
-| FUN-CL03 | `json_output_shapes` | `--json` output of each command against `MockApiServer` mock data | Temp socket | 50 ms | Phase 10 |
-| FUN-CL04 | `refuses_a_fake_server` | CLI refuses a socket not owned by root / a pipe server not SYSTEM | Temp socket | 20 ms | Phase 10 |
-| FUN-API01 | `read_and_control_access` | Every call: allowed for its access class, refused and audited otherwise (fake peer identities) | In memory | 50 ms | Phase 10 |
-| FUN-API02 | `limits_cut_off_abuse` | Oversized messages, slow calls, too many streams cut off | Temp socket | 0.5 s | Phase 10 |
+| FUN-CL01 | `cli::parses_every_command`, `rejects_bad_input`, `describes_commands_as_typed`, `scribe::usage_errors_exit_with_2` | Every command parses; bad input rejected; exit codes | In memory / child | < 0.1 s | Exists |
+| FUN-CL02 | `cli::parses_the_daemon_commands_and_their_aliases`, `the_socket_comes_from_the_flag_then_the_environment` | `daemon status/health/reset/hibernate/wakeup` with flags and aliases; `--socket` / `SCRIBE_SOCKET` | In memory | < 10 ms | Exists |
+| FUN-CL03 | `output::*` (11); `--json` in INT-12 and SCN-UI | Status (critical first), health, hosts, hourly, alerts with notes, baseline, edits, reset, modules, audit report | In memory | < 10 ms | Exists |
+| FUN-CL04 | `scribe::a_file_that_is_not_a_socket_is_refused`, `an_absent_daemon_is_reported_with_exit_1`, `health_prints_unhealthy_and_exits_1_when_unreachable`; `socket::root_only_clients_refuse_a_user_socket`, `pipe::a_pipe_server_must_be_system_or_the_caller` (Windows CI) | CLI refuses a non-socket, a socket not owned by root / itself, a pipe server not SYSTEM; unreachable daemon exits 1 | Temp socket / child | 20 ms | Exists |
+| FUN-API01 | `access::*` (7), `pipe::control_calls_follow_the_policy`; daemon side in INT-11 | Read calls open, control calls for root / the admin group, identity from the transport, refusals audited | In memory / temp socket | 50 ms | Exists |
+| FUN-API02 | `socket::oversized_messages_are_refused_and_the_server_keeps_serving`, `many_clients_are_served_at_once`, stale / live socket handling | Oversized messages cut off; concurrent clients; live socket refused, stale one replaced | Temp socket | 0.1 s | Exists (slow-call and stream caps set in `limits`, not exercised) |
+| FUN-API03 | `module-url api::*` (3) | URL module service: defaults and caps, host normalised, identity required; `scribe url` output | In memory | < 10 ms | Exists |
 | FUN-API03 | `export_streams_to_the_caller` | Export streamed; daemon never writes a client path | Temp socket | 50 ms | Phase 10 |
 
 **Enrichment and sensors (decoding only)**
@@ -297,12 +299,12 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | INT-09 | `pcap_to_enriched_flows` | pcap replay → pipeline (enrichment, QUIC holding, URL module, policy) | Each fixture's full JSON expectation incl. `notes.url`, `ech` | Reads fixtures | 20 ms | Exists (`tests/integration/enrich.rs`) |
 | INT-10 | `pipeline_stores_flows_counters_and_alerts` | `FakeSensor` → enrichment → modules → policy → SQLite | Hosts, per-process counters, alert state, flow and alert events | Temp dir | 50 ms | Exists |
 | INT-11 | `policy_alert_reaches_outputs_and_store` | Policy → alert outputs + `AlertState` + alert event | Alert delivered once and stored | Temp dir | 30 ms | Phases 4, 11 |
-| INT-12 | `cli_api_daemon_round_trip` | CLI → local API (temp socket) → daemon → storage | `hosts`, `mode`, `baseline add` round-trip | Temp dir + socket | 0.3 s | Phase 10 |
-| INT-13 | `api_status_reflects_daemon` | Daemon state → API `Status` → CLI `daemon status --json` | Run state, counters, modules match | Temp socket | 0.2 s | Phase 10 |
+| INT-12 | `cli::every_command_works_against_a_running_daemon`, `control_commands_outside_the_admin_group_exit_1`, `audit_verify_finds_deleted_and_edited_records`, `module_subcommands_reach_the_module_service`, `a_module_that_is_not_enabled_is_named` | Real `scribe` → local API (temp socket) → daemon → SQLite | Every command incl. export file mode, hourly counters, audit verify after tampering, `scribe url list` | Temp dir + socket | 0.5 s | Exists (`tests/integration/cli.rs`) |
+| INT-13 | `api::*` (11) | Daemon state → API: status, health, `grpc.health.v1`, hosts, alerts, watch stream, baseline, export, modules; control calls and their audit events; alert state across restarts; bucket pruning; a second daemon on a busy socket | Run state, counters, critical metrics, audit messages | Temp dir + socket | 1 s | Exists (`tests/integration/api.rs`) |
 | INT-14 | `secrets_to_backends` | Secrets crate → Postgres credentials, URL hash key | `file:` references resolved where used | Temp dir | 20 ms | URL key exists (FUN-M07); Postgres in phase 12 |
 | INT-15 | `postgres_sink_through_manager` | Storage manager → Postgres sink (TLS) | Events and module data stored | Own schema | 0.5 s | Phase 12 |
 | INT-16 | `xpc_bridge_with_fake_extension` | Fake extension process → XPC bridge → ingest | Flow messages arrive as observations; unsigned peer refused | Child process | 0.5 s | Phase 9 (macOS) |
-| INT-17 | `ui_commands_against_mock_api` | Tauri commands → `MockApiServer` | Requests and error mapping | Temp socket | 0.2 s | Later (UI) |
+| INT-17 | `ui_commands_against_mock_api` | Tauri commands → `MockApiServer` | Requests and error mapping | Temp socket | 0.2 s | Later (UI); `MockApiServer` exists |
 | INT-19 | `commands_drive_the_run_states` | `Command`s → running daemon → storage | Hibernate, reset, wakeup, status; audit events and the `hibernated` alert stored | Temp dir | 50 ms | Exists |
 | INT-20 | `an_unclean_stop_is_audited_and_the_chain_verifies` | Two daemon runs → audit chain | Unclean stop audited; the chain of both runs verifies | Temp dir | 100 ms | Exists |
 | INT-18 | → INT-09 | The test-side frame reader was replaced by the pcap sensor's replay in phase 6 | — | — | — | Merged into INT-09 |
@@ -343,6 +345,7 @@ from phase 5 it uses the real pipeline with `FakeSensor`, a temporary SQLite sta
 | SCN-24 | `config_reload_mid_run` → INT-07 | Policy and module changes by reload apply from the next flow | 50 ms | Exists (as INT-07) |
 | SCN-25 | `profiles_are_isolated` (integration test) | A host learned in `work` is unlisted in `home` | 150 ms | Exists (`tests/integration/daemon.rs`) |
 | SCN-26 | `runner_rejects_bad_scenarios` | The runner refuses unknown keys and bad times with the line (or event index) | < 10 ms | Exists |
+| SCN-UI | `cli_mocks::*` (8) | The real `scribe` against `MockApiServer` playing the UI mock scenarios: typical day, first launch, hibernating, degraded / module failed, version mismatch, 10,000 hosts, daemon down, control commands changing the mock | 0.3 s | Exists (`tests/scenario/cli_mocks.rs`, Unix) |
 
 ## 6. Coverage of the test approach
 

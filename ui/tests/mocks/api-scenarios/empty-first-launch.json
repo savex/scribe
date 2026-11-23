@@ -4,7 +4,6 @@
     "api_version": 1,
     "daemon_version": "0.1.0",
     "mode": "learn",
-    "learn_ends_at": "2023-11-21T22:13:20Z",
     "sensor": {
       "name": "pcap",
       "process_info": false,
@@ -19,12 +18,10 @@
     },
     "run_state": "running",
     "uptime_s": 86400,
-    "counters_since": "2023-11-14T22:13:20Z",
     "counters": {
       "flows": 0,
       "flows_per_s": 0.0,
       "events_per_s": 0.0,
-      "hosts": 0,
       "new_hosts": 0,
       "alerts": 0,
       "drops": 0
@@ -37,9 +34,12 @@
         "state": "running",
         "health": "ok",
         "over_budget": 0,
-        "drops": 0
+        "drops": 0,
+        "enabled": true
       }
-    ]
+    ],
+    "learn_until_ms": 1700604800000,
+    "counters_since_ms": 1700000000000
   },
   "hosts": {
     "items": [],

@@ -1426,12 +1426,16 @@ name = "scribe-test-support"
 version = "0.1.0-alpha.1"
 dependencies = [
  "ring",
+ "scribe-api",
  "scribe-core",
  "scribe-module-api",
  "scribe-storage-api",
  "scribe-storage-conformance",
  "serde",
  "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tonic",
 ]
 
 [[package]]

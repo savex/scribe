@@ -2,6 +2,8 @@
 //! module host and the policy engine with `FakeClock` and `MemoryStore` (see `runner.rs`).
 //! Run with `cargo nextest run -E 'binary(scenario)'`.
 
+#[cfg(unix)]
+mod cli_mocks;
 mod runner;
 
 macro_rules! scenario {

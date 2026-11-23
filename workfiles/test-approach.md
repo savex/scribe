@@ -42,7 +42,7 @@ The code already has clear boundaries between layers. Each boundary gets a test 
 | Alert outputs | OS notifications, log, webhook | `RecordingAlertSink` | `crates/test-support` (implemented) |
 | Time | system clock | `FakeClock` (moved forward by the test) | `crates/test-support` (implemented) |
 | Host facts | RAM and volume sizes | `FakeHost` / `BrokenHost` (`SystemFacts`) | `crates/daemon/src/config/tests.rs` (implemented) |
-| Local API (gRPC) | `scribed` | `MockApiServer` built from the same `.proto` | `crates/test-support` + `ui/tests/mocks` (mock data exists; server in phase 10) |
+| Local API (gRPC) | `scribed` | `MockApiServer` built from the same `.proto` | `crates/test-support` (feature `mock-api`, binary `scribe-mock-api`) + `ui/tests/mocks` (checked against the `.proto` by a smoke test) |
 
 **Rule:** production code reads time, randomness, the network and storage only through interfaces like these, so tests never need to sleep or touch real system resources.
 
@@ -260,7 +260,7 @@ crates/
                          platform, packet checksums)
   test-support/          FakeSensor, flow() builder, FakeClock, MemoryStore / MemorySink, FaultySink,
                          RecordingAlertSink, module doubles, RecordingEmitter, packet builders,
-                         gen-fixtures; planned: MockApiServer
+                         gen-fixtures; MockApiServer (mock-api)
   storage-conformance/   storage contract suite (with module data)
   sensor-conformance/    sensor contract suite + traffic generator
   module-conformance/    module contract suite (+ tests proving it catches faults)

@@ -323,7 +323,7 @@ Notes:
 | Item | Value | State |
 |---|---|---|
 | Test levels | unit, isolated component, contract / conformance, integration, end-to-end, non-functional | Decided |
-| Test doubles | `FakeSensor`, `FakeClock`, `MemoryStore`, `MemorySink`, `FaultySink`, `RecordingAlertSink`; `MockApiServer` planned | Decided |
+| Test doubles | `FakeSensor`, `FakeClock`, `MemoryStore`, `MemorySink`, `FaultySink`, `RecordingAlertSink`; `MockApiServer` + `Scenario` (feature `mock-api`: serves a UI mock scenario over the real transport, `extends` merged, `generate.hosts` deterministic, control calls change its state, no access checks; binary `scribe-mock-api <scenario> <socket>`). UI mock files use the protocol's JSON (`*_ms` times; `serde::Deserialize` with `default, deny_unknown_fields` on every message) and a smoke test keeps them in step | Implemented |
 | New storage backend | Must pass the storage conformance suite before it is registered | Decided |
 | New sensor | Must pass the sensor conformance suite | Decided |
 | Sensor event deadline | Each expected event within **1 s** | Decided (`SuiteOptions`) |

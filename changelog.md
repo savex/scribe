@@ -37,6 +37,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 10 step 6b: per-module API services: `scribe_module_api::RecordReader`, the URL module's
   `scribe.v1.modules.url.Url` service (served only while the module is enabled) and `scribe url list`;
   `scribe modules` shows the version of disabled modules too.
+- Phase 10 step 7: `MockApiServer` and `scribe-mock-api` serve the UI mock scenarios over the real transport;
+  the mocks now use the API's JSON (epoch-ms `*_ms` fields, `degraded` only as a health result) and a smoke
+  test parses them against the protocol; CLI scenario tests play every UI scenario; specs, plan, status,
+  test list, test approach and readme record phase 10 as done.
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module

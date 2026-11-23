@@ -7,3 +7,4 @@ mod fixtures;
 mod pcap;
 mod schema;
 mod storage;
+mod ui_mocks;

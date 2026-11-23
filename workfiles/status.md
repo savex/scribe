@@ -1,21 +1,36 @@
 # scribe readiness by module
 
-As of the end of **phase 6** (2026-11-22, commits `f42a76b`…`b9a61ae` plus the docs commit), **scribe captures
-real traffic**: the pcap sensor decodes packets, tracks flows and feeds the pipeline on every system (macOS
-directly, Linux and Windows as the fallback behind their native sensors), with libpcap / Npcap loaded at run
-time. It passes the sensor conformance suite live on Linux, and every fixture runs through replay and the
-pipeline. Process attribution still waits for the native sensors (phases 7–9). Product code coverage is 90.6%.
+As of the end of **phase 10** (2026-11-23, commits `920c906`…`985bf24` plus the docs commit), **scribe is
+controlled through its local API**: `scribed` serves read and control calls over a Unix socket (a named pipe on
+Windows) with the caller's identity from the OS, access checks and an audit event for every control call, and
+every `scribe` command works against it, `scribe daemon …`, `scribe audit verify` and `scribe url list`
+included. Capture runs on the pcap sensor everywhere (phase 6); process attribution still waits for the native
+sensors (phases 7–9). Product code coverage is 91.0%.
 
 **How this was measured**
 - **Completion** is an estimate against each module's scope in [plan.md](plan.md).
 - **Coverage** is line coverage from `cargo test --workspace --all-features` alone, measured with LLVM
-  source-based coverage (rustup `llvm-tools`) on macOS, all rows re-measured after phase 6. 387 tests
+  source-based coverage (rustup `llvm-tools`) on macOS, all rows re-measured after phase 10. 459 tests
   passed and 4 were skipped (Postgres
   conformance needs a database; sensor conformance needs privileges).
 - Unit tests written inside source files (`#[cfg(test)]` modules) count as covered lines, which raises
   the percentages of `core`, `daemon` and `cli` somewhat. `crates/daemon/src/config/tests.rs` and
   `tests/` folders are excluded.
 - Linux- and Windows-only code (memory lookup, journald) is compile-checked from macOS but only runs in CI.
+
+## Phase 10 delivered (one commit per step)
+
+| Step | Commit | Result |
+|---|---|---|
+| 1. API crate | `920c906` | `proto/scribe/v1/api.proto` built with `protox` (no `protoc`), Unix socket transport, caller identity, access policy, limits |
+| 2. Read calls | `cde939e` | `scribed` serves status (critical metrics), health and `grpc.health.v1`, hosts, alerts and their stream, baseline, export, modules; `[api]` config |
+| 3. Control calls | `5ceb506` | Mode, baseline edits (`remove_from_baseline`), acknowledgements, reset / reload, hibernate, wakeup; audit events for every call and refusal |
+| 4. CLI | `016d47b` | Every `scribe` command over the API, `--json`, `--watch`, aliases, exit codes, `--socket` / `SCRIBE_SOCKET` |
+| 5a. Alert state, audit | `159623f` | Acknowledgements and dedupe restored at start (`alert_states`); `scribe audit verify` |
+| 5b. Hourly buckets | `4b78d76` | Schema v4 `host_hours`, `[storage.hours] keep`, `scribe hosts --hourly`; snapshots v4 |
+| 6a. Named pipe | `cdb1144` | Windows transport: access list, first instance, token identity, server check; `scribe_api::transport` |
+| 6b. Module services | `985bf24` | `RecordReader`, the URL module's `Url` service, `scribe url list`, *module … is not enabled* |
+| 7. Mocks and docs | this commit | `MockApiServer`, `scribe-mock-api`, UI mocks in the protocol's JSON with a smoke check, CLI scenario tests; docs |
 
 ## Phase 6 delivered (one commit per step)
 
@@ -124,52 +139,52 @@ earlier edit (`111411c`); they are restored.
 | Module | Plan phase | Completion | What exists | What's missing | Test coverage |
 |---|---|---|---|---|---|
 | `core` | 0, 0b | **~95%** | Flow event with module notes, `Observation` (incl. `DnsResponse`), modes, sensor interface, clock, alert with notes, module data types, `VERSION`, units, platform defaults | Grows as later phases need shared types | **97%** (420/432) |
-| `module-api` | 0b | **~95%** | `Module`, `Manifest` checks, `FlowHook`, `Source`, `Emitter`, `ModuleContext` (with `data_dir`), `ConfigDoc`, `Signal`, `Reload` | API service hooks (phase 10), `ProbeHost` (native sensors) | **98%** (156/160) |
-| `module-url` | 0b, 3, 10 | **~80%** | Manifest, `[modules.url] query` and `hash_key`, request parser, all five `query` modes, flow hook, request counters kept across restarts | `scribe url` (phase 10) | **98%** (236/240) |
-| `storage-api` | 0b, 1–2, 5 | **100%** | Interfaces with module data, schema version 3 (process counters, `unresolved`), alert notes and port, chain links, row codec, `delete_before` | Hourly buckets (phase 10) | **91%** (319/352) |
+| `module-api` | 0b, 10 | **~98%** | `Module`, `Manifest` checks, `FlowHook`, `Source`, `Emitter`, `ModuleContext` (with `data_dir`), `ConfigDoc`, `Signal`, `Reload`, `RecordReader` for module API services | `ProbeHost` (native sensors) | **98%** (156/160) |
+| `module-url` | 0b, 3, 10 | **100%** | Manifest, `[modules.url] query` and `hash_key`, request parser, all five `query` modes, flow hook, request counters kept across restarts; `Url` API service and `scribe url list` | — | **94%** (303/321) |
+| `storage-api` | 0b, 1–2, 5, 10 | **100%** | Interfaces with module data, schema version 4 (process counters, `unresolved`, hourly buckets), alert notes and port, chain links, row codec, `delete_before`, `remove_from_baseline`, `alert_states` | — | **85%** (326/382) |
 | `storage-manager` | 2 | **100%** | Registry, writer task per sink, batching, retention, spool and replay, outage buffer, host cache, health | Live limit changes on reload (later) | **93%** (1013/1095) |
-| `storage-sqlite` | 1, 2, 5 | **100%** | Migrations 1–3, every state store and event sink method incl. process counters, worker thread, health; passes both suites | — | **94%** (676/722) |
-| `storage-postgres` | 12 | **~15%** | v1 and v2 migrations and seeds, factory, stubs | All of it | **3%** (3/112). Conformance tests skipped. |
+| `storage-sqlite` | 1, 2, 5, 10 | **100%** | Migrations 1–4, every state store and event sink method incl. process counters and hourly buckets, worker thread, health; passes both suites | — | **94%** (763/815) |
+| `storage-postgres` | 12 | **~15%** | v1–v4 migrations and seeds, factory, stubs | All of it | **2%** (3/125). Conformance tests skipped. |
 | `enrich` | 3 | **100%** | `Enricher`; TLS ClientHello, HTTP heads, DNS answers and cache (clearable), QUIC Initial decryption and reassembly | — | **96%** (609/638) |
 | `secrets` | 3, 11 | **~60%** | `file:` references with owner / mode checks and key generation; `keychain:`, `dpapi:`, `secret-service:` parsed | OS store backends (phase 11), Windows ACL checks (phase 13) | **88%** (156/177) |
-| `policy` | 4 | **100%** | Signals, threat lists, `Policy::decide`; reload setters, learn countdown pause | Alert state restored at start (phase 10) | **97%** (444/459) |
-| `daemon` (`scribed`) | 0, 0b, 5, 6 | **~90%** | Pipeline, run states, reload, audit chain, services; platform sensor with the pcap fallback | Native sensors (phases 7–9), the API (phase 10) | **91%** (2348/2569) |
+| `policy` | 4, 10 | **100%** | Signals, threat lists, `Policy::decide`; reload setters, learn countdown pause; alert state restored at start | — | **98%** (480/489) |
+| `daemon` (`scribed`) | 0, 0b, 5, 6, 10 | **~95%** | Pipeline, run states, reload, audit chain, services; platform sensor with the pcap fallback; the local API (read and control calls, access checks and audit, `grpc.health.v1`, module services), alert state restored at start, hourly buckets pruned | Native sensors (phases 7–9) | **92%** (3855/4201) |
 | `sensor-pcap` | 6 | **100%** | Decoder, flow tracker, pcap replay, live capture (libpcap / Npcap at run time), device choice; conformance passes live on Linux | — | **82%** (676/827; live capture runs as root, measured in the container suite, not here) |
 | `sensor-linux` (eBPF) | 7 | **~2%** | Stub, Linux only | eBPF programs, loader, process lookup | n/a (not built on macOS) |
 | `sensor-windows` (ETW) | 8 | **~2%** | Stub, Windows only | ETW session, DNS-client events, Npcap | n/a (not built on macOS) |
 | macOS Network Extension | 9 | **0%** | README only | Swift extension, XPC bridge | n/a |
-| Local API (`crates/api`) and `cli` | 10 | **~20%** | CLI parses every command with `clap`, exit codes; API location decided | gRPC API, `scribe daemon` and `scribe modules`; commands talk to nothing | **88%** (29/33, `cli` library only) |
+| Local API (`crates/api`) and `cli` | 10 | **100%** | gRPC protocol (no `protoc` needed), Unix socket and Windows named pipe with caller identity, access policy, limits; every `scribe` command incl. `scribe daemon …`, `scribe modules`, `scribe audit verify`, `scribe url list`, `--json`, `--watch` | — | **94%** (261/279) `api`, **92%** (754/819) `cli`; the named pipe runs only on the Windows CI runner |
 | Alert outputs (`crates/alerts`) | 11 | **~5%** | Alert output interface | Notifications, log, webhook | n/a |
-| UI (Tauri) | later | **0%** | Test folders and mock API data | Everything | n/a |
+| UI (Tauri) | later | **0%** | Test folders; mock API data in the protocol's JSON, checked against it; `MockApiServer` / `scribe-mock-api` serve it | Everything | n/a |
 | Packaging | 13 | **~20%** | Release archives with checksums and service files (systemd unit, launchd plist, Windows install script); release smoke test | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing, hardened units | n/a |
 
-**Product total:** 7,086 of 7,820 measurable lines covered (**90.6%**).
+**Product total:** 9,899 of 10,874 measurable lines covered (**91.0%**).
 The coverage targets in the test approach (≥ 80% for `core` and the daemon config) are met.
 
 ## Test infrastructure, CI and data
 
 | Module | Completion | What exists | Test coverage |
 |---|---|---|---|
-| `test-support` | **100%** | Test doubles (with process counters in `MemoryStore`), packet builders, pcap writer, fixture generator | **94%** (1598/1709) |
-| `storage-conformance` | **100%** | Suite every storage backend must pass, with module data, process counters and `unresolved` | **99%** (414/420) |
+| `test-support` | **100%** | Test doubles (with process counters and hourly buckets in `MemoryStore`), packet builders, pcap writer, fixture generator, `MockApiServer` | **90%** (1931/2143) |
+| `storage-conformance` | **100%** | Suite every storage backend must pass, with module data, process counters, `unresolved`, hourly buckets, baseline removal and alert-state listing | **99%** (503/509) |
 | `sensor-conformance` | **100%** | Suite every sensor must pass, now with stop / start; `names_flows` for sensors that leave naming to enrichment | **34%** (86/252); runs with a real sensor |
 | `module-conformance` | **100%** | Suite every module must pass | **85%** (245/289) |
-| Test data | **100%** | 16 pcap fixtures (2 QUIC), all checked end to end; RFC 9001 / 9369 sample packets; 19 scenarios (16 run), raw sensor samples, v1 and v2 database snapshots | Checked by the fixture, end-to-end, scenario and snapshot tests |
+| Test data | **100%** | 16 pcap fixtures (2 QUIC), all checked end to end; RFC 9001 / 9369 sample packets; 19 scenarios (all run), raw sensor samples, v1–v4 database snapshots, 10 UI mock API scenarios checked against the protocol | Checked by the fixture, end-to-end, scenario and snapshot tests |
 | Fuzzing | **~60%** | 4 targets with seeds (`tls_client_hello`, `dns_message`, `quic_initial`, `http_request`); they compile on stable | Never run (needs Rust nightly) |
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
-| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Tests green on Linux, macOS and Windows (run `45202847881`, 2026-11-23); Release and the other workflows not run yet |
+| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migrations 0001–0004 and their seeds | Tests green on Linux, macOS and Windows (run `45202847881`, 2026-11-23); Release and the other workflows not run yet |
 
-**Overall:** 9,447 of 10,490 measurable lines covered (**90.1%**).
+**Overall:** 12,664 of 14,067 measurable lines covered (**90.0%**).
 
 ## What this means
 
-- **Phases 0, 0b and 1–6 are done.** Remaining effort: 70.5–88 days (85–106 with buffer); milestone M1: 16–20.5 days (phases 10 and 11).
-- **`scribed` runs end to end with the pcap sensor:** what M1 still needs is the API and CLI (phase 10), which send the `Command`s that already work, and the alert outputs (phase 11).
+- **Phases 0, 0b, 1–6 and 10 are done.** Remaining effort: 59–75.5 days (71–91 with buffer); milestone M1: 5.5–7 days (phase 11).
+- **`scribed` runs end to end with the pcap sensor and is controlled through `scribe`:** every CLI command works over the local API (Unix socket; named pipe on Windows). What M1 still needs is the alert outputs (phase 11).
 - **Next steps** (plan milestone M1):
-  0. Run the Release workflow once (push the `v0.1.1` tag); Tests already passed on GitHub.
-  1. Phase 10 (API and CLI) and phase 11 (alert outputs) to finish M1.
+  0. Run the Tests workflow on all three systems (the named pipe has only been compiled here), then the Release workflow once (push the `v0.1.1` tag).
+  1. Phase 11 (alert outputs) to finish M1.
   2. Apply for Apple's Network Extension entitlement (plan risk 1).
 - **Not verified here:** the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests,
-  the Postgres migration 0002 (no local Postgres; the Tests workflow loads it) and the fuzz targets (no nightly).
+  the Postgres migrations 0002–0004 (no local Postgres; the Tests workflow loads them), the Windows named pipe (compiled here, run only on the Windows runner) and the fuzz targets (no nightly).
   Local Linux / Windows compile checks leave out crates with C code (bundled SQLite, `ring`: the daemon, `enrich`,
   `secrets`, `module-url`, test crates); the Tests workflow builds and passes them natively.
