@@ -244,6 +244,20 @@ impl StateStore for CachedState {
         })
     }
 
+    fn remove_from_baseline<'a>(
+        &'a self,
+        profile: &'a str,
+        host: &'a str,
+    ) -> BoxFuture<'a, Result<bool>> {
+        Box::pin(async move {
+            let removed = self.inner.remove_from_baseline(profile, host).await?;
+            if let Some(b) = self.lru.lock().unwrap().baselines.get_mut(profile) {
+                b.entries.retain(|e| e.host != host);
+            }
+            Ok(removed)
+        })
+    }
+
     fn put_alert_state<'a>(&'a self, state: &'a AlertState) -> BoxFuture<'a, Result<()>> {
         self.inner.put_alert_state(state)
     }

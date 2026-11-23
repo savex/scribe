@@ -57,11 +57,12 @@ scribe-storage-manager = { workspace = true, features = ["sqlite"] }
 scribe-storage-postgres.workspace = true
 scribe-storage-conformance.workspace = true
 scribe-test-support.workspace = true
-scribe-api = { workspace = true, features = ["client"] }
+scribe-api = { workspace = true, features = ["client", "server"] }
 tonic.workspace = true
 tonic-health.workspace = true
 tokio-stream.workspace = true
 anyhow.workspace = true
+libc.workspace = true
 clap.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

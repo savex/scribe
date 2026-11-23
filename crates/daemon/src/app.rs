@@ -166,8 +166,32 @@ pub enum Command {
     Reset {
         counters: bool,
         caches: bool,
+        caller: String,
         reply: tokio::sync::oneshot::Sender<Status>,
     },
+    /// `scribe mode`: answers with the previous mode.
+    SetMode {
+        mode: scribe_core::Mode,
+        caller: String,
+        reply: tokio::sync::oneshot::Sender<scribe_core::Mode>,
+    },
+    /// `scribe baseline add|rm`.
+    EditBaseline {
+        add: Vec<String>,
+        remove: Vec<String>,
+        caller: String,
+        reply: tokio::sync::oneshot::Sender<pipeline::BaselineEdit>,
+    },
+    /// `scribe alerts ack`: answers whether it was new.
+    Acknowledge {
+        id: u64,
+        alert: scribe_core::Alert,
+        state: Option<scribe_storage_api::AlertState>,
+        caller: String,
+        reply: tokio::sync::oneshot::Sender<bool>,
+    },
+    /// Store an `audit` event (refused API calls), sealed into the chain like the others.
+    Audit { message: String },
     Status {
         reply: tokio::sync::oneshot::Sender<Status>,
     },
@@ -706,7 +730,7 @@ pub async fn serve_full(
                         writer.apply(&storage, pipeline.profile(), writes).await;
                         reply
                     }
-                    Command::Reset { counters, caches, reply } => {
+                    Command::Reset { counters, caches, caller, reply } => {
                         if counters {
                             pipeline.reset_counters();
                         }
@@ -715,8 +739,50 @@ pub async fn serve_full(
                             storage.clear_cache();
                             pipeline.clear_caches();
                         }
-                        info!(counters, caches, "runtime reset");
+                        let parts: Vec<&str> = [(counters, "counters"), (caches, "caches")]
+                            .into_iter()
+                            .filter_map(|(on, name)| on.then_some(name))
+                            .collect();
+                        info!(counters, caches, caller = %caller, "runtime reset");
+                        let mut writes = Writes::default();
+                        writes.events.push(audit(
+                            clock.now(),
+                            format!("runtime reset by {caller}: {}", parts.join(", ")),
+                        ));
+                        writer.apply(&storage, pipeline.profile(), writes).await;
                         reply
+                    }
+                    Command::SetMode { mode, caller, reply } => {
+                        let (previous, writes) = pipeline.set_mode(mode, &caller);
+                        info!(caller = %caller, "mode set to {mode} (was {previous})");
+                        writer.apply(&storage, pipeline.profile(), writes).await;
+                        let _ = reply.send(previous);
+                        continue;
+                    }
+                    Command::EditBaseline { add, remove, caller, reply } => {
+                        let (edit, writes) = pipeline.edit_baseline(&add, &remove, &caller);
+                        info!(
+                            caller = %caller,
+                            added = edit.added.len(),
+                            removed = edit.removed.len(),
+                            "baseline edited"
+                        );
+                        writer.apply(&storage, pipeline.profile(), writes).await;
+                        let _ = reply.send(edit);
+                        continue;
+                    }
+                    Command::Acknowledge { id, alert, state, caller, reply } => {
+                        let (changed, writes) = pipeline.acknowledge(id, &alert, state, &caller);
+                        info!(caller = %caller, alert = id, changed, "alert acknowledged");
+                        writer.apply(&storage, pipeline.profile(), writes).await;
+                        let _ = reply.send(changed);
+                        continue;
+                    }
+                    Command::Audit { message } => {
+                        let mut writes = Writes::default();
+                        writes.events.push(audit(clock.now(), message));
+                        writer.apply(&storage, pipeline.profile(), writes).await;
+                        continue;
                     }
                     Command::Status { reply } => reply,
                     Command::Reload { caller, reply } => {

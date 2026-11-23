@@ -209,6 +209,18 @@ pub(crate) fn add_to_baseline(
     Ok(())
 }
 
+pub(crate) fn remove_from_baseline(
+    c: &Connection,
+    profile: &str,
+    host: &str,
+) -> rusqlite::Result<bool> {
+    let n = c.execute(
+        "DELETE FROM baseline_entries WHERE profile = ?1 AND host = ?2",
+        params![profile, host],
+    )?;
+    Ok(n > 0)
+}
+
 pub(crate) fn put_alert_state(c: &Connection, s: &AlertState) -> rusqlite::Result<()> {
     c.execute(
         "INSERT INTO alert_state (key, last_alerted, acknowledged) VALUES (?1, ?2, ?3)

@@ -100,6 +100,14 @@ impl StateStore for PostgresStore {
         not_implemented("postgres: add_to_baseline")
     }
 
+    fn remove_from_baseline<'a>(
+        &'a self,
+        _profile: &'a str,
+        _host: &'a str,
+    ) -> BoxFuture<'a, Result<bool>> {
+        not_implemented("postgres: remove_from_baseline")
+    }
+
     fn put_alert_state<'a>(&'a self, _state: &'a AlertState) -> BoxFuture<'a, Result<()>> {
         not_implemented("postgres: put_alert_state")
     }

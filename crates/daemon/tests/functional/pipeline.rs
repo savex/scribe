@@ -402,3 +402,100 @@ fn a_close_counts_its_bytes_but_not_a_connection() {
     assert!(w.events.is_empty(), "a close is not stored as a flow");
     assert!(w.alerts.is_empty());
 }
+
+// ─── Control calls (phase 10) ───────────────────────────────────────────────
+
+#[test]
+fn baseline_edits_write_entries_removals_and_an_audit_event() {
+    use scribe_storage_api::EntrySource;
+    let (mut p, _) = pipeline(Mode::Caution, &["old.example.com"]);
+    let (edit, w) = p.edit_baseline(
+        &["New.Example.com".into(), "old.example.com".into()],
+        &["old.example.com".into(), "absent.example".into()],
+        "alice (uid 1000)",
+    );
+    assert_eq!(edit.added, ["new.example.com"]);
+    assert_eq!(edit.removed, ["old.example.com"]);
+    assert_eq!(edit.unchanged, ["old.example.com", "absent.example"]);
+    assert!(p.policy().is_listed("new.example.com"));
+    assert!(!p.policy().is_listed("old.example.com"));
+    assert_eq!(w.baseline.len(), 1);
+    assert_eq!(w.baseline[0].source, EntrySource::Manual);
+    assert_eq!(w.baseline_removed, ["old.example.com"]);
+    let audit = audits(&w);
+    assert_eq!(audit.len(), 1);
+    assert!(audit[0].contains("edited by alice (uid 1000)"), "{audit:?}");
+
+    let doubles = Doubles {
+        state: MemoryStore::default(),
+        published: Default::default(),
+    };
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let old = scribe_storage_api::BaselineEntry {
+        host: "old.example.com".into(),
+        source: EntrySource::Learned,
+        added_at: std::time::SystemTime::UNIX_EPOCH,
+    };
+    rt.block_on(doubles.state.add_to_baseline("default", &old))
+        .unwrap();
+    assert!(rt.block_on(store(&doubles, p.profile(), &w)).is_empty());
+    let stored = rt.block_on(doubles.state.baseline("default")).unwrap();
+    assert!(stored.contains("new.example.com") && !stored.contains("old.example.com"));
+}
+
+#[test]
+fn acknowledging_writes_the_state_once() {
+    let (mut p, _) = pipeline(Mode::Caution, &[]);
+    let raised = p.process(new_flow(flow("198.51.100.7:8443").observe()));
+    let alert = raised.alerts[0].clone();
+    let (changed, w) = p.acknowledge(7, &alert, None, "root (uid 0)");
+    assert!(changed);
+    assert!(w.alert_states[0].acknowledged);
+    assert!(audits(&w)[0].starts_with("alert 7 (raw_ip to 198.51.100.7) acknowledged by root"));
+    let (changed, w) = p.acknowledge(7, &alert, Some(w.alert_states[0].clone()), "root (uid 0)");
+    assert!(!changed);
+    assert!(w.alert_states.is_empty());
+    assert!(audits(&w)[0].ends_with("(already acknowledged)"));
+}
+
+#[test]
+fn learn_mode_set_while_hibernating_counts_from_wakeup() {
+    let clock = FakeClock::default();
+    let dyn_clock: Arc<dyn scribe_core::Clock> = Arc::new(clock.clone());
+    let host = ModuleHost::new(Vec::new(), &ConfigDoc::new("")).unwrap();
+    let policy = Policy::new(
+        PolicyConfig {
+            mode: Mode::Caution,
+            learn_for: Some(Duration::from_secs(3600)),
+            ..Default::default()
+        },
+        dyn_clock.clone(),
+    );
+    let enricher = Enricher::new(dyn_clock.clone(), 100);
+    let mut p = Pipeline::new(dyn_clock, "default", enricher, host, policy);
+    p.hibernate(Some(Duration::from_secs(4 * 3600)), "test");
+    clock.advance(Duration::from_secs(600));
+    let (previous, w) = p.set_mode(Mode::Learn, "alice");
+    assert_eq!(previous, Mode::Caution);
+    assert!(audits(&w)[0].contains("mode set to learn (was caution) by alice"));
+    let set_at = clock_now(&clock);
+    clock.advance(Duration::from_secs(1200));
+    p.wakeup("test");
+    assert_eq!(
+        p.status().learn_until,
+        Some(set_at + Duration::from_secs(3600 + 1200)),
+        "only the pause after the mode change is added"
+    );
+}
+
+fn audits(w: &scribe_daemon::pipeline::Writes) -> Vec<String> {
+    w.events
+        .iter()
+        .filter_map(|e| match e {
+            StoredEvent::Audit(a) => Some(a.message.clone()),
+            _ => None,
+        })
+        .collect()
+}

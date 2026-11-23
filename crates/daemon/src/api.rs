@@ -2,7 +2,8 @@
 //!
 //! Pipeline state comes from the main loop through [`Command::Describe`]; storage is read directly
 //! (it is shared with the loop), so listing hosts or alerts never holds up capture.
-//! Control calls (mode, ack, baseline edits, reset, hibernate, wakeup) arrive in phase 10 step 3.
+//! Control calls (mode, ack, baseline edits, reset, hibernate, wakeup) need root or the admin
+//! group; each one, and each refusal, is logged and stored as an `audit` event.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::pin::Pin;
@@ -472,20 +473,88 @@ type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, RpcStatus>> + Send>>;
 impl Api {
     /// The main loop's snapshot; `unavailable` when it doesn't answer in time.
     pub async fn snapshot(&self) -> Result<Snapshot, RpcStatus> {
+        self.ask(LOOP_TIMEOUT, |reply| Command::Describe { reply })
+            .await
+            .map(|snap| *snap)
+    }
+
+    /// Sends a command to the main loop and waits up to `limit` for its answer.
+    async fn ask<R>(
+        &self,
+        limit: Duration,
+        make: impl FnOnce(oneshot::Sender<R>) -> Command,
+    ) -> Result<R, RpcStatus> {
         let (reply, answer) = oneshot::channel();
         let stuck = || RpcStatus::unavailable("the pipeline does not answer");
-        tokio::time::timeout(
-            LOOP_TIMEOUT,
-            self.commands.send(Command::Describe { reply }),
-        )
-        .await
-        .map_err(|_| stuck())?
-        .map_err(|_| RpcStatus::unavailable("scribed is stopping"))?;
-        let snap = tokio::time::timeout(LOOP_TIMEOUT, answer)
+        let stopping = || RpcStatus::unavailable("scribed is stopping");
+        tokio::time::timeout(limit, self.commands.send(make(reply)))
             .await
             .map_err(|_| stuck())?
-            .map_err(|_| RpcStatus::unavailable("scribed is stopping"))?;
-        Ok(*snap)
+            .map_err(|_| stopping())?;
+        tokio::time::timeout(limit, answer)
+            .await
+            .map_err(|_| stuck())?
+            .map_err(|_| stopping())
+    }
+
+    /// The caller of a control call, described for logs and audit events. A refusal is logged
+    /// and stored as an `audit` event before it is returned.
+    async fn control<T>(&self, request: &Request<T>, call: &str) -> Result<String, RpcStatus> {
+        match self.policy.check(request, Access::Control) {
+            Ok(caller) => {
+                let who = caller.describe();
+                info!(caller = %who, call, "control call");
+                Ok(who)
+            }
+            Err(e) => {
+                let who = scribe_api::access::caller(request)
+                    .map_or_else(|_| "an unidentified caller".to_owned(), |c| c.describe());
+                warn!(caller = %who, call, "control call refused: {}", e.message());
+                let message = format!("refused {call} from {who}: {}", e.message());
+                let _ = tokio::time::timeout(
+                    LOOP_TIMEOUT,
+                    self.commands.send(Command::Audit { message }),
+                )
+                .await;
+                Err(e)
+            }
+        }
+    }
+
+    async fn status_now(&self) -> Result<pb::Status, RpcStatus> {
+        let snap = self.snapshot().await?;
+        let view = StorageView::read(&self.storage).await;
+        Ok(status_message(&snap, &view, &self.layout))
+    }
+
+    /// The stored alert whose chain sequence is `id`.
+    async fn find_alert(&self, id: u64) -> Result<AlertRecord, RpcStatus> {
+        let mut offset = 0;
+        loop {
+            let query = EventQuery {
+                kinds: vec![EventKind::Alert],
+                offset,
+                limit: Some(FIND_PAGE),
+                ..Default::default()
+            };
+            let page = self
+                .storage
+                .query(&query)
+                .await
+                .map_err(|e| storage_error("alerts", e))?;
+            let n = page.items.len();
+            for event in page.items {
+                if let StoredEvent::Alert(a) = event {
+                    if a.link.as_ref().is_some_and(|l| l.seq == id) {
+                        return Ok(a);
+                    }
+                }
+            }
+            if n < FIND_PAGE {
+                return Err(RpcStatus::not_found(format!("no alert {id}")));
+            }
+            offset += n;
+        }
     }
 
     async fn health_now(&self) -> pb::HealthReply {
@@ -539,10 +608,44 @@ impl Api {
     }
 }
 
-fn not_yet<T>() -> Reply<T> {
-    Err(RpcStatus::unimplemented(
-        "control calls arrive in plan phase 10 step 3",
-    ))
+/// Alerts read per page while looking one up by id.
+const FIND_PAGE: usize = 1000;
+/// How long a control call waits for the main loop (a reload reads threat lists).
+const CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
+/// Hosts one `EditBaseline` call may name.
+const MAX_EDIT: usize = 1000;
+/// The longest host name (RFC 1035).
+const MAX_HOST: usize = 253;
+
+/// A host name or IP as typed, lower-cased; names with spaces, slashes or control characters
+/// are refused.
+fn host_name(raw: &str) -> Result<String, RpcStatus> {
+    let host = raw.trim().trim_end_matches('.').to_ascii_lowercase();
+    let bad = host.is_empty()
+        || host.len() > MAX_HOST
+        || host.chars().any(|c| {
+            c.is_whitespace() || c.is_control() || matches!(c, '/' | '\\' | '@' | '?' | '#')
+        });
+    if bad {
+        Err(RpcStatus::invalid_argument(format!(
+            "\"{raw}\" is not a host name or IP address"
+        )))
+    } else {
+        Ok(host)
+    }
+}
+
+fn record_to_alert(a: &AlertRecord) -> scribe_core::Alert {
+    scribe_core::Alert {
+        ts: a.ts,
+        host: a.host.clone(),
+        dst_ip: a.dst_ip,
+        dst_port: a.dst_port,
+        process_path: a.process_path.clone(),
+        score: a.score,
+        reason: a.reason.clone(),
+        notes: a.notes.clone(),
+    }
 }
 
 #[tonic::async_trait]
@@ -772,31 +875,147 @@ impl Scribe for Api {
             })
     }
 
-    async fn ack_alert(&self, _: Request<pb::AckAlertRequest>) -> Reply<pb::AckAlertReply> {
-        not_yet()
+    async fn ack_alert(&self, request: Request<pb::AckAlertRequest>) -> Reply<pb::AckAlertReply> {
+        let caller = self.control(&request, "AckAlert").await?;
+        let id = request.into_inner().id;
+        let record = self.find_alert(id).await?;
+        let alert = record_to_alert(&record);
+        let key = scribe_policy::alert_key(&alert);
+        let state = match self.storage.state().get_alert_state(&key).await {
+            Ok(s) => s,
+            Err(StorageError::NotImplemented(_)) => None,
+            Err(e) => return Err(storage_error("alert state", e)),
+        };
+        let changed = self
+            .ask(CONTROL_TIMEOUT, |reply| Command::Acknowledge {
+                id,
+                alert,
+                state,
+                caller,
+                reply,
+            })
+            .await?;
+        Ok(Response::new(pb::AckAlertReply { changed }))
     }
 
-    async fn set_mode(&self, _: Request<pb::SetModeRequest>) -> Reply<pb::SetModeReply> {
-        not_yet()
+    async fn set_mode(&self, request: Request<pb::SetModeRequest>) -> Reply<pb::SetModeReply> {
+        let caller = self.control(&request, "SetMode").await?;
+        let mode = scribe_api::mode_from_api(&request.get_ref().mode)
+            .map_err(RpcStatus::invalid_argument)?;
+        let previous = self
+            .ask(CONTROL_TIMEOUT, |reply| Command::SetMode {
+                mode,
+                caller,
+                reply,
+            })
+            .await?;
+        Ok(Response::new(pb::SetModeReply {
+            previous: scribe_api::mode_to_api(previous),
+            mode: scribe_api::mode_to_api(mode),
+        }))
     }
 
     async fn edit_baseline(
         &self,
-        _: Request<pb::EditBaselineRequest>,
+        request: Request<pb::EditBaselineRequest>,
     ) -> Reply<pb::EditBaselineReply> {
-        not_yet()
+        let caller = self.control(&request, "EditBaseline").await?;
+        let r = request.into_inner();
+        if r.add.len() + r.remove.len() > MAX_EDIT {
+            return Err(RpcStatus::invalid_argument(format!(
+                "at most {MAX_EDIT} hosts per call"
+            )));
+        }
+        let add = r
+            .add
+            .iter()
+            .map(|h| host_name(h))
+            .collect::<Result<Vec<_>, _>>()?;
+        let remove = r
+            .remove
+            .iter()
+            .map(|h| host_name(h))
+            .collect::<Result<Vec<_>, _>>()?;
+        let edit = self
+            .ask(CONTROL_TIMEOUT, |reply| Command::EditBaseline {
+                add,
+                remove,
+                caller,
+                reply,
+            })
+            .await?;
+        Ok(Response::new(pb::EditBaselineReply {
+            added: edit.added,
+            removed: edit.removed,
+            unchanged: edit.unchanged,
+        }))
     }
 
-    async fn reset(&self, _: Request<pb::ResetRequest>) -> Reply<pb::ResetReply> {
-        not_yet()
+    /// `config` goes first: when the file is rejected nothing else is reset.
+    async fn reset(&self, request: Request<pb::ResetRequest>) -> Reply<pb::ResetReply> {
+        let caller = self.control(&request, "Reset").await?;
+        let r = request.into_inner();
+        let all = !(r.counters || r.caches || r.config);
+        let (counters, caches, config) = (all || r.counters, all || r.caches, all || r.config);
+        let mut reply = pb::ResetReply::default();
+        if config {
+            let who = caller.clone();
+            let report = self
+                .ask(CONTROL_TIMEOUT, |reply| Command::Reload {
+                    caller: who,
+                    reply,
+                })
+                .await?
+                .map_err(|e| {
+                    RpcStatus::invalid_argument(format!(
+                        "config not reloaded; the running config stays: {e}"
+                    ))
+                })?;
+            reply.done.push("config".into());
+            reply.applied = report.applied;
+            reply.needs_restart = report.needs_restart;
+        }
+        if counters || caches {
+            self.ask(CONTROL_TIMEOUT, |reply| Command::Reset {
+                counters,
+                caches,
+                caller,
+                reply,
+            })
+            .await?;
+            if counters {
+                reply.done.push("counters".into());
+            }
+            if caches {
+                reply.done.push("caches".into());
+            }
+        }
+        reply.status = Some(self.status_now().await?);
+        Ok(Response::new(reply))
     }
 
-    async fn hibernate(&self, _: Request<pb::HibernateRequest>) -> Reply<pb::Status> {
-        not_yet()
+    async fn hibernate(&self, request: Request<pb::HibernateRequest>) -> Reply<pb::Status> {
+        let caller = self.control(&request, "Hibernate").await?;
+        let for_ = request.into_inner().for_s.map(Duration::from_secs);
+        if for_ == Some(Duration::ZERO) {
+            return Err(RpcStatus::invalid_argument(
+                "hibernate for zero seconds: leave out the duration for the maximum",
+            ));
+        }
+        self.ask(CONTROL_TIMEOUT, |reply| Command::Hibernate {
+            for_,
+            caller,
+            reply,
+        })
+        .await?;
+        Ok(Response::new(self.status_now().await?))
     }
 
-    async fn wakeup(&self, _: Request<pb::WakeupRequest>) -> Reply<pb::Status> {
-        not_yet()
+    async fn wakeup(&self, request: Request<pb::WakeupRequest>) -> Reply<pb::Status> {
+        let caller = self.control(&request, "Wakeup").await?;
+        self.ask(CONTROL_TIMEOUT, |reply| Command::Wakeup { caller, reply })
+            .await?;
+        Ok(Response::new(self.status_now().await?))
     }
 }
 

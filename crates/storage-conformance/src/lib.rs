@@ -375,6 +375,39 @@ async fn baseline_round_trip(store: &dyn StateStore) {
         .await
         .expect("other profile");
     assert!(!other.contains("known.example"), "profiles are isolated");
+
+    let kept = BaselineEntry {
+        host: "kept.example".into(),
+        source: EntrySource::Manual,
+        added_at: now(),
+    };
+    store
+        .add_to_baseline("conformance", &kept)
+        .await
+        .expect("add a second host");
+    store
+        .add_to_baseline("other-profile", &entry)
+        .await
+        .expect("add to the other profile");
+    assert!(store
+        .remove_from_baseline("conformance", "known.example")
+        .await
+        .expect("remove"));
+    assert!(
+        !store
+            .remove_from_baseline("conformance", "known.example")
+            .await
+            .expect("remove again"),
+        "removing a host that isn't listed reports false"
+    );
+    let baseline = store.baseline("conformance").await.expect("baseline");
+    assert!(!baseline.contains("known.example"));
+    assert!(baseline.contains("kept.example"), "other hosts stay");
+    let other = store
+        .baseline("other-profile")
+        .await
+        .expect("other profile");
+    assert!(other.contains("known.example"), "removal is per profile");
 }
 
 async fn alert_state_round_trip(store: &dyn StateStore) {

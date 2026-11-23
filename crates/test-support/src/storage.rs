@@ -196,6 +196,22 @@ impl StateStore for MemoryStore {
         })
     }
 
+    fn remove_from_baseline<'a>(
+        &'a self,
+        profile: &'a str,
+        host: &'a str,
+    ) -> BoxFuture<'a, Result<bool>> {
+        Box::pin(async move {
+            let mut baselines = self.baselines.lock().unwrap();
+            let Some(entries) = baselines.get_mut(profile) else {
+                return Ok(false);
+            };
+            let before = entries.len();
+            entries.retain(|e| e.host != host);
+            Ok(entries.len() < before)
+        })
+    }
+
     fn put_alert_state<'a>(&'a self, state: &'a AlertState) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             self.alerts

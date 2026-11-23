@@ -148,6 +148,18 @@ impl StateStore for SqliteStore {
         )
     }
 
+    fn remove_from_baseline<'a>(
+        &'a self,
+        profile: &'a str,
+        host: &'a str,
+    ) -> BoxFuture<'a, Result<bool>> {
+        let (profile, host) = (profile.to_owned(), host.to_owned());
+        Box::pin(
+            self.db
+                .with(move |c| state::remove_from_baseline(c, &profile, &host)),
+        )
+    }
+
     fn put_alert_state<'a>(&'a self, alert: &'a AlertState) -> BoxFuture<'a, Result<()>> {
         let alert = alert.clone();
         Box::pin(self.db.with(move |c| state::put_alert_state(c, &alert)))

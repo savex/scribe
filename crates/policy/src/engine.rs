@@ -237,10 +237,14 @@ impl Policy {
         }
     }
 
-    /// Switch mode from the next flow on (`scribe mode`, the API). Learn mode restarts its timer.
+    /// Switch mode from the next flow on (`scribe mode`, the API). Learn mode restarts its timer;
+    /// while the timer is paused (hibernation) the new countdown starts paused, from now.
     pub fn set_mode(&mut self, mode: Mode) {
         self.mode = mode;
         self.start_learn_timer();
+        if self.learn_paused_at.is_some() {
+            self.learn_paused_at = Some(self.clock.now());
+        }
     }
 
     fn start_learn_timer(&mut self) {

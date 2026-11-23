@@ -19,12 +19,19 @@ use tonic::transport::Channel;
 
 const WAIT: Duration = Duration::from_secs(10);
 
-fn settings(dir: &Path, mode: &str) -> Settings {
-    let text = format!(
-        "mode = '{mode}'\ndata_dir = '{}'\n[log]\nfile = ''\n",
+fn config_text(dir: &Path, mode: &str, extra: &str) -> String {
+    format!(
+        "mode = '{mode}'\ndata_dir = '{}'\n{extra}\n[log]\nfile = ''\n",
         dir.display()
-    );
-    let source = Source::File("test.toml".into());
+    )
+}
+
+/// Settings from `dir/scribe.toml`, written first, so a reload reads the same file.
+fn settings_with(dir: &Path, mode: &str, extra: &str) -> Settings {
+    let path = dir.join("scribe.toml");
+    let text = config_text(dir, mode, extra);
+    std::fs::write(&path, &text).unwrap();
+    let source = Source::File(path);
     resolve(
         parse(&text, &source, &context()).unwrap(),
         source,
@@ -32,6 +39,22 @@ fn settings(dir: &Path, mode: &str) -> Settings {
         &HostFacts,
     )
     .unwrap()
+}
+
+fn settings(dir: &Path, mode: &str) -> Settings {
+    settings_with(dir, mode, "")
+}
+
+/// `[api]` naming a group the test user is in, so control calls are allowed.
+fn my_admin_group() -> String {
+    // SAFETY: getuid / getgid have no preconditions.
+    let me = scribe_api::unix::identify(unsafe { libc::getuid() }, unsafe { libc::getgid() }, None);
+    format!("[api]\nadmin_group = '{}'", me.groups[0])
+}
+
+fn is_root() -> bool {
+    // SAFETY: getuid has no preconditions.
+    unsafe { libc::getuid() == 0 }
 }
 
 /// A TLS flow to a named host and a raw-IP flow (an alert in caution mode).
@@ -52,7 +75,7 @@ fn two_flows() -> Vec<Observation> {
 }
 
 struct Daemon {
-    _dir: tempfile::TempDir,
+    dir: tempfile::TempDir,
     socket: PathBuf,
     commands: mpsc::Sender<Command>,
     stop: Option<oneshot::Sender<()>>,
@@ -61,6 +84,10 @@ struct Daemon {
 
 impl Daemon {
     async fn start(mode: &str, observations: Vec<Observation>) -> Self {
+        Self::start_with(mode, "", observations).await
+    }
+
+    async fn start_with(mode: &str, extra: &str, observations: Vec<Observation>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let socket = dir.path().join("run/api.sock");
         let (commands, rx) = mpsc::channel(8);
@@ -70,7 +97,7 @@ impl Daemon {
             api_socket: Some(socket.clone()),
         };
         let task = tokio::spawn(serve_full(
-            settings(dir.path(), mode),
+            settings_with(dir.path(), mode, extra),
             Box::new(FakeSensor::from_observations(observations)),
             options,
             async {
@@ -86,7 +113,7 @@ impl Daemon {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         Self {
-            _dir: dir,
+            dir,
             socket,
             commands,
             stop: Some(stop),
@@ -117,14 +144,36 @@ impl Daemon {
         answer.await.unwrap();
     }
 
-    async fn stop(mut self) {
+    /// Stops scribed and hands back its folder (storage stays readable).
+    async fn stop(mut self) -> tempfile::TempDir {
         let _ = self.stop.take().unwrap().send(());
         tokio::time::timeout(WAIT, self.task)
             .await
             .expect("scribed stops")
             .unwrap()
             .unwrap();
+        self.dir
     }
+}
+
+/// Every audit message stored in `dir`'s event history.
+async fn audits(dir: &Path) -> Vec<String> {
+    use scribe_storage_api::{EventQuery, EventSink, StoredEvent};
+    let sink = scribe_tests::sqlite_sink("local-history", &dir.join("events.db"));
+    sink.query(&EventQuery::default())
+        .await
+        .unwrap()
+        .items
+        .into_iter()
+        .filter_map(|e| match e {
+            StoredEvent::Audit(a) => Some(a.message),
+            _ => None,
+        })
+        .collect()
+}
+
+fn has(audits: &[String], part: &str) -> bool {
+    audits.iter().any(|m| m.contains(part))
 }
 
 /// Polls `get` until `done` holds for its value.
@@ -172,7 +221,11 @@ async fn read_calls_report_status_hosts_alerts_baseline_and_modules() {
         (status.mode.as_str(), status.profile.as_str()),
         ("caution", "default")
     );
-    assert_eq!(status.config_path, "test.toml");
+    assert!(
+        status.config_path.ends_with("scribe.toml"),
+        "{}",
+        status.config_path
+    );
     let sensor = status.sensor.unwrap();
     assert_eq!((sensor.health.as_str(), sensor.process_info), ("ok", true));
     let storage = status.storage.unwrap();
@@ -415,18 +468,319 @@ async fn the_standard_health_service_answers() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn control_calls_are_not_served_yet() {
-    let daemon = Daemon::start("caution", vec![]).await;
-    let err = daemon
-        .client()
-        .await
+async fn control_calls_change_mode_baseline_and_acknowledge_alerts() {
+    let daemon = Daemon::start_with("caution", &my_admin_group(), two_flows()).await;
+    let mut client = daemon.client().await;
+    let alerts = eventually(
+        || {
+            let mut c = client.clone();
+            async move {
+                c.list_alerts(pb::ListAlertsRequest::default())
+                    .await
+                    .unwrap()
+                    .into_inner()
+            }
+        },
+        |page| !page.items.is_empty(),
+    )
+    .await;
+    let id = alerts.items[0].id;
+
+    let mode = client
         .set_mode(pb::SetModeRequest {
             mode: "alert".into(),
         })
         .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(
+        (mode.previous.as_str(), mode.mode.as_str()),
+        ("caution", "alert")
+    );
+    let status = client
+        .get_status(pb::StatusRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(status.mode, "alert");
+    let bad = client
+        .set_mode(pb::SetModeRequest {
+            mode: "paranoid".into(),
+        })
+        .await
         .unwrap_err();
-    assert_eq!(err.code(), tonic::Code::Unimplemented);
-    daemon.stop().await;
+    assert_eq!(bad.code(), tonic::Code::InvalidArgument);
+
+    let edit = client
+        .edit_baseline(pb::EditBaselineRequest {
+            add: vec!["API.Example.com.".into(), "new.example.net".into()],
+            remove: vec!["absent.example".into()],
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(edit.added, ["api.example.com", "new.example.net"]);
+    assert_eq!(edit.unchanged, ["absent.example"]);
+    let edit = client
+        .edit_baseline(pb::EditBaselineRequest {
+            add: vec!["api.example.com".into()],
+            remove: vec!["new.example.net".into()],
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(
+        (edit.removed, edit.unchanged),
+        (
+            vec!["new.example.net".to_owned()],
+            vec!["api.example.com".to_owned()]
+        )
+    );
+    let baseline = client
+        .get_baseline(pb::GetBaselineRequest::default())
+        .await
+        .unwrap()
+        .into_inner();
+    let hosts: Vec<(&str, &str)> = baseline
+        .entries
+        .iter()
+        .map(|e| (e.host.as_str(), e.source.as_str()))
+        .collect();
+    assert_eq!(hosts, [("api.example.com", "manual")]);
+    let listed = client
+        .list_hosts(pb::ListHostsRequest {
+            name_contains: "api.example".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(listed.items[0].on_list);
+    for name in ["a b", "", "evil.example/path"] {
+        let err = client
+            .edit_baseline(pb::EditBaselineRequest {
+                add: vec![name.into()],
+                remove: vec![],
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(err.code(), tonic::Code::InvalidArgument, "{name:?}");
+    }
+
+    let ack = client
+        .ack_alert(pb::AckAlertRequest { id })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(ack.changed);
+    let again = client
+        .ack_alert(pb::AckAlertRequest { id })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(!again.changed, "acknowledging twice changes nothing");
+    let listed = client
+        .list_alerts(pb::ListAlertsRequest::default())
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(
+        listed
+            .items
+            .iter()
+            .find(|a| a.id == id)
+            .unwrap()
+            .acknowledged
+    );
+    let missing = client
+        .ack_alert(pb::AckAlertRequest { id: 999_999 })
+        .await
+        .unwrap_err();
+    assert_eq!(missing.code(), tonic::Code::NotFound);
+
+    let dir = daemon.stop().await;
+    let audits = audits(dir.path()).await;
+    assert!(
+        has(&audits, "mode set to alert (was caution) by "),
+        "{audits:#?}"
+    );
+    assert!(has(&audits, "uid "), "callers carry their ids: {audits:#?}");
+    assert!(
+        has(&audits, "added [api.example.com, new.example.net]"),
+        "{audits:#?}"
+    );
+    assert!(has(&audits, "removed [new.example.net]"), "{audits:#?}");
+    assert!(
+        has(
+            &audits,
+            &format!("alert {id} (raw_ip to 198.51.100.7) acknowledged by")
+        ),
+        "{audits:#?}"
+    );
+    assert!(has(&audits, "(already acknowledged)"), "{audits:#?}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn control_calls_outside_the_admin_group_are_refused_and_audited() {
+    let daemon = Daemon::start_with(
+        "caution",
+        "[api]\nadmin_group = 'scribe-test-no-such-group'",
+        vec![],
+    )
+    .await;
+    let mut client = daemon.client().await;
+    let mode = client
+        .set_mode(pb::SetModeRequest {
+            mode: "alert".into(),
+        })
+        .await;
+    let hibernate = client
+        .hibernate(pb::HibernateRequest { for_s: Some(60) })
+        .await;
+    let reset = client.reset(pb::ResetRequest::default()).await;
+    // Read calls stay open.
+    let status = client
+        .get_status(pb::StatusRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    if is_root() {
+        mode.unwrap();
+        hibernate.unwrap();
+        reset.unwrap();
+        daemon.stop().await;
+        return;
+    }
+    for err in [
+        mode.unwrap_err(),
+        hibernate.unwrap_err(),
+        reset.unwrap_err(),
+    ] {
+        assert_eq!(err.code(), tonic::Code::PermissionDenied, "{err}");
+        assert!(err.message().contains("scribe-test-no-such-group"), "{err}");
+    }
+    assert_eq!(
+        (status.mode.as_str(), status.run_state.as_str()),
+        ("caution", "running")
+    );
+    let dir = daemon.stop().await;
+    let audits = audits(dir.path()).await;
+    for call in ["SetMode", "Hibernate", "Reset"] {
+        assert!(
+            has(&audits, &format!("refused {call} from ")),
+            "{call}: {audits:#?}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn reset_reload_hibernate_and_wakeup_through_the_api() {
+    let extra = my_admin_group();
+    let daemon = Daemon::start_with("caution", &extra, two_flows()).await;
+    let mut client = daemon.client().await;
+    eventually(
+        || {
+            let mut c = client.clone();
+            async move {
+                c.get_status(pb::StatusRequest {})
+                    .await
+                    .unwrap()
+                    .into_inner()
+            }
+        },
+        |s| s.counters.as_ref().is_some_and(|c| c.flows == 2),
+    )
+    .await;
+
+    let reset = client
+        .reset(pb::ResetRequest {
+            counters: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(reset.done, ["counters"]);
+    assert_eq!(reset.status.unwrap().counters.unwrap().flows, 0);
+
+    // A changed file: mode applies live, the sensor needs a restart.
+    let path = daemon.dir.path().join("scribe.toml");
+    let changed = config_text(
+        daemon.dir.path(),
+        "alert",
+        &format!("{extra}\n[sensor]\ninterface = 'eth9'"),
+    );
+    std::fs::write(&path, changed).unwrap();
+    let reload = client
+        .reset(pb::ResetRequest::default())
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(reload.done, ["config", "counters", "caches"]);
+    assert_eq!(reload.applied, ["mode"]);
+    assert_eq!(reload.needs_restart, ["sensor"]);
+    assert_eq!(reload.status.unwrap().mode, "alert");
+
+    std::fs::write(&path, "mode = 'paranoid'\n").unwrap();
+    let err = client
+        .reset(pb::ResetRequest {
+            config: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(err.code(), tonic::Code::InvalidArgument);
+    assert!(err.message().contains("running config stays"), "{err}");
+    assert!(err.message().contains("line 1"), "{err}");
+
+    let zero = client
+        .hibernate(pb::HibernateRequest { for_s: Some(0) })
+        .await
+        .unwrap_err();
+    assert_eq!(zero.code(), tonic::Code::InvalidArgument);
+    let status = client
+        .hibernate(pb::HibernateRequest { for_s: Some(600) })
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(status.run_state, "hibernating");
+    assert!(
+        status.hibernated_by.contains("uid "),
+        "{}",
+        status.hibernated_by
+    );
+    let first_until = status.hibernating_until_ms.unwrap();
+    let status = client
+        .hibernate(pb::HibernateRequest { for_s: Some(60) })
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(
+        status.hibernating_until_ms.unwrap() < first_until,
+        "a second hibernate sets a new end"
+    );
+    let status = client
+        .wakeup(pb::WakeupRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(status.run_state, "running");
+    let status = client
+        .wakeup(pb::WakeupRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(
+        status.run_state, "running",
+        "waking a running daemon is fine"
+    );
+
+    let dir = daemon.stop().await;
+    let audits = audits(dir.path()).await;
+    assert!(has(&audits, "runtime reset by "), "{audits:#?}");
+    assert!(has(&audits, "config reloaded by "), "{audits:#?}");
+    assert!(has(&audits, "hibernate by "), "{audits:#?}");
+    assert!(has(&audits, "wakeup by "), "{audits:#?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

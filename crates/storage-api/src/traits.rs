@@ -40,6 +40,15 @@ pub trait StateStore: Send + Sync {
         profile: &'a str,
         entry: &'a BaselineEntry,
     ) -> BoxFuture<'a, Result<()>>;
+    /// Take `host` off `profile`'s baseline (`scribe baseline rm`); `false` when it wasn't there.
+    fn remove_from_baseline<'a>(
+        &'a self,
+        profile: &'a str,
+        host: &'a str,
+    ) -> BoxFuture<'a, Result<bool>> {
+        let _ = (profile, host);
+        not_implemented("remove_from_baseline")
+    }
 
     fn put_alert_state<'a>(&'a self, state: &'a AlertState) -> BoxFuture<'a, Result<()>>;
     fn get_alert_state<'a>(&'a self, key: &'a str) -> BoxFuture<'a, Result<Option<AlertState>>>;

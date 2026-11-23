@@ -17,6 +17,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 10 step 2: `scribed` serves the local API read calls (status with critical metrics, health and
   `grpc.health.v1`, hosts, alerts, alert stream, baseline, export, modules) on `[api] socket`; new `[api]`
   config section (`socket`, `admin_group`); `Storage::query`; per-module drop counts; `scribe_policy::alert_key_for`.
+- Phase 10 step 3: the API control calls (mode, baseline edits, alert acknowledgement, reset with config reload,
+  hibernate, wakeup) for root and `[api] admin_group`, each stored as an `audit` event with the caller, refusals
+  too; `StateStore::remove_from_baseline` with a storage conformance case.
 - Phase 4 step 1: `scribe-policy` crate with the built-in signals (raw IP, TLD, Shannon entropy, usual ports)
   and threat lists (`domains`, `hosts`, `ips` with CIDR; subdomains match; bad lines skipped and counted).
 - Phase 4 step 2: policy engine (`Policy::decide`): the specs 8.1 mode table, scoring with built-in and module
@@ -98,6 +101,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `changelog`; `latest-tag` is now the highest tag, not the nearest. Tests run `scripts/test-version.sh`.
 
 ### Fixed
+- A learn mode set while hibernating no longer gets the time hibernated before the change added to its
+  countdown at wakeup.
 - Config, secrets and URL-module tests are portable to Windows (absolute paths, `\` joins, TOML escapes), the
   9 failures in Tests run 2; plan, status and skill no longer cite Version tracking run `45072299330` as green Tests.
 - Plan, status and skill record Tests run `45202847881` as green on Linux, macOS and Windows.

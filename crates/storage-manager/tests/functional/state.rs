@@ -76,6 +76,9 @@ impl StateStore for Switchable {
     ) -> BoxFuture<'a, Result<()>> {
         guarded!(self, self.inner.add_to_baseline(p, e))
     }
+    fn remove_from_baseline<'a>(&'a self, p: &'a str, h: &'a str) -> BoxFuture<'a, Result<bool>> {
+        guarded!(self, self.inner.remove_from_baseline(p, h))
+    }
     fn put_alert_state<'a>(&'a self, s: &'a AlertState) -> BoxFuture<'a, Result<()>> {
         guarded!(self, self.inner.put_alert_state(s))
     }

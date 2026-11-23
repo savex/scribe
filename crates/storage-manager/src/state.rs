@@ -48,6 +48,7 @@ enum Write {
         ttl: Duration,
     },
     AddToBaseline(String, BaselineEntry),
+    RemoveFromBaseline(String, String),
     PutAlertState(AlertState),
     PutModuleState(String, String, Value),
 }
@@ -59,6 +60,7 @@ impl Write {
             Write::UpsertHost(d) => d.name.len(),
             Write::LinkIp { name, .. } => name.as_ref().map_or(0, String::len),
             Write::AddToBaseline(p, e) => p.len() + e.host.len(),
+            Write::RemoveFromBaseline(p, h) => p.len() + h.len(),
             Write::PutAlertState(a) => a.key.len(),
             Write::PutModuleState(m, k, v) => m.len() + k.len() + v.to_string().len(),
         };
@@ -176,6 +178,12 @@ impl BufferedState {
                 self.inner.link_ip(id, *ip, *ttl).await.map(|_| id)
             }
             Write::AddToBaseline(p, e) => self.inner.add_to_baseline(p, e).await.map(|_| 0),
+            // 2 removed, 1 not listed (a buffered write returns 0).
+            Write::RemoveFromBaseline(p, h) => self
+                .inner
+                .remove_from_baseline(p, h)
+                .await
+                .map(|removed| if removed { 2 } else { 1 }),
             Write::PutAlertState(a) => self.inner.put_alert_state(a).await.map(|_| 0),
             Write::PutModuleState(m, k, v) => self.inner.put_module_state(m, k, v).await.map(|_| 0),
         }
@@ -283,6 +291,22 @@ impl StateStore for BufferedState {
             self.write(Write::AddToBaseline(profile.to_owned(), entry.clone()))
                 .await
                 .map(|_| ())
+        })
+    }
+
+    /// While the store is down the removal is buffered and reported as done.
+    fn remove_from_baseline<'a>(
+        &'a self,
+        profile: &'a str,
+        host: &'a str,
+    ) -> BoxFuture<'a, Result<bool>> {
+        Box::pin(async move {
+            self.write(Write::RemoveFromBaseline(
+                profile.to_owned(),
+                host.to_owned(),
+            ))
+            .await
+            .map(|n| n != 1)
         })
     }
 

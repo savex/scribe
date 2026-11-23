@@ -167,6 +167,7 @@ fn commands_drive_the_run_states() {
             let s = ask(Box::new(|reply| Command::Reset {
                 counters: true,
                 caches: true,
+                caller: "test".into(),
                 reply,
             }))
             .await;
@@ -202,7 +203,8 @@ fn commands_drive_the_run_states() {
         audits[1].starts_with("hibernate by test until "),
         "{audits:?}"
     );
-    assert_eq!(audits[2], "wakeup by test");
+    assert_eq!(audits[2], "runtime reset by test: counters, caches");
+    assert_eq!(audits[3], "wakeup by test");
     assert_eq!(audits.last().map(String::as_str), Some("scribed stopped"));
     assert!(events
         .iter()

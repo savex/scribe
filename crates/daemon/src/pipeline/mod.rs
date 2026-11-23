@@ -38,8 +38,10 @@ pub struct Writes {
     pub events: Vec<StoredEvent>,
     /// Host counter deltas for the state store.
     pub hosts: Vec<HostDelta>,
-    /// Hosts learned in learn mode.
+    /// Hosts learned in learn mode or added through the API.
     pub baseline: Vec<BaselineEntry>,
+    /// Hosts taken off the baseline through the API.
+    pub baseline_removed: Vec<String>,
     /// Dedupe state of every alert raised.
     pub alert_states: Vec<AlertState>,
     /// Alerts for the alert outputs.
@@ -56,6 +58,7 @@ impl Writes {
         self.events.is_empty()
             && self.hosts.is_empty()
             && self.baseline.is_empty()
+            && self.baseline_removed.is_empty()
             && self.alert_states.is_empty()
             && self.alerts.is_empty()
             && self.alert_updates.is_empty()
@@ -65,6 +68,7 @@ impl Writes {
         self.events.extend(other.events);
         self.hosts.extend(other.hosts);
         self.baseline.extend(other.baseline);
+        self.baseline_removed.extend(other.baseline_removed);
         self.alert_states.extend(other.alert_states);
         self.alerts.extend(other.alerts);
         self.alert_updates.extend(other.alert_updates);
@@ -139,6 +143,14 @@ pub struct Status {
     pub held_quic: usize,
     pub dns_entries: usize,
     pub modules: Vec<crate::modules::ModuleStatus>,
+}
+
+/// What [`Pipeline::edit_baseline`] did.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BaselineEdit {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+    pub unchanged: Vec<String>,
 }
 
 /// The address daemon alerts (`hibernated`) carry: they have no destination.
@@ -304,6 +316,108 @@ impl Pipeline {
         w.events
             .push(audit(self.clock.now(), format!("wakeup by {caller}")));
         w
+    }
+
+    /// Switch mode (`scribe mode`); applies from the next flow, or after wakeup while hibernating.
+    /// Returns the previous mode and the audit event.
+    pub fn set_mode(
+        &mut self,
+        mode: scribe_core::Mode,
+        caller: &str,
+    ) -> (scribe_core::Mode, Writes) {
+        let previous = self.policy.mode();
+        // While hibernating the policy's learn timer is paused, so a new countdown waits too.
+        self.policy.set_mode(mode);
+        let mut w = Writes::default();
+        w.events.push(audit(
+            self.clock.now(),
+            format!("mode set to {mode} (was {previous}) by {caller}"),
+        ));
+        (previous, w)
+    }
+
+    /// Add hosts to and take hosts off the active profile's baseline (`scribe baseline add|rm`).
+    /// Names are compared in lower case; hosts already in the wanted state are `unchanged`.
+    pub fn edit_baseline(
+        &mut self,
+        add: &[String],
+        remove: &[String],
+        caller: &str,
+    ) -> (BaselineEdit, Writes) {
+        let now = self.clock.now();
+        let mut edit = BaselineEdit::default();
+        let mut w = Writes::default();
+        for host in add {
+            let host = host.to_ascii_lowercase();
+            if self.policy.add_to_baseline(host.clone()) {
+                w.baseline.push(BaselineEntry {
+                    host: host.clone(),
+                    source: EntrySource::Manual,
+                    added_at: now,
+                });
+                edit.added.push(host);
+            } else {
+                edit.unchanged.push(host);
+            }
+        }
+        for host in remove {
+            let host = host.to_ascii_lowercase();
+            if self.policy.remove_from_baseline(&host) {
+                w.baseline_removed.push(host.clone());
+                edit.removed.push(host);
+            } else {
+                edit.unchanged.push(host);
+            }
+        }
+        w.events.push(audit(
+            now,
+            format!(
+                "baseline of profile {} edited by {caller}: added [{}], removed [{}], unchanged [{}]",
+                self.profile,
+                edit.added.join(", "),
+                edit.removed.join(", "),
+                edit.unchanged.join(", ")
+            ),
+        ));
+        (edit, w)
+    }
+
+    /// Silence `alert`'s host + process for good (`scribe alerts ack`). `state` is its stored
+    /// dedupe state, if any; `id` is how the caller named it.
+    pub fn acknowledge(
+        &mut self,
+        id: u64,
+        alert: &Alert,
+        state: Option<AlertState>,
+        caller: &str,
+    ) -> (bool, Writes) {
+        let mut w = Writes::default();
+        let changed = !state.as_ref().is_some_and(|s| s.acknowledged);
+        self.policy.acknowledge(alert);
+        if changed {
+            w.alert_states.push(AlertState {
+                key: scribe_policy::alert_key(alert),
+                last_alerted: state.map_or(alert.ts, |s| s.last_alerted),
+                acknowledged: true,
+            });
+        }
+        w.events.push(audit(
+            self.clock.now(),
+            format!(
+                "alert {id} ({} to {}) acknowledged by {caller}{}",
+                alert.reason,
+                alert
+                    .host
+                    .clone()
+                    .unwrap_or_else(|| alert.dst_ip.to_string()),
+                if changed {
+                    ""
+                } else {
+                    " (already acknowledged)"
+                }
+            ),
+        ));
+        (changed, w)
     }
 
     /// Whether a hibernation has reached its end ([`Pipeline::tick`] wakes it).
@@ -570,6 +684,11 @@ pub async fn store(target: &dyn Store, profile: &str, writes: &Writes) -> Vec<St
     }
     for entry in &writes.baseline {
         if let Err(e) = state.add_to_baseline(profile, entry).await {
+            errors.push(e);
+        }
+    }
+    for host in &writes.baseline_removed {
+        if let Err(e) = state.remove_from_baseline(profile, host).await {
             errors.push(e);
         }
     }
