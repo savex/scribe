@@ -94,6 +94,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ### Fixed
 - Config, secrets and URL-module tests are portable to Windows (absolute paths, `\` joins, TOML escapes), the
   9 failures in Tests run 2; plan, status and skill no longer cite Version tracking run `45072299330` as green Tests.
+- Plan, status and skill record Tests run `45202847881` as green on Linux, macOS and Windows.
 - Changelog: the `0.1.0-alpha.1` release had no section (the workflow did not write one).
 - Plan and status cited phase 4 commit ids from before the rebase onto the release commit.
 - `Cargo.lock` listed `scribe-policy` at 0.1.1 after the rebase onto the release; `--locked` builds failed.

@@ -157,7 +157,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 | Test data | **100%** | 16 pcap fixtures (2 QUIC), all checked end to end; RFC 9001 / 9369 sample packets; 19 scenarios (16 run), raw sensor samples, v1 and v2 database snapshots | Checked by the fixture, end-to-end, scenario and snapshot tests |
 | Fuzzing | **~60%** | 4 targets with seeds (`tls_client_hello`, `dns_message`, `quic_initial`, `http_request`); they compile on stable | Never run (needs Rust nightly) |
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
-| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Tests run `45198461612`: Linux and macOS green, 9 Windows test-portability failures fixed (re-run pending); Release and the other workflows not run yet |
+| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migration 0002 | Tests green on Linux, macOS and Windows (run `45202847881`, 2026-11-23); Release and the other workflows not run yet |
 
 **Overall:** 9,447 of 10,490 measurable lines covered (**90.1%**).
 
