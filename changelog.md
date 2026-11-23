@@ -61,6 +61,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `linux.sh` (Apple `container`, docker or podman with a native arm64 image that cross-compiles x86_64, or
   `--native`), `windows.ps1` (PowerShell, Windows x64); shared `config`; `release` makes the same `dist/`
   archives and `SHA256SUMS` as the Release workflow. `dist/` is git-ignored.
+- Phase 6 step 1: pcap sensor decoding (`scribe_sensor_pcap::decode`): Ethernet with VLAN tags, BSD loopback,
+  raw IP, Linux cooked v1 / v2; IPv4 and IPv6 (extension headers skipped, fragments left out); TCP and UDP.
+  A classic pcap file reader (`file`), both byte orders, µs / ns. Smoke test SMK-13 reads every fixture.
 
 ### Changed
 - Bump version works from the highest known version (latest tag by SemVer order, `Cargo.toml`, `changelog.md`),

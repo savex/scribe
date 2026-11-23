@@ -803,7 +803,10 @@ dependencies = [
 name = "scribe-sensor-pcap"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "proptest",
  "scribe-core",
+ "scribe-test-support",
+ "thiserror",
 ]
 
 [[package]]
@@ -896,6 +899,7 @@ dependencies = [
  "scribe-module-api",
  "scribe-module-url",
  "scribe-policy",
+ "scribe-sensor-pcap",
  "scribe-storage-api",
  "scribe-storage-conformance",
  "scribe-storage-manager",

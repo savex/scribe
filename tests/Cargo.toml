@@ -49,6 +49,7 @@ scribe-core.workspace = true
 scribe-module-api.workspace = true
 scribe-module-url.workspace = true
 scribe-policy.workspace = true
+scribe-sensor-pcap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true

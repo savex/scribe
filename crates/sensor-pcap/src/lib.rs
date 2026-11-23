@@ -1,6 +1,9 @@
 //! Fallback sensor that works on every OS via libpcap (Linux, macOS) or Npcap (Windows).
 //! It sees packets but cannot attribute them to processes.
 
+pub mod decode;
+pub mod file;
+
 use std::sync::mpsc::Sender;
 
 use scribe_core::{Observation, Sensor, SensorError};

@@ -4,5 +4,6 @@
 mod binaries;
 mod config;
 mod fixtures;
+mod pcap;
 mod schema;
 mod storage;
