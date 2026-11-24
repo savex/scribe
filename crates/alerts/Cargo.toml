@@ -5,14 +5,23 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[features]
+# `WebhookOutput` (HTTPS through `scribe-net`, which needs ring's C code). The daemon turns it on;
+# the CLI uses only the rate limit.
+webhook = ["dep:scribe-net", "dep:scribe-secrets", "dep:serde_json"]
+
 [dependencies]
 scribe-core.workspace = true
+scribe-net = { workspace = true, optional = true }
+scribe-secrets = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 tracing.workspace = true
 
 [dev-dependencies]
 scribe-test-support.workspace = true
 tracing-subscriber.workspace = true
 serde_json.workspace = true
+scribe-net.workspace = true
 
 [[test]]
 name = "functional"

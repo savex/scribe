@@ -3,15 +3,20 @@
 //! rate limit ([`Throttle`]), so a slow or failing output never holds up the pipeline or the other
 //! outputs.
 //!
-//! Outputs here: [`LogOutput`] (a `scribe::alert` line in scribed's log). OS notifications are
+//! Outputs here: [`LogOutput`] (a `scribe::alert` line in scribed's log) and [`WebhookOutput`]
+//! (signed JSON over HTTPS through `scribe-net`). OS notifications are
 //! shown by the `scribe notify` agent in the user's session, which follows the API's alert stream:
 //! a system service can't post to a desktop session on any of the three systems.
 
 mod dispatch;
 mod log;
 mod throttle;
+#[cfg(feature = "webhook")]
+mod webhook;
 
 pub use dispatch::{Dispatcher, OutputStats, QUEUE};
 pub use log::{alert_line, LogOutput};
 pub use scribe_core::{Alert, AlertOutput};
 pub use throttle::{Admit, Throttle};
+#[cfg(feature = "webhook")]
+pub use webhook::{WebhookOutput, RETRY_AFTER, SIGNATURE_HEADER};

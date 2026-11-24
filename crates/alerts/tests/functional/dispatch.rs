@@ -85,8 +85,12 @@ fn dispatcher_drops_when_an_output_is_behind_and_others_keep_going() {
         "dropped {dropped} of {total} with a queue of {QUEUE}"
     );
     drop(open);
+    let fast_dropped = d.stats()[1].dropped;
     assert!(d.close(GRACE).is_empty());
-    assert_eq!(fast.count(), total, "the fast output got everything");
+    // The fast output works on while the stuck one is blocked: it delivers everything its queue
+    // took, which is at least a full queue (it may drop too if 306 alerts outrun its thread).
+    assert_eq!(fast.count() as u64 + fast_dropped, total as u64);
+    assert!(fast.count() >= QUEUE, "the fast output kept going");
     assert_eq!(*stuck.seen.lock().unwrap() as u64 + dropped, total as u64);
 }
 

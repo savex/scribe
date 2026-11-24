@@ -241,6 +241,38 @@ pub fn validate(
         }
     }
 
+    let mut hooks = HashSet::new();
+    for hook in &config.alerts.webhooks {
+        let span = hook.span();
+        let h = hook.get_ref();
+        let label = format!("webhook \"{}\"", h.name);
+        if h.name.trim().is_empty() {
+            return Err(at(span, "webhook name must not be empty".into()));
+        }
+        if h.name == "log" || !hooks.insert(h.name.as_str()) {
+            return Err(at(
+                span,
+                format!("{label}: the name is already used by another alert output"),
+            ));
+        }
+        scribe_net::checked_url(&h.url).map_err(|e| at(span.clone(), format!("{label}: {e}")))?;
+        h.secret
+            .parse::<scribe_secrets::SecretRef>()
+            .map_err(|e| at(span.clone(), format!("{label}: secret: {e}")))?;
+        if let Some(pin) = &h.pin_sha256 {
+            scribe_net::parse_pin(pin).map_err(|e| at(span.clone(), format!("{label}: {e}")))?;
+        }
+        let timeout = h.timeout.get();
+        if timeout < std::time::Duration::from_secs(1)
+            || timeout > std::time::Duration::from_secs(60)
+        {
+            return Err(at(
+                span,
+                format!("{label}: timeout must be between 1s and 60s"),
+            ));
+        }
+    }
+
     check_backend(config.storage.state.get_ref(), "[storage.state]", ctx)
         .map_err(|m| at(config.storage.state.span(), m))?;
 

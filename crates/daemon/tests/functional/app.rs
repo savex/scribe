@@ -147,11 +147,31 @@ fn alert_outputs_follow_the_alerts_section() {
     let dir = tempfile::tempdir().unwrap();
     let clock: std::sync::Arc<dyn scribe_core::Clock> =
         std::sync::Arc::new(scribe_test_support::FakeClock::at_unix(1_800_000_000));
-    let on = alert_outputs(&settings_in(dir.path()), clock.clone());
+    let on = alert_outputs(&settings_in(dir.path()), clock.clone()).unwrap();
     assert_eq!(on.names(), ["log"]);
     let off = alert_outputs(
         &settings_with(dir.path(), "[alerts]\nlog = false\n"),
         clock.clone(),
-    );
+    )
+    .unwrap();
     assert!(off.names().is_empty());
+
+    let key = dir.path().join("webhook.key");
+    let hook = |secret: &std::path::Path| {
+        format!(
+            "[[alerts.webhooks]]\nname = \"ops\"\nurl = \"https://hooks.example.com/scribe\"\nsecret = '{}'\n",
+            scribe_secrets::SecretRef::File(secret.to_owned())
+        )
+    };
+    let missing = alert_outputs(&settings_with(dir.path(), &hook(&key)), clock.clone())
+        .err()
+        .unwrap();
+    assert!(
+        missing.starts_with("webhook \"ops\": cannot read its secret"),
+        "{missing}"
+    );
+    scribe_secrets::read_or_create(&scribe_secrets::SecretRef::File(key.clone()), 32).unwrap();
+    let both = alert_outputs(&settings_with(dir.path(), &hook(&key)), clock).unwrap();
+    assert_eq!(both.names(), ["log", "ops"]);
+    assert!(!machine_name().is_empty());
 }

@@ -23,7 +23,8 @@ url = ["dep:scribe-module-url", "scribe-module-url/server"]
 scribe-core.workspace = true
 scribe-enrich.workspace = true
 scribe-policy.workspace = true
-scribe-alerts.workspace = true
+scribe-alerts = { workspace = true, features = ["webhook"] }
+scribe-net.workspace = true
 scribe-secrets.workspace = true
 ring.workspace = true
 scribe-storage-api.workspace = true

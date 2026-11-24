@@ -3,6 +3,8 @@
 mod dispatch;
 mod log;
 mod throttle;
+#[cfg(feature = "webhook")]
+mod webhook;
 
 use std::net::IpAddr;
 use std::time::{Duration, SystemTime};

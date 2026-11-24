@@ -29,6 +29,7 @@ scribe-secrets = { path = "crates/secrets" }
 scribe-policy = { path = "crates/policy" }
 scribe-api = { path = "crates/api" }
 scribe-alerts = { path = "crates/alerts" }
+scribe-net = { path = "crates/net" }
 
 # Third-party. Keep versions compatible with `rust-version` (policy: follow dependencies).
 tokio = { version = "1.54", default-features = false }
@@ -63,6 +64,14 @@ protox = "0.10"
 tokio-stream = { version = "0.1.19", default-features = false }
 hyper-util = { version = "0.1.21", default-features = false }
 tower = { version = "0.5", default-features = false }
+# Outgoing HTTPS (`scribe-net`): rustls with ring (already used for QUIC), the OS certificate
+# verifier, a small HTTP/1.1 client of our own for the webhook and threat-list rules.
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.7"
+http = "1.5"
+httparse = "1.10"
+# Test certificates for the HTTPS tests.
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 # Desktop notifications for `scribe notify` (D-Bus in pure Rust on Linux, Notification Center on
 # macOS, toasts on Windows). Needs Rust 1.89.
 notify-rust = { version = "4.19", default-features = false, features = ["z"] }

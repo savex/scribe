@@ -795,6 +795,51 @@ mod functional {
     }
 
     #[test]
+    fn webhooks_are_checked_when_the_file_is_read() {
+        let hook = |extra: &str| {
+            format!(
+                "[[alerts.webhooks]]\nname = \"ops\"\nurl = \"https://hooks.example.com/s\"\nsecret = \"keychain:scribe/webhook\"\n{extra}"
+            )
+        };
+        let c = parse_ok(&hook(&format!("pin_sha256 = \"{}\"\n", "ab".repeat(32))));
+        let h = c.alerts.webhooks[0].get_ref();
+        assert_eq!(h.name, "ops");
+        assert_eq!(h.timeout.get(), std::time::Duration::from_secs(10));
+        assert!(h.pin_sha256.is_some());
+        parse_ok("[[alerts.webhooks]]\nname = \"local\"\nurl = \"http://127.0.0.1:9000/x\"\nsecret = \"file:/etc/scribe/w.key\"\ntimeout = \"3s\"\n");
+
+        for (text, says) in [
+            (
+                hook("").replace("https://hooks", "http://hooks"),
+                "plain http is allowed only to a loopback host",
+            ),
+            (
+                hook("").replace("keychain:scribe/webhook", "hunter2"),
+                "secret: malformed secret reference",
+            ),
+            (hook("pin_sha256 = \"abc\"\n"), "bad pin_sha256"),
+            (hook("timeout = \"0s\"\n"), "must be greater than zero"),
+            (
+                hook("timeout = \"2m\"\n"),
+                "timeout must be between 1s and 60s",
+            ),
+            (
+                hook("").replace("\"ops\"", "\"log\""),
+                "already used by another alert output",
+            ),
+            (hook("") + &hook(""), "already used by another alert output"),
+            (
+                hook("").replace("\"ops\"", "\" \""),
+                "webhook name must not be empty",
+            ),
+            (hook("retries = 3\n"), "unknown field"),
+        ] {
+            let err = parse_err(&text).to_string();
+            assert!(err.contains(says), "{text}\n→ {err}");
+        }
+    }
+
+    #[test]
     fn the_api_socket_defaults_per_os_and_can_be_set() {
         let s = resolve_text("");
         assert_eq!(s.api_socket, PathBuf::from(scribe_api::default_socket()));

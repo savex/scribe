@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::Context as _;
 use clap::Parser;
-use scribe_alerts::{Dispatcher, LogOutput};
+use scribe_alerts::{Dispatcher, LogOutput, WebhookOutput};
 use scribe_core::{Clock, Observation, Sensor, SystemClock, VERSION};
 use scribe_enrich::Enricher;
 use scribe_module_api::ConfigDoc;
@@ -252,11 +252,17 @@ async fn reload(
     running: &mut Settings,
     pipeline: &mut Pipeline,
     storage: &Storage,
-    clock: &dyn Clock,
+    clock: &Arc<dyn Clock>,
     caller: &str,
-) -> Result<(ReloadReport, Writes), String> {
+) -> Result<(ReloadReport, Writes, Option<Dispatcher>), String> {
     let new = config::reload::reread(running).map_err(|e| e.to_string())?;
     let plan = config::reload::plan(running, new);
+    // Built first: a webhook whose secret can't be read rejects the whole reload.
+    let outputs = if plan.changed("alerts") {
+        Some(alert_outputs(&plan.settings, clock.clone())?)
+    } else {
+        None
+    };
     let threats = if plan.changed("policy") {
         Some(load_threats(&plan.settings).map_err(|e| format!("{e:#}"))?)
     } else {
@@ -321,7 +327,7 @@ async fn reload(
     let mut writes = Writes::default();
     writes.events.push(audit(clock.now(), message));
     *running = plan.settings;
-    Ok((report, writes))
+    Ok((report, writes, outputs))
 }
 
 /// [`serve`] with a given sensor (tests pass `FakeSensor`). Observations still queued at shutdown
@@ -601,11 +607,8 @@ pub async fn serve_full(
     };
 
     let (alerts_tx, _) = tokio::sync::broadcast::channel::<AlertRecord>(crate::api::ALERT_BACKLOG);
-    let mut writer = Writer::new(
-        chain,
-        alerts_tx.clone(),
-        alert_outputs(&settings, clock.clone()),
-    );
+    let outputs = alert_outputs(&settings, clock.clone()).map_err(|e| anyhow::anyhow!(e))?;
+    let mut writer = Writer::new(chain, alerts_tx.clone(), outputs);
     let mut started = Writes::default();
     if let Some(previous) = unclean {
         warn!(
@@ -798,11 +801,11 @@ pub async fn serve_full(
                     }
                     Command::Status { reply } => reply,
                     Command::Reload { caller, reply } => {
-                        let result = reload(&mut running, &mut pipeline, &storage, clock.as_ref(), &caller).await;
+                        let result = reload(&mut running, &mut pipeline, &storage, &clock, &caller).await;
                         let result = match result {
-                            Ok((report, writes)) => {
-                                if report.applied.iter().any(|k| k == "alerts") {
-                                    writer.set_outputs(alert_outputs(&running, clock.clone()));
+                            Ok((report, writes, outputs)) => {
+                                if let Some(outputs) = outputs {
+                                    writer.set_outputs(outputs);
                                 }
                                 writer.apply(&storage, pipeline.profile(), writes).await;
                                 config_loaded = clock.now();
@@ -821,10 +824,10 @@ pub async fn serve_full(
                 let _ = reply.send(pipeline.status());
             }
             _ = hangup(&mut hup) => {
-                match reload(&mut running, &mut pipeline, &storage, clock.as_ref(), "SIGHUP").await {
-                    Ok((report, writes)) => {
-                        if report.applied.iter().any(|k| k == "alerts") {
-                            writer.set_outputs(alert_outputs(&running, clock.clone()));
+                match reload(&mut running, &mut pipeline, &storage, &clock, "SIGHUP").await {
+                    Ok((_, writes, outputs)) => {
+                        if let Some(outputs) = outputs {
+                            writer.set_outputs(outputs);
                         }
                         writer.apply(&storage, pipeline.profile(), writes).await;
                         config_loaded = clock.now();
@@ -1147,12 +1150,37 @@ fn audit(ts: std::time::SystemTime, message: String) -> StoredEvent {
 /// How long alert outputs get at shutdown to finish their queues.
 const OUTPUTS_GRACE: Duration = Duration::from_secs(3);
 
-/// scribed's own alert outputs from `[alerts]` (phase 11).
-pub fn alert_outputs(settings: &Settings, clock: Arc<dyn Clock>) -> Dispatcher {
+/// scribed's own alert outputs from `[alerts]` (phase 11). Fails when a webhook's secret can't
+/// be read, so a start or reload with a broken webhook is refused rather than silently quiet.
+pub fn alert_outputs(settings: &Settings, clock: Arc<dyn Clock>) -> Result<Dispatcher, String> {
     let config = &settings.config.alerts;
     let mut outputs: Vec<Arc<dyn scribe_core::AlertOutput>> = Vec::new();
     if config.log {
         outputs.push(Arc::new(LogOutput));
+    }
+    let machine = machine_name();
+    for hook in &config.webhooks {
+        let h = hook.get_ref();
+        let reference: scribe_secrets::SecretRef = h
+            .secret
+            .parse()
+            .map_err(|e| format!("webhook \"{}\": {e}", h.name))?;
+        let secret = scribe_secrets::read(&reference)
+            .map_err(|e| format!("webhook \"{}\": cannot read its secret: {e}", h.name))?;
+        let client = scribe_net::Client::new(scribe_net::Options {
+            timeout: h.timeout.get(),
+            pin_sha256: h.pin_sha256.clone(),
+            ..scribe_net::Options::default()
+        })
+        .map_err(|e| format!("webhook \"{}\": {e}", h.name))?;
+        outputs.push(Arc::new(WebhookOutput::new(
+            h.name.clone(),
+            h.url.clone(),
+            client,
+            secret,
+            machine.clone(),
+            clock.clone(),
+        )));
     }
     let dispatcher = Dispatcher::new(outputs, config.max_per_minute, clock);
     info!(
@@ -1160,7 +1188,29 @@ pub fn alert_outputs(settings: &Settings, clock: Arc<dyn Clock>) -> Dispatcher {
         max_per_minute = config.max_per_minute,
         "alert outputs ready"
     );
-    dispatcher
+    Ok(dispatcher)
+}
+
+/// This machine's name for webhook payloads (`machine`).
+pub fn machine_name() -> String {
+    #[cfg(unix)]
+    {
+        let mut buf = [0u8; 256];
+        // SAFETY: the buffer is valid for its length; gethostname writes at most that much.
+        let rc = unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.len()) };
+        if rc == 0 {
+            let end = buf.iter().position(|b| *b == 0).unwrap_or(buf.len());
+            let name = String::from_utf8_lossy(&buf[..end]).into_owned();
+            if !name.is_empty() {
+                return name;
+            }
+        }
+    }
+    #[cfg(windows)]
+    if let Some(name) = std::env::var_os("COMPUTERNAME") {
+        return name.to_string_lossy().into_owned();
+    }
+    "unknown".to_owned()
 }
 
 /// Seals audit and alert records into the chain, applies pipeline writes to storage and hands

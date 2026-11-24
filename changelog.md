@@ -18,6 +18,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `--min-score`, `--print`, waits for scribed and shows missed alerts after a reconnect), with login
   autostart files for systemd, launchd and Windows in `packaging/` and the release archives;
   `scribe alerts --watch [--json]`; `MockApiServer::raise` feeds the alert stream.
+- Phase 11 step 3: `[[alerts.webhooks]]` (`name`, `url`, `secret`, `pin_sha256`, `timeout`): each alert
+  posted as JSON and signed in `X-Scribe-Signature` (HMAC-SHA256), with retries on network errors,
+  429 and 5xx; new `scribe-net` crate for outgoing HTTPS (OS certificate verifier or a pin, http only to
+  loopback, same-origin redirects, timeouts, size cap); `Secret` can be built from bytes.
 
 ### Changed
 - `AlertOutput::notify` returns a `Result` and gains `suppressed`; `RecordingAlertSink` records both.

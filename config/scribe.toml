@@ -144,6 +144,19 @@ admin_group = "scribe-admin"
 log = true                # a `scribe::alert` warning line in scribed's log per alert
 max_per_minute = 30       # per output; the rest are counted and reported once a minute; 0 = unlimited
 
+# Webhooks: each alert is POSTed as JSON to the URL, signed with HMAC-SHA256 in the
+# `X-Scribe-Signature: t=<unix seconds>,v1=<hex>` header (MAC over "<t>.<body>"). https only
+# (http only to localhost); certificates checked against the system's trust store, or only against
+# `pin_sha256` (hex SHA-256 of the server certificate's DER) when it is set. Network errors, 429 and
+# 5xx are tried 3 times. Add one table per webhook:
+#
+# [[alerts.webhooks]]
+# name = "ops"                                   # unique, shown in logs
+# url = "https://hooks.example.com/scribe"
+# secret = "file:/etc/scribe/webhook.key"        # HMAC key: file:, keychain:, dpapi:, secret-service:
+# pin_sha256 = "<64 hex digits>"               # optional; leave out to use the trust store
+# timeout = "10s"                                # connecting, and each read or write (1s–60s)
+
 
 # ─── Storage ─────────────────────────────────────────────────────────────────
 

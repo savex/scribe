@@ -101,6 +101,9 @@ pub struct Alerts {
     /// Per output, at most this many alerts a minute; the rest are counted and reported once
     /// when the minute ends. `0` = unlimited. Storage and `scribe alerts` always get every alert.
     pub max_per_minute: u32,
+    /// `[[alerts.webhooks]]`: signed JSON over HTTPS per alert.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub webhooks: Vec<Spanned<Webhook>>,
 }
 
 impl Default for Alerts {
@@ -108,8 +111,32 @@ impl Default for Alerts {
         Self {
             log: true,
             max_per_minute: 30,
+            webhooks: Vec::new(),
         }
     }
+}
+
+/// One `[[alerts.webhooks]]` entry (specs 12.1.1).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Webhook {
+    /// Shown in logs and status; unique, not `log`.
+    pub name: String,
+    /// `https://…`; `http://` only to a loopback host.
+    pub url: String,
+    /// Secret reference (`file:`, `keychain:`, `dpapi:`, `secret-service:`) to the HMAC key of
+    /// the `X-Scribe-Signature` header.
+    pub secret: String,
+    /// Optional hex SHA-256 of the server's certificate (DER); replaces the system trust check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin_sha256: Option<String>,
+    /// Connecting, and each read or write; 1s to 60s.
+    #[serde(default = "webhook_timeout")]
+    pub timeout: HumanDuration,
+}
+
+fn webhook_timeout() -> HumanDuration {
+    HumanDuration::from_secs(10)
 }
 
 // ─── Daemon ─────────────────────────────────────────────────────────────────

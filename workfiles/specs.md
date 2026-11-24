@@ -194,7 +194,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-14 | Build | Minimum Rust version follows the dependencies: 1.89 now, raised only when a dependency needs it (expected 1.98 with the eBPF sensor); CI builds with exactly that version | Decided |
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
 | NFR-16 | Extensibility | New backends, sensors and modules must pass their conformance suites | Implemented |
-| NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Proposed |
+| NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Partly implemented (`scribe-net` for webhooks: OS verifier or pin, loopback-only http; threat lists step 5, Postgres phase 12) |
 | NFR-18 | Tamper evidence | Audit and alert records are hash-chained; hosts send heartbeats to the remote sink, so stopped daemons and deleted rows are visible | Partly (chain, start / stop / unclean-stop audits since phase 5; heartbeats with the remote sink in phase 12) |
 | NFR-19 | Release integrity | Release checksums signed, build provenance attested, dependencies checked by `cargo deny` / `cargo audit` | Proposed |
 | NFR-20 | Module isolation | A slow, failing or panicking module never blocks capture, storage or other modules: per-flow time budget, bounded queues with counted drops, a panic disables only that module and reports degraded health | Implemented in `ModuleHost` (budget counting, panic isolation, bounded output queue); per-module flow queues for slow hooks arrive with the pipeline (phase 5) |
@@ -599,6 +599,7 @@ Loaded and checked by `crates/daemon/src/config/` (phase 0).
 | `[privacy] url_query` | as `[modules.url] query` | — | Deprecated alias, read with a warning for one minor version |
 | `[alerts] log` | boolean: a `scribe::alert` warning per alert in scribed's log | `true` | Implemented (phase 11) |
 | `[alerts] max_per_minute` | integer, per output; the rest counted and reported once a minute; `0` = unlimited | `30` | Implemented (phase 11) |
+| `[[alerts.webhooks]] name`, `url`, `secret`, `pin_sha256`, `timeout` | unique name (not `log`); `https://` (`http://` only to loopback); secret reference; optional pin; `1s`–`60s` | none; timeout `10s` | Implemented (phase 11) |
 | `[storage.state] kind` | `sqlite` \| `postgres` | `sqlite` | Decided |
 | `[storage.state] path` (SQLite) | path | `state.db` | Draft default |
 | `[storage.state] url`, `credentials` (Postgres) | URL without password; secret reference (`keychain:`, `dpapi:`, `secret-service:`, `file:`) | — | Decided / Proposed |
@@ -650,8 +651,8 @@ These keys come from section 12.1.1 (the module keys landed in phase 0b and are 
 | `daemon.max_hibernate` | duration, default `4h`, `""` = unlimited (warned at every start); the cap for `scribe daemon hibernate` | Implemented (phase 5) |
 | `sslmode` in `[storage.state]` and `[[storage.sinks]]` (Postgres) | `verify-full` (default), `verify-ca`, `require`; `disable` and `prefer` only for loopback hosts | 12 |
 | `ca`, `client_cert`, `client_key` in the same tables | CA file path; TLS client certificate and key, the key as a credential reference (`keychain:` …) | 12 |
-| `[[alerts.webhooks]]` `secret` (the `[alerts]` section itself arrives in phase 11) | credential reference for the `X-Scribe-Signature` HMAC key | 11 |
-| `[[alerts.webhooks]]` `pin_sha256` | optional certificate pin | 11 |
+| `[[alerts.webhooks]]` `secret` | credential reference for the `X-Scribe-Signature` HMAC key | Implemented (phase 11) |
+| `[[alerts.webhooks]]` `pin_sha256` | optional certificate pin (hex SHA-256 of the leaf certificate's DER) | Implemented (phase 11) |
 | `[[policy.threat_lists]]` `sha256` / `minisign_key` | optional integrity check of a downloaded list | 11 |
 | `[[policy.threat_lists]]` `max_entries` | entry cap per list | 11 |
 | `storage.encrypt` | `false` (default); `true` = SQLCipher database and AES-256-GCM spool, key in the OS secret store | 13 |
@@ -825,7 +826,7 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 **Webhook alerts and threat lists**
 
 - HTTPS only (`http://` only to loopback); optional certificate pinning; no redirects to other hosts; timeouts and size limits.
-- Webhook requests signed with HMAC-SHA256 in `X-Scribe-Signature: t=<ts>,v1=<mac>`; the timestamp lets receivers reject replays; the secret comes from a keychain reference, never the URL; the payload follows `privacy.url_query`.
+- Webhook requests signed with HMAC-SHA256 in `X-Scribe-Signature: t=<ts>,v1=<mac>`, the MAC over `<ts>.<body>`; the timestamp lets receivers reject replays; the secret comes from a keychain reference, never the URL; the payload follows `privacy.url_query`. Implemented in phase 11: JSON `{type: "alert", version: 1, machine, scribe_version, sent_ms, ts_ms, reason, score, host, dst, process_path, notes}` (`type: "suppressed"` with `count` for a rate-limit summary); any 2xx is success; 3 attempts (waits 1 s, 4 s) on network errors, 429 and 5xx only; a secret that can't be read refuses the start or reload.
 - Threat lists: optional integrity check per list (pinned `sha256` or a `minisign` public key); a failed refresh keeps the last good list; maximum entry count.
 
 **Data at rest**

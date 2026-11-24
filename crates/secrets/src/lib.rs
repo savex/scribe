@@ -55,6 +55,13 @@ impl Secret {
     }
 }
 
+impl From<Vec<u8>> for Secret {
+    /// Key material already in memory (tests, or a value another store returned).
+    fn from(bytes: Vec<u8>) -> Self {
+        Secret(bytes)
+    }
+}
+
 impl fmt::Debug for Secret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Secret(<{} bytes>)", self.0.len())
