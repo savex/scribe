@@ -74,7 +74,14 @@ min_bits_per_char = 3.5   # Shannon entropy of the longest label
 # name = "urlhaus"
 # url = "https://urlhaus.abuse.ch/downloads/hostfile/"
 # format = "hosts"
-# refresh = "24h"
+# refresh = "24h"                 # download again this often (default 24h, at least 5m)
+# sha256 = "<64 hex digits>"      # optional: accept only this exact file
+# minisign_key = "RWQ…"           # optional: signature checked from <url>.minisig
+# max_entries = 1000000           # a list with more entries is refused (any list, default 1000000)
+#
+# Downloads use https (http only to localhost) and the system's trust store. The last list that
+# passed every check is kept in <data_dir>/threat-lists/<name>.txt and used at start and whenever
+# a refresh fails or is refused. A file list that can't be read stops scribed.
 
 
 # ─── Modules ─────────────────────────────────────────────────────────────────

@@ -10,3 +10,4 @@ pub mod pipeline;
 pub mod privileges;
 pub mod security;
 pub mod service;
+pub mod threats;

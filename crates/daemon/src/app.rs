@@ -30,6 +30,7 @@ use crate::logging;
 use crate::modules::{self, ModuleHost, Output, OutputQueue, QUEUE};
 use crate::pipeline::{self, Pipeline, Status, Writes};
 use crate::security;
+use crate::threats;
 
 pub const EXIT_FAILURE: u8 = 1;
 pub const EXIT_CONFIG: u8 = 2;
@@ -284,6 +285,16 @@ pub struct ReloadReport {
     pub needs_restart: Vec<String>,
 }
 
+/// What a reload changed, for the main loop to take over.
+struct Reloaded {
+    report: ReloadReport,
+    writes: Writes,
+    /// New alert outputs when `[alerts]` changed.
+    outputs: Option<Dispatcher>,
+    /// Threat lists read again when `[policy]` changed; the downloads restart with them.
+    threat_lists: Option<BTreeMap<String, ThreatSet>>,
+}
+
 #[cfg(unix)]
 type Hangup = Option<tokio::signal::unix::Signal>;
 #[cfg(not(unix))]
@@ -322,7 +333,7 @@ async fn reload(
     storage: &Storage,
     clock: &Arc<dyn Clock>,
     caller: &str,
-) -> Result<(ReloadReport, Writes, Option<Dispatcher>), String> {
+) -> Result<Reloaded, String> {
     let new = config::reload::reread(running).map_err(|e| e.to_string())?;
     let plan = config::reload::plan(running, new);
     // Built first: a webhook whose secret can't be read rejects the whole reload.
@@ -331,8 +342,8 @@ async fn reload(
     } else {
         None
     };
-    let threats = if plan.changed("policy") {
-        Some(load_threats(&plan.settings).map_err(|e| format!("{e:#}"))?)
+    let threat_lists = if plan.changed("policy") {
+        Some(threats::load_all(&plan.settings.threat_sources()).map_err(|e| format!("{e:#}"))?)
     } else {
         None
     };
@@ -359,10 +370,10 @@ async fn reload(
         needs_restart.extend(keys);
     }
     let settings = &plan.settings;
-    if let Some(threats) = threats {
+    if let Some(lists) = &threat_lists {
         let policy = pipeline.policy_mut();
         policy.set_config(settings.policy_config());
-        policy.set_threats(threats);
+        policy.set_threats(threats::merged(lists));
     }
     if plan.changed("mode") {
         pipeline.policy_mut().set_mode(settings.mode);
@@ -395,7 +406,12 @@ async fn reload(
     let mut writes = Writes::default();
     writes.events.push(audit(clock.now(), message));
     *running = plan.settings;
-    Ok((report, writes, outputs))
+    Ok(Reloaded {
+        report,
+        writes,
+        outputs,
+        threat_lists,
+    })
 }
 
 /// [`serve`] with a given sensor (tests pass `FakeSensor`). Observations still queued at shutdown
@@ -598,7 +614,8 @@ pub async fn serve_full(
         }
     }
 
-    let threats = load_threats(&settings)?;
+    let mut threat_lists = threats::load_all(&settings.threat_sources())?;
+    let threats = threats::merged(&threat_lists);
     let baseline = match storage.state().baseline(&settings.profile).await {
         Ok(b) => b.entries.into_iter().map(|e| e.host).collect(),
         Err(StorageError::NotImplemented(_)) => Vec::new(),
@@ -763,6 +780,7 @@ pub async fn serve_full(
     let mut hup = hangup_signal();
     let mut drain = Drain::default();
     let mut ticker = tokio::time::interval(Duration::from_secs(1));
+    let mut feeds = threats::Feeds::start(&settings.threat_sources(), clock.clone());
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
@@ -871,9 +889,13 @@ pub async fn serve_full(
                     Command::Reload { caller, reply } => {
                         let result = reload(&mut running, &mut pipeline, &storage, &clock, &caller).await;
                         let result = match result {
-                            Ok((report, writes, outputs)) => {
+                            Ok(Reloaded { report, writes, outputs, threat_lists: lists }) => {
                                 if let Some(outputs) = outputs {
                                     writer.set_outputs(outputs);
+                                }
+                                if let Some(lists) = lists {
+                                    threat_lists = lists;
+                                    feeds = threats::Feeds::start(&running.threat_sources(), clock.clone());
                                 }
                                 writer.apply(&storage, pipeline.profile(), writes).await;
                                 config_loaded = clock.now();
@@ -893,15 +915,25 @@ pub async fn serve_full(
             }
             _ = hangup(&mut hup) => {
                 match reload(&mut running, &mut pipeline, &storage, &clock, "SIGHUP").await {
-                    Ok((_, writes, outputs)) => {
+                    Ok(Reloaded { writes, outputs, threat_lists: lists, .. }) => {
                         if let Some(outputs) = outputs {
                             writer.set_outputs(outputs);
+                        }
+                        if let Some(lists) = lists {
+                            threat_lists = lists;
+                            feeds = threats::Feeds::start(&running.threat_sources(), clock.clone());
                         }
                         writer.apply(&storage, pipeline.profile(), writes).await;
                         config_loaded = clock.now();
                     }
                     Err(e) => warn!("config reload (SIGHUP) rejected; the running config stays: {e}"),
                 }
+            }
+            Some((name, set)) = feeds.next() => {
+                threat_lists.insert(name, set);
+                let all = threats::merged(&threat_lists);
+                info!(lists = threat_lists.len(), entries = all.len(), "threat lists updated");
+                pipeline.policy_mut().set_threats(all);
             }
             _ = ticker.tick() => {
                 let was = pipeline.is_hibernating();
@@ -1129,28 +1161,12 @@ impl Sensor for FallbackSensor {
     }
 }
 
-/// Read the threat lists that are files (relative paths are under `data_dir`). A list that can't
-/// be read stops scribed: running without it would silently weaken caution mode. Lists with a
-/// `url` are downloaded from plan phase 11 on and are skipped with a warning until then.
+/// Every threat list merged, as it can be loaded now: files (one that can't be read is an
+/// error) and the last good copy of each download (`crate::threats`).
 pub fn load_threats(settings: &Settings) -> anyhow::Result<ThreatSet> {
-    let (files, skipped) = settings.threat_files();
-    let mut set = ThreatSet::default();
-    for (name, path, format) in files {
-        let text = std::fs::read_to_string(&path).with_context(|| {
-            format!("cannot read threat list \"{name}\" from {}", path.display())
-        })?;
-        let report = set.load(format, &text);
-        info!(
-            list = %name,
-            entries = report.added,
-            skipped_lines = report.skipped,
-            "threat list loaded"
-        );
-    }
-    for name in skipped {
-        warn!(list = %name, "threat list downloads arrive in plan phase 11; list \"{name}\" is not used yet");
-    }
-    Ok(set)
+    Ok(threats::merged(&threats::load_all(
+        &settings.threat_sources(),
+    )?))
 }
 
 /// How often old hourly buckets are deleted.

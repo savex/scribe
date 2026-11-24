@@ -19,7 +19,10 @@ use scribe_storage_manager::Registry;
 
 pub use load::{discover, load, parse, validate, ConfigError, Context, Source};
 pub use model::*;
-pub use resolve::{resolve, HostFacts, Limits, LogSettings, Settings, SystemFacts};
+pub use resolve::{
+    resolve, HostFacts, Limits, LogSettings, Settings, SystemFacts, ThreatOrigin, ThreatSource,
+    THREAT_CACHE_DIR,
+};
 
 /// Checks for this binary on this OS.
 pub fn context() -> Context {

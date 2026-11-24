@@ -206,24 +206,63 @@ pub fn validate(
         ));
     }
 
+    let mut list_names = HashSet::new();
     for list in &config.policy.threat_lists {
         let span = list.span();
         let list = list.get_ref();
+        let label = format!("threat list \"{}\"", list.name);
+        if list.name.is_empty()
+            || !list
+                .name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+            || list.name.starts_with('.')
+        {
+            return Err(at(
+                span,
+                format!("{label}: names use letters, digits, `-`, `_` and `.` (it names the cached copy)"),
+            ));
+        }
+        if !list_names.insert(list.name.as_str()) {
+            return Err(at(span, format!("{label} is listed twice")));
+        }
+        if list.max_entries == Some(0) {
+            return Err(at(span, format!("{label}: max_entries must be at least 1")));
+        }
+        if list.url.is_none() && (list.sha256.is_some() || list.minisign_key.is_some()) {
+            return Err(at(
+                span,
+                format!("{label}: `sha256` and `minisign_key` check a download; they need a `url`"),
+            ));
+        }
+        if let Some(hash) = &list.sha256 {
+            if hash.len() != 64 || !hash.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(at(span, format!("{label}: sha256 must be 64 hex digits")));
+            }
+        }
+        if let Some(key) = &list.minisign_key {
+            minisign_verify::PublicKey::from_base64(key.trim()).map_err(|e| {
+                at(
+                    span.clone(),
+                    format!("{label}: minisign_key is not a minisign public key ({e})"),
+                )
+            })?;
+        }
+        if list
+            .refresh
+            .is_some_and(|r| r.get() < std::time::Duration::from_secs(300))
+        {
+            return Err(at(span, format!("{label}: refresh must be at least 5m")));
+        }
+        if let Some(url) = &list.url {
+            scribe_net::checked_url(url).map_err(|e| at(span.clone(), format!("{label}: {e}")))?;
+        }
         match (&list.path, &list.url) {
             (Some(_), Some(_)) | (None, None) => {
                 return Err(at(
                     span,
                     format!(
                         "threat list \"{}\" needs exactly one of `path` or `url`",
-                        list.name
-                    ),
-                ))
-            }
-            (None, Some(url)) if !(url.starts_with("https://") || url.starts_with("http://")) => {
-                return Err(at(
-                    span,
-                    format!(
-                        "threat list \"{}\": url must start with https:// or http://",
                         list.name
                     ),
                 ))

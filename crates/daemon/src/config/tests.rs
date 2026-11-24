@@ -121,7 +121,7 @@ const BAD: &[(&str, &str, usize)] = &[
     ),
     (
         "[[policy.threat_lists]]\nname = \"x\"\nurl = \"ftp://x\"\nformat = \"ips\"\n",
-        "url must start with https://",
+        "scheme ftp is not http or https",
         1,
     ),
     (
@@ -696,17 +696,77 @@ mod functional {
     }
 
     #[test]
-    fn threat_files_are_made_absolute_and_url_lists_are_set_aside() {
+    fn threat_sources_are_files_or_downloads_with_a_cache() {
+        use crate::config::{ThreatOrigin, THREAT_CACHE_DIR};
         let s = resolve_text(&format!(
-            "data_dir = \"{}\"\n[[policy.threat_lists]]\nname = \"local\"\npath = \"threats/d.txt\"\nformat = \"domains\"\n[[policy.threat_lists]]\nname = \"remote\"\nurl = \"https://example.com/h\"\nformat = \"hosts\"\nrefresh = \"24h\"\n",
+            "data_dir = \"{}\"\n[[policy.threat_lists]]\nname = \"local\"\npath = \"threats/d.txt\"\nformat = \"domains\"\nmax_entries = 10\n[[policy.threat_lists]]\nname = \"remote\"\nurl = \"https://example.com/h\"\nformat = \"hosts\"\n",
             host_path("/var/lib/scribe")
         ));
-        let (files, skipped) = s.threat_files();
-        assert_eq!(files.len(), 1);
-        assert_eq!(files[0].0, "local");
-        assert_eq!(files[0].1, joined("/var/lib/scribe", "threats/d.txt"));
-        assert_eq!(files[0].2, scribe_policy::ThreatFormat::Domains);
-        assert_eq!(skipped, vec!["remote".to_owned()]);
+        let sources = s.threat_sources();
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].name, "local");
+        assert_eq!(sources[0].max_entries, 10);
+        assert_eq!(sources[0].format, scribe_policy::ThreatFormat::Domains);
+        assert_eq!(
+            sources[0].origin,
+            ThreatOrigin::File(joined("/var/lib/scribe", "threats/d.txt"))
+        );
+        assert_eq!(sources[1].max_entries, 1_000_000);
+        match &sources[1].origin {
+            ThreatOrigin::Download {
+                url,
+                refresh,
+                cache,
+                sha256,
+                minisign_key,
+            } => {
+                assert_eq!(url, "https://example.com/h");
+                assert_eq!(*refresh, std::time::Duration::from_secs(24 * 3600));
+                assert_eq!(
+                    *cache,
+                    joined("/var/lib/scribe", THREAT_CACHE_DIR).join("remote.txt")
+                );
+                assert!(sha256.is_none() && minisign_key.is_none());
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn threat_list_download_checks_are_validated() {
+        let list = |extra: &str| {
+            format!("[[policy.threat_lists]]\nname = \"feed\"\nurl = \"https://lists.example.com/d.txt\"\nformat = \"domains\"\n{extra}")
+        };
+        parse_ok(&list(&format!(
+            "sha256 = \"{}\"\nrefresh = \"6h\"\nmax_entries = 500\n",
+            "ab".repeat(32)
+        )));
+        parse_ok(&list(
+            "minisign_key = \"RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3\"\n",
+        ));
+        for (text, says) in [
+            (list("sha256 = \"abc\"\n"), "sha256 must be 64 hex digits"),
+            (list("minisign_key = \"not a key\"\n"), "not a minisign public key"),
+            (list("refresh = \"1m\"\n"), "refresh must be at least 5m"),
+            (list("max_entries = 0\n"), "max_entries must be at least 1"),
+            (
+                list("").replace("https://lists", "http://lists"),
+                "plain http is allowed only to a loopback host",
+            ),
+            (list("").replace("https://lists", "ftp://lists"), "is not http or https"),
+            (
+                list("").replace("\"feed\"", "\"../feed\""),
+                "names use letters, digits",
+            ),
+            (list("") + &list(""), "is listed twice"),
+            (
+                "[[policy.threat_lists]]\nname = \"l\"\npath = \"t.txt\"\nformat = \"ips\"\nsha256 = \"ab\"\n".to_owned(),
+                "they need a `url`",
+            ),
+        ] {
+            let err = parse_err(&text).to_string();
+            assert!(err.contains(says), "{text}\n→ {err}");
+        }
     }
 
     #[test]

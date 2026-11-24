@@ -304,12 +304,36 @@ pub struct ThreatList {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     pub format: ThreatFormat,
+    /// With `url`: how often to download it again (default `24h`, at least `5m`).
     #[serde(
         default,
         with = "optional_duration",
         skip_serializing_if = "Option::is_none"
     )]
     pub refresh: Option<HumanDuration>,
+    /// With `url`: the download must have this SHA-256 (hex), else the last good list stays.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+    /// With `url`: a minisign public key (base64, the second line of `minisign.pub`); the
+    /// signature is downloaded from `<url>.minisig`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minisign_key: Option<String>,
+    /// A list with more entries than this is refused (default 1,000,000).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_entries: Option<u32>,
+}
+
+impl ThreatList {
+    pub const DEFAULT_REFRESH: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
+    pub const DEFAULT_MAX_ENTRIES: u32 = 1_000_000;
+
+    pub fn refresh(&self) -> std::time::Duration {
+        self.refresh.map_or(Self::DEFAULT_REFRESH, |d| d.get())
+    }
+
+    pub fn max_entries(&self) -> usize {
+        self.max_entries.unwrap_or(Self::DEFAULT_MAX_ENTRIES) as usize
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

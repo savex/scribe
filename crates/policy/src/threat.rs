@@ -81,6 +81,13 @@ impl ThreatSet {
         self.domains.len() + self.ips.len() + self.nets.len()
     }
 
+    /// Add every entry of `other` (one list merged into the set of all lists).
+    pub fn merge(&mut self, other: &ThreatSet) {
+        self.domains.extend(other.domains.iter().cloned());
+        self.ips.extend(other.ips.iter().copied());
+        self.nets.extend(other.nets.iter().copied());
+    }
+
     /// Add a list's text. `#` starts a comment; blank lines are ignored.
     pub fn load(&mut self, format: ThreatFormat, text: &str) -> LoadReport {
         let mut report = LoadReport::default();

@@ -14,6 +14,31 @@ use scribe_storage_manager::{BackendConfig, SinkConfig, StorageConfig};
 use toml::Spanned;
 
 use super::load::{ConfigError, Context, Source};
+
+/// Folder under `data_dir` with the last good copy of each downloaded threat list.
+pub const THREAT_CACHE_DIR: &str = "threat-lists";
+
+/// One `[[policy.threat_lists]]` entry, ready to load.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThreatSource {
+    pub name: String,
+    pub format: ThreatFormat,
+    pub max_entries: usize,
+    pub origin: ThreatOrigin,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ThreatOrigin {
+    File(PathBuf),
+    Download {
+        url: String,
+        refresh: std::time::Duration,
+        sha256: Option<String>,
+        minisign_key: Option<String>,
+        /// The last good copy.
+        cache: PathBuf,
+    },
+}
 use super::model::{Backend, Config, LogFormat, LogLevel, LogOutput, Rotate, StorageKind};
 
 /// Host facts needed to resolve percentages; a trait so tests can supply fixed numbers.
@@ -312,26 +337,41 @@ impl Settings {
         }
     }
 
-    /// Threat lists to read from files, with absolute paths. Lists with a `url` are downloaded
-    /// from phase 11 on; until then they are skipped (returned in the second list).
-    pub fn threat_files(&self) -> (Vec<(String, PathBuf, ThreatFormat)>, Vec<String>) {
-        let mut files = Vec::new();
-        let mut skipped = Vec::new();
-        for list in &self.config.policy.threat_lists {
-            let list = list.get_ref();
-            let format = match list.format {
-                super::model::ThreatFormat::Domains => ThreatFormat::Domains,
-                super::model::ThreatFormat::Hosts => ThreatFormat::Hosts,
-                super::model::ThreatFormat::Ips => ThreatFormat::Ips,
-            };
-            match &list.path {
-                Some(path) => {
-                    files.push((list.name.clone(), absolute(&self.data_dir, path), format))
+    /// Every threat list: files with absolute paths, downloads with their settings and the
+    /// path of their last good copy (`<data_dir>/threat-lists/<name>.txt`).
+    pub fn threat_sources(&self) -> Vec<ThreatSource> {
+        self.config
+            .policy
+            .threat_lists
+            .iter()
+            .map(|list| {
+                let list = list.get_ref();
+                let format = match list.format {
+                    super::model::ThreatFormat::Domains => ThreatFormat::Domains,
+                    super::model::ThreatFormat::Hosts => ThreatFormat::Hosts,
+                    super::model::ThreatFormat::Ips => ThreatFormat::Ips,
+                };
+                let origin = match (&list.path, &list.url) {
+                    (Some(path), _) => ThreatOrigin::File(absolute(&self.data_dir, path)),
+                    (None, url) => ThreatOrigin::Download {
+                        url: url.clone().unwrap_or_default(),
+                        refresh: list.refresh(),
+                        sha256: list.sha256.clone(),
+                        minisign_key: list.minisign_key.clone(),
+                        cache: self
+                            .data_dir
+                            .join(THREAT_CACHE_DIR)
+                            .join(format!("{}.txt", list.name)),
+                    },
+                };
+                ThreatSource {
+                    name: list.name.clone(),
+                    format,
+                    max_entries: list.max_entries(),
+                    origin,
                 }
-                None => skipped.push(list.name.clone()),
-            }
-        }
-        (files, skipped)
+            })
+            .collect()
     }
 
     /// The config as scribed will use it: data_dir, log file and every path made absolute.

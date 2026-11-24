@@ -25,6 +25,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 11 step 4: OS secret stores in `scribe-secrets`: `keychain:` (macOS), `dpapi:` (Windows, machine
   scope) and `secret-service:` (Linux, encrypted D-Bus session); `store()`; `scribed --set-secret
   <reference> [--generate]` stores a secret from standard input or a new random key.
+- Phase 11 step 5: threat lists with a `url` are downloaded and refreshed in the background
+  (`refresh`, default 24h) through `scribe-net`, checked against `sha256` or `minisign_key`
+  (signature from `<url>.minisig`) and `max_entries`, and kept as a last good copy in
+  `<data_dir>/threat-lists/` that is used at start and when a refresh fails; `ThreatSet::merge`.
 
 ### Changed
 - `AlertOutput::notify` returns a `Result` and gains `suppressed`; `RecordingAlertSink` records both.

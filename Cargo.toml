@@ -75,6 +75,8 @@ httparse = "1.10"
 # windows-sys.
 security-framework = "3.7"
 secret-service = { version = "6", default-features = false, features = ["rt-default", "crypto-rust"] }
+# Signed threat lists (`[[policy.threat_lists]] minisign_key`); no dependencies of its own.
+minisign-verify = "0.3"
 # Test certificates for the HTTPS tests.
 rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 # Desktop notifications for `scribe notify` (D-Bus in pure Rust on Linux, Notification Center on

@@ -194,7 +194,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-14 | Build | Minimum Rust version follows the dependencies: 1.89 now, raised only when a dependency needs it (expected 1.98 with the eBPF sensor); CI builds with exactly that version | Decided |
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
 | NFR-16 | Extensibility | New backends, sensors and modules must pass their conformance suites | Implemented |
-| NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Partly implemented (`scribe-net` for webhooks: OS verifier or pin, loopback-only http; threat lists step 5, Postgres phase 12) |
+| NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Partly implemented (`scribe-net` for webhooks and threat lists: OS verifier or pin, loopback-only http; Postgres in phase 12) |
 | NFR-18 | Tamper evidence | Audit and alert records are hash-chained; hosts send heartbeats to the remote sink, so stopped daemons and deleted rows are visible | Partly (chain, start / stop / unclean-stop audits since phase 5; heartbeats with the remote sink in phase 12) |
 | NFR-19 | Release integrity | Release checksums signed, build provenance attested, dependencies checked by `cargo deny` / `cargo audit` | Proposed |
 | NFR-20 | Module isolation | A slow, failing or panicking module never blocks capture, storage or other modules: per-flow time budget, bounded queues with counted drops, a panic disables only that module and reports degraded health | Implemented in `ModuleHost` (budget counting, panic isolation, bounded output queue); per-module flow queues for slow hooks arrive with the pipeline (phase 5) |
@@ -480,7 +480,7 @@ The default mode is `learn`. Hosts added to the baseline in learn mode stay list
   - The TLDs of baseline hosts count as seen; every judged flow adds its TLD and process to what has been seen, in every mode.
   - The dedupe window counts from the **last alert**, not the last flow. A repeat inside the window that brings new notes (the URL of a later request) adds them to the earlier alert.
   - Module signals score `[policy.scores] "<module>.<reason>"` (0–100, the module must be enabled); a signal with no score counts 0.
-  - Threat lists: a domain also covers its subdomains; `ips` takes addresses and CIDR networks; lines that can't be read are skipped and counted. A list file that can't be read stops `scribed`; `url` lists are downloaded from phase 11 on.
+  - Threat lists: a domain also covers its subdomains; `ips` takes addresses and CIDR networks; lines that can't be read are skipped and counted. A list file that can't be read (or has more than `max_entries`) stops `scribed`; `url` lists are downloaded in the background (phase 11).
 - **Check against the scenarios:** an ordinary new host scores 25 (`new_process`) and stays quiet; the raw-IP case scores 60 + 30 + 25 and alerts as `raw_ip`; the random-looking domain scores 50 + 20 + 25 and alerts as `high_entropy`. This matches `caution-ordinary-new-host`, `caution-raw-ip`, `caution-high-entropy-domain` and `learn-auto-switch`.
 
 ### 8.4 Degraded operation
@@ -593,7 +593,7 @@ Loaded and checked by `crates/daemon/src/config/` (phase 0).
 | `[policy.scores] "<module>.<reason>"` | 0–100, module enabled | none (unscored module signals count 0) | Implemented |
 | `[policy.usual_ports] tcp`, `udp` | port lists | section 8.3 | Draft default |
 | `[policy.entropy] min_label_length`, `min_bits_per_char` | integer, number | `10`, `3.5` | Draft default |
-| `[[policy.threat_lists]] name`, `path` or `url`, `format`, `refresh` | — | none | Draft default |
+| `[[policy.threat_lists]] name`, `path` or `url`, `format`, `refresh` | name of letters, digits, `-`, `_`, `.` (unique); `refresh` only with `url`, at least `5m` | none; `refresh` `24h` | Implemented (downloads phase 11) |
 | `[modules] enabled` | list of compiled-in module ids | `["url"]` | Implemented (section 7.4) |
 | `[modules.url] query` | `full` \| `redact_values` \| `strip` \| `path_only` \| `hash` | `redact_values` | Implemented (section 12.2) |
 | `[modules.url] hash_key` | secret reference for the `hash` key | `file:<data_dir>/url_hash.key` (created on first start) | Implemented |
@@ -654,8 +654,8 @@ These keys come from section 12.1.1 (the module keys landed in phase 0b and are 
 | `ca`, `client_cert`, `client_key` in the same tables | CA file path; TLS client certificate and key, the key as a credential reference (`keychain:` …) | 12 |
 | `[[alerts.webhooks]]` `secret` | credential reference for the `X-Scribe-Signature` HMAC key | Implemented (phase 11) |
 | `[[alerts.webhooks]]` `pin_sha256` | optional certificate pin (hex SHA-256 of the leaf certificate's DER) | Implemented (phase 11) |
-| `[[policy.threat_lists]]` `sha256` / `minisign_key` | optional integrity check of a downloaded list | 11 |
-| `[[policy.threat_lists]]` `max_entries` | entry cap per list | 11 |
+| `[[policy.threat_lists]]` `sha256` / `minisign_key` | optional integrity check of a downloaded list (pinned hex SHA-256; minisign public key, signature from `<url>.minisig`) | Implemented (phase 11) |
+| `[[policy.threat_lists]]` `max_entries` | entry cap per list, default 1,000,000; a bigger list is refused | Implemented (phase 11) |
 | `storage.encrypt` | `false` (default); `true` = SQLCipher database and AES-256-GCM spool, key in the OS secret store | 13 |
 
 ### 9.2 Environment variables
@@ -828,7 +828,7 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 
 - HTTPS only (`http://` only to loopback); optional certificate pinning; no redirects to other hosts; timeouts and size limits.
 - Webhook requests signed with HMAC-SHA256 in `X-Scribe-Signature: t=<ts>,v1=<mac>`, the MAC over `<ts>.<body>`; the timestamp lets receivers reject replays; the secret comes from a keychain reference, never the URL; the payload follows `privacy.url_query`. Implemented in phase 11: JSON `{type: "alert", version: 1, machine, scribe_version, sent_ms, ts_ms, reason, score, host, dst, process_path, notes}` (`type: "suppressed"` with `count` for a rate-limit summary); any 2xx is success; 3 attempts (waits 1 s, 4 s) on network errors, 429 and 5xx only; a secret that can't be read refuses the start or reload.
-- Threat lists: optional integrity check per list (pinned `sha256` or a `minisign` public key); a failed refresh keeps the last good list; maximum entry count.
+- Threat lists: optional integrity check per list (pinned `sha256` or a `minisign` public key); a failed refresh keeps the last good list; maximum entry count. Implemented in phase 11 (`crates/daemon/src/threats.rs`): downloads through `scribe-net` (64 MiB cap, 30 s timeouts), the last good copy in `<data_dir>/threat-lists/<name>.txt` (loaded at start, replaced only by a list that passed every check), refresh every `refresh` counted from the copy's age, a failed or refused download retried after 15 minutes (or `refresh` if shorter); minisign accepts current (prehashed) and legacy signatures.
 
 **Data at rest**
 
