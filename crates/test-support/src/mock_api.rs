@@ -140,6 +140,9 @@ impl Scenario {
 /// The scenario's state behind the service; control calls change it.
 struct MockApi {
     state: Arc<Mutex<Scenario>>,
+    raised: tokio::sync::broadcast::Sender<pb::Alert>,
+    /// Set when the server stops, so open alert streams end as scribed's do.
+    closing: tokio::sync::watch::Receiver<bool>,
 }
 
 fn now_ms() -> i64 {
@@ -234,7 +237,29 @@ impl Scribe for MockApi {
         &self,
         _: Request<pb::WatchAlertsRequest>,
     ) -> Reply<Self::WatchAlertsStream> {
-        Ok(Response::new(Box::pin(tokio_stream::pending())))
+        let mut raised = self.raised.subscribe();
+        let mut closing = self.closing.clone();
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    // The only change is to `true` (stopping); a dropped sender also ends it.
+                    _ = closing.changed() => break,
+                    item = raised.recv() => match item {
+                        Ok(alert) => {
+                            if tx.send(Ok(alert)).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    },
+                }
+            }
+        });
+        Ok(Response::new(Box::pin(
+            tokio_stream::wrappers::ReceiverStream::new(rx),
+        )))
     }
 
     async fn get_baseline(&self, _: Request<pb::GetBaselineRequest>) -> Reply<pb::Baseline> {
@@ -393,6 +418,8 @@ impl Scribe for MockApi {
 pub struct MockApiServer {
     pub socket: PathBuf,
     state: Arc<Mutex<Scenario>>,
+    raised: tokio::sync::broadcast::Sender<pb::Alert>,
+    closing: tokio::sync::watch::Sender<bool>,
     stop: Option<oneshot::Sender<()>>,
     task: Option<tokio::task::JoinHandle<()>>,
 }
@@ -402,8 +429,12 @@ impl MockApiServer {
     pub fn start(scenario: Scenario, socket: &Path) -> Result<Self, String> {
         let listener = scribe_api::transport::bind(socket, &[]).map_err(|e| e.to_string())?;
         let state = Arc::new(Mutex::new(scenario));
+        let (raised, _) = tokio::sync::broadcast::channel(256);
+        let (closing, closing_rx) = tokio::sync::watch::channel(false);
         let routes = tonic::service::Routes::new(scribe_api::service(MockApi {
             state: state.clone(),
+            raised: raised.clone(),
+            closing: closing_rx,
         }));
         let (stop, stopped) = oneshot::channel::<()>();
         let task = tokio::spawn(async move {
@@ -415,9 +446,27 @@ impl MockApiServer {
         Ok(Self {
             socket: socket.to_owned(),
             state,
+            raised,
+            closing,
             stop: Some(stop),
             task: Some(task),
         })
+    }
+
+    /// Raise an alert as scribed would: it is listed from now on and sent to every
+    /// `WatchAlerts` client connected at this moment. Returns how many clients got it.
+    pub fn raise(&self, alert: pb::Alert) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .alerts
+            .push(alert.clone());
+        self.raised.send(alert).unwrap_or(0)
+    }
+
+    /// `WatchAlerts` clients connected now.
+    pub fn watchers(&self) -> usize {
+        self.raised.receiver_count()
     }
 
     /// The scenario as control calls left it.
@@ -426,6 +475,7 @@ impl MockApiServer {
     }
 
     pub async fn stop(mut self) {
+        let _ = self.closing.send(true);
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }
@@ -439,6 +489,7 @@ impl MockApiServer {
 
 impl Drop for MockApiServer {
     fn drop(&mut self) {
+        let _ = self.closing.send(true);
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());
         }

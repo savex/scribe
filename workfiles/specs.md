@@ -230,6 +230,8 @@ default (section 6.3). `--json` prints the API messages with their protocol fiel
 | `scribe baseline [--json]` | List the active profile's baseline | Implemented (phase 10) |
 | `scribe baseline add\|rm <host>…` | Edit the active profile's baseline (`remove` alias); prints added / removed / unchanged | Implemented (phase 10) |
 | `scribe export [-o <file>]` | Hosts and baseline as one JSON document, to stdout or a file the CLI creates `0600` as the caller | Implemented (phase 10) |
+| `scribe alerts --watch [--json]` | New alerts as they are raised, one line (or JSON object) each, until Ctrl-C | Implemented (phase 11) |
+| `scribe notify [--max-per-minute 10] [--min-score 0] [--print]` | Desktop-notification agent for the user's session (started at login, `packaging/`): follows the alert stream, one notification per alert, the rest of a minute as one summary; `hibernated` always shown; waits while scribed is down and shows missed alerts after a reconnect; exits 1 only on permission denied or a failed server check | Implemented (phase 11) |
 | `scribe daemon <command>` | Inspect and control the running daemon (section 6.2.1) | Implemented (phase 10) |
 | `scribe modules [--json]` | Modules built into this `scribed`: id, version, enabled, state, health, over budget, drops | Implemented (phase 10) |
 | `scribe <module> …` | Subcommands a module adds, e.g. `scribe url list [--host api.example.com] [--limit] [--since] [--json]`, later `scribe metrics show tcp.retrans`; exit `1` with *module url is not enabled in this scribed* when the daemon lacks it | Implemented (phase 10: `scribe url list`) |

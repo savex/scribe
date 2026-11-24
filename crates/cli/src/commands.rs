@@ -64,9 +64,92 @@ pub async fn run(command: &Command, socket: &Path) -> Outcome {
             print(&text);
             Ok(ExitCode::SUCCESS)
         }
+        Command::Alerts {
+            action: None,
+            watch: true,
+            json: as_json,
+        } => watch_alerts(socket, *as_json).await,
+        Command::Notify(args) => notify(socket, args).await,
         Command::Version => unreachable!("handled before connecting"),
         other => data(other, socket).await,
     }
+}
+
+/// `scribe alerts --watch`: one line (or JSON object) per new alert until Ctrl-C.
+async fn watch_alerts(socket: &Path, as_json: bool) -> Outcome {
+    let mut client = connect(socket, CALL_TIMEOUT).await?;
+    let mut stream = client
+        .watch_alerts(pb::WatchAlertsRequest {})
+        .await
+        .map_err(call_failure)?
+        .into_inner();
+    let stop = tokio::signal::ctrl_c();
+    tokio::pin!(stop);
+    loop {
+        tokio::select! {
+            _ = &mut stop => return Ok(ExitCode::SUCCESS),
+            item = stream.next() => match item {
+                Some(Ok(alert)) => print(&if as_json {
+                    serde_json::to_string(&alert)
+                        .map_err(|e| Failure::new(format!("cannot print JSON: {e}")))?
+                        + "\n"
+                } else {
+                    output::alert_line(&alert)
+                }),
+                Some(Err(status)) => return Err(call_failure(status)),
+                None => return Err(Failure::new("scribed stopped; the alert stream ended")),
+            },
+        }
+    }
+}
+
+/// `scribe notify`: the desktop-notification agent.
+async fn notify(socket: &Path, args: &crate::NotifyArgs) -> Outcome {
+    use crate::notify::{follow, AgentOptions, Notification, Notifier};
+    struct Printer;
+    impl Notifier for Printer {
+        fn show(&mut self, n: &Notification) -> Result<(), String> {
+            print(&format!("{}\n{}\n\n", n.title, n.body));
+            Ok(())
+        }
+    }
+    let options = AgentOptions {
+        max_per_minute: args.max_per_minute,
+        min_score: args.min_score,
+        ..AgentOptions::default()
+    };
+    let clock: std::sync::Arc<dyn scribe_core::Clock> =
+        std::sync::Arc::new(scribe_core::SystemClock);
+    let stop = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    let report = if args.print {
+        follow(socket, &mut Printer, &options, clock, stop).await?
+    } else {
+        #[cfg(feature = "notify")]
+        {
+            follow(
+                socket,
+                &mut crate::notify::DesktopNotifier,
+                &options,
+                clock,
+                stop,
+            )
+            .await?
+        }
+        #[cfg(not(feature = "notify"))]
+        {
+            let _ = (clock, stop);
+            return Err(Failure::new(
+                "this scribe was built without desktop notifications; use --print",
+            ));
+        }
+    };
+    eprintln!(
+        "scribe notify: stopped ({} shown, {} over the rate limit, {} below --min-score)",
+        report.shown, report.suppressed, report.below_min_score
+    );
+    Ok(ExitCode::SUCCESS)
 }
 
 /// Commands about the data scribed collected.
@@ -132,6 +215,7 @@ async fn data(command: &Command, socket: &Path) -> Outcome {
         Command::Alerts {
             action: None,
             json: as_json,
+            ..
         } => {
             let page = client
                 .list_alerts(pb::ListAlertsRequest::default())
@@ -239,7 +323,11 @@ async fn data(command: &Command, socket: &Path) -> Outcome {
         }
         #[cfg(feature = "url")]
         Command::Url { .. } => unreachable!("dispatched by run"),
-        Command::Status(_) | Command::Daemon { .. } | Command::Audit { .. } | Command::Version => {
+        Command::Status(_)
+        | Command::Daemon { .. }
+        | Command::Audit { .. }
+        | Command::Notify(_)
+        | Command::Version => {
             unreachable!("dispatched by run")
         }
     }

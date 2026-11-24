@@ -274,7 +274,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-P05 | `engine::learn_ends_after_learn_for_and_switches_mode`, `a_mode_switch_applies_to_the_next_flow`, `a_paused_learn_timer_ends_later_by_the_pause` | `learn_for` switch; mode change from the next flow; paused while hibernating | `FakeClock` | < 10 ms | Exists |
 | FUN-A01 | `log::log_output_writes_alerts`, `log_output_line_without_host_and_summary`; `throttle::*` (3), `dispatch::*` (6) | Alert log line format (text and JSON); rate limit per output with one summary per window; lanes deliver in order, drop when full, count failures, close with a grace | In memory | < 10 ms | Exists |
 | FUN-A02 | `webhook_signing_and_https` | HMAC test vectors, HTTPS only, no cross-host redirects (local test server) | Port `:0` | 50 ms | Phase 11 |
-| FUN-A03 | `notification_adapters` | OS notification calls through a fake OS interface | In memory | < 10 ms | Phase 11 |
+| FUN-A03 | `scribe-cli` `notify::*` (4) | Notification text; `scribe notify` against `MockApiServer` with a fake notifier: rate limit and summary (`FakeClock`), `--min-score` with `hibernated` always shown, waiting for scribed, catching up after a restart without repeats | Temp socket | ~1 s | Exists |
 | FUN-A04 | `threat_list_integrity` | Bad checksum rejected; last good list kept; entry cap | Temp dir | < 10 ms | Phase 11 |
 | FUN-SC01 | `scribe-secrets` functional (8) | References parse and print back; `file:` read, mode and owner checks, race-safe creation, shared directory refused, OS stores `Unsupported` | Temp dir | < 10 ms | Exists |
 

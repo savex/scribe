@@ -13,9 +13,11 @@ name = "scribe"
 path = "src/main.rs"
 
 [features]
-default = ["url"]
+default = ["url", "notify"]
 # Module subcommands (specs 7.4.5): `scribe url …`.
 url = ["dep:scribe-module-url"]
+# Desktop notifications for `scribe notify` (without it, only `scribe notify --print`).
+notify = ["dep:notify-rust"]
 
 [dependencies]
 scribe-core.workspace = true
@@ -27,7 +29,10 @@ tonic.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 scribe-module-url = { workspace = true, features = ["client"], optional = true }
+scribe-alerts.workspace = true
+notify-rust = { workspace = true, optional = true }
 
 [dev-dependencies]
+scribe-test-support = { workspace = true, features = ["mock-api"] }
 tempfile.workspace = true
 serde_json.workspace = true

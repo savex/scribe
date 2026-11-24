@@ -14,6 +14,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Phase 11 step 1: `scribe-alerts` crate with the alert `Dispatcher` (a thread, a bounded queue and a
   per-minute rate limit per output, with one summary of held-back alerts per minute) and `LogOutput`;
   new `[alerts]` config section (`log`, `max_per_minute`), applied live on reload.
+- Phase 11 step 2: `scribe notify`, the desktop-notification agent for the user's session (rate limit,
+  `--min-score`, `--print`, waits for scribed and shows missed alerts after a reconnect), with login
+  autostart files for systemd, launchd and Windows in `packaging/` and the release archives;
+  `scribe alerts --watch [--json]`; `MockApiServer::raise` feeds the alert stream.
 
 ### Changed
 - `AlertOutput::notify` returns a `Result` and gains `suppressed`; `RecordingAlertSink` records both.

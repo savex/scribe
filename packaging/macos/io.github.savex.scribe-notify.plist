@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Desktop notifications for scribe alerts (plan phase 11): a launchd *agent*, run in each user's
+  session. scribed runs as a LaunchDaemon and can't post to Notification Center, so `scribe notify`
+  follows its alert stream and shows one notification per alert. Install for every user to
+  /Library/LaunchAgents/ (or for one user to ~/Library/LaunchAgents/), then, as that user,
+    launchctl bootstrap gui/$(id -u) /Library/LaunchAgents/io.github.savex.scribe-notify.plist
+  The user must be able to read scribed's socket (member of the `scribe` group).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.github.savex.scribe-notify</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/scribe</string>
+        <string>notify</string>
+    </array>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

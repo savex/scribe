@@ -13,6 +13,7 @@ use scribe_core::{HumanDuration, Mode, VERSION};
 
 mod client;
 mod commands;
+pub mod notify;
 pub mod output;
 
 pub use client::{socket_path, Failure};
@@ -64,10 +65,15 @@ pub enum Command {
     Alerts {
         #[command(subcommand)]
         action: Option<AlertsAction>,
-        /// Print JSON
+        /// Print JSON (one object per line with --watch)
         #[arg(long)]
         json: bool,
+        /// Print new alerts as they are raised, until Ctrl-C
+        #[arg(long)]
+        watch: bool,
     },
+    /// Show a desktop notification for each new alert; runs in your session (e.g. at login)
+    Notify(NotifyArgs),
     /// List or edit the baseline (known hosts) of the active profile
     Baseline {
         #[command(subcommand)]
@@ -116,6 +122,19 @@ pub struct StatusArgs {
     /// Redraw every interval, e.g. 2s, until Ctrl-C
     #[arg(long, value_name = "INTERVAL", value_parser = parse_duration)]
     pub watch: Option<Duration>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
+pub struct NotifyArgs {
+    /// At most this many notifications a minute; the rest become one summary (0 = unlimited)
+    #[arg(long, value_name = "N", default_value_t = 10)]
+    pub max_per_minute: u32,
+    /// Skip alerts with a lower score (hibernation is always shown)
+    #[arg(long, value_name = "SCORE", default_value_t = 0)]
+    pub min_score: u32,
+    /// Print the notifications instead of showing them (to check a setup)
+    #[arg(long)]
+    pub print: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Subcommand)]
@@ -203,7 +222,13 @@ impl Command {
             Command::Status(_) => "status".into(),
             Command::Hosts { .. } => "hosts".into(),
             Command::Mode { mode } => format!("mode {mode}"),
+            Command::Alerts {
+                action: None,
+                watch: true,
+                ..
+            } => "alerts --watch".into(),
             Command::Alerts { action: None, .. } => "alerts".into(),
+            Command::Notify(_) => "notify".into(),
             Command::Alerts {
                 action: Some(AlertsAction::Ack { id }),
                 ..

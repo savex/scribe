@@ -15,3 +15,19 @@
 
 The packages of plan phase 13 install these files with a hardened unit, the `scribe` and `scribe-admin`
 groups and the right file modes.
+
+## Desktop notifications (`scribe notify`)
+
+scribed runs as a system service, which can't show notifications in a desktop session on any of the
+three systems. `scribe notify` runs in the user's session instead: it follows scribed's alert stream
+and shows one notification per alert (at most 10 a minute by default, the rest as one summary),
+waits while scribed is down and, after a reconnect, shows what it missed. The user must be able to
+read scribed's socket (the `scribe` group).
+
+| System | File | Install (as the desktop user) |
+|---|---|---|
+| Linux (systemd user unit) | [linux/scribe-notify.service](linux/scribe-notify.service) | copy to `/etc/systemd/user/`, `systemctl --user enable --now scribe-notify` |
+| macOS (launchd agent) | [macos/io.github.savex.scribe-notify.plist](macos/io.github.savex.scribe-notify.plist) | copy to `/Library/LaunchAgents/`, `launchctl bootstrap gui/$(id -u) <file>` |
+| Windows (logon) | [windows/install-notify.ps1](windows/install-notify.ps1) | run next to `scribe.exe`, no Administrator needed |
+
+`scribe notify --print` prints the notifications instead, to check a setup.

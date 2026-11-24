@@ -258,6 +258,26 @@ pub fn hosts(page: &pb::HostPage) -> String {
 }
 
 /// Alerts with their notes (e.g. the URL) on the lines below.
+/// One alert on one line, for `scribe alerts --watch`.
+pub fn alert_line(a: &pb::Alert) -> String {
+    let mut line = format!(
+        "{}  #{}  {}  {}  {}  {}  {}",
+        rfc3339_ms(a.ts_ms),
+        a.id,
+        a.score,
+        a.reason,
+        a.dst,
+        or_dash(a.host.as_deref()),
+        or_dash(a.process_path.as_deref()),
+    );
+    if let Some(url) = a.notes.get("url") {
+        line.push_str("  ");
+        line.push_str(url);
+    }
+    line.push('\n');
+    line
+}
+
 pub fn alerts(page: &pb::AlertPage) -> String {
     if page.items.is_empty() {
         return "no alerts\n".into();

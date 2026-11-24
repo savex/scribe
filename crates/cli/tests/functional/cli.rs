@@ -42,8 +42,33 @@ fn parses_every_command() {
         parse(&["alerts", "ack", "42"]),
         Command::Alerts {
             action: Some(AlertsAction::Ack { id: 42 }),
-            json: false
+            json: false,
+            watch: false
         }
+    );
+    assert_eq!(
+        parse(&["alerts", "--watch", "--json"]),
+        Command::Alerts {
+            action: None,
+            json: true,
+            watch: true
+        }
+    );
+    assert_eq!(
+        parse(&["notify", "--max-per-minute", "3", "--min-score", "50"]),
+        Command::Notify(scribe_cli::NotifyArgs {
+            max_per_minute: 3,
+            min_score: 50,
+            print: false
+        })
+    );
+    assert_eq!(
+        parse(&["notify"]),
+        Command::Notify(scribe_cli::NotifyArgs {
+            max_per_minute: 10,
+            min_score: 0,
+            print: false
+        })
     );
     assert_eq!(
         parse(&["baseline", "--json"]),

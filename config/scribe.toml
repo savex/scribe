@@ -136,8 +136,9 @@ admin_group = "scribe-admin"
 
 # ─── Alert outputs ───────────────────────────────────────────────────────────
 
-# Every alert is stored and streamed to local API clients (the `WatchAlerts` call). These are
-# scribed's own outputs on top of that.
+# Every alert is stored and streamed to local API clients: `scribe alerts --watch` and the
+# `scribe notify` agent, which shows desktop notifications in the user's session (a system service
+# can't; see packaging/README.md). These are scribed's own outputs on top of that.
 # Changes apply on reload (`scribe daemon reset --config` or SIGHUP).
 [alerts]
 log = true                # a `scribe::alert` warning line in scribed's log per alert

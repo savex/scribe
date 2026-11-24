@@ -1,0 +1,18 @@
+# Desktop notifications for scribe alerts (plan phase 11): a systemd *user* unit, one per desktop
+# user. scribed runs as a system service and can't reach a desktop session, so `scribe notify` runs
+# in the session, follows scribed's alert stream and shows one notification per alert.
+#   sudo cp scribe-notify.service /etc/systemd/user/     (or ~/.config/systemd/user/ for one user)
+#   systemctl --user enable --now scribe-notify
+# The user must be able to read scribed's socket (member of the `scribe` group).
+[Unit]
+Description=scribe desktop notifications
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/local/bin/scribe notify
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target

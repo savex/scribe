@@ -2,5 +2,6 @@
 //! Run with `cargo nextest run -p scribe-cli -E 'binary(functional)'`.
 
 mod cli;
+mod notify;
 mod output;
 mod scribe;
