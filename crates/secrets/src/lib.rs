@@ -4,12 +4,14 @@
 //! | Reference | Store | Status |
 //! |---|---|---|
 //! | `file:<absolute path>` | a file only its owner can read (Unix mode `0600` or stricter, owned by the service account or root) | implemented |
-//! | `keychain:<service>/<account>` | macOS keychain | parsed; backend arrives in phase 11 |
-//! | `dpapi:<absolute path>` | Windows DPAPI blob | parsed; backend arrives in phase 11 |
-//! | `secret-service:<label>` | Linux Secret Service | parsed; backend arrives in phase 11 |
+//! | `keychain:<service>/<account>` | macOS keychain, generic password item (root: System keychain) | implemented (macOS) |
+//! | `dpapi:<absolute path>` | Windows DPAPI blob in a file, machine scope | implemented (Windows) |
+//! | `secret-service:<label>` | Linux Secret Service on the session bus (attributes `application = scribe`, `scribe-secret = <label>`) | implemented (Linux) |
 //!
-//! A `file:` secret is its bytes, less one trailing newline. [`read_or_create`] generates a random
-//! key on first use and writes it as lowercase hex, so it can be copied by hand.
+//! A reference for another system's store is [`SecretError::Unsupported`]. A `file:` secret is its
+//! bytes, less one trailing newline. [`read_or_create`] generates a random key on first use and
+//! stores it as lowercase hex, so it can be copied by hand; [`store`] writes a given value
+//! (`scribed --set-secret`).
 
 use std::fmt;
 use std::fs;
@@ -18,6 +20,8 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use ring::rand::{SecureRandom, SystemRandom};
+
+mod os;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SecretRef {
@@ -33,8 +37,10 @@ pub enum SecretError {
         "malformed secret reference `{0}`: expected file:, keychain:, dpapi: or secret-service:"
     )]
     Malformed(String),
-    #[error("{0} secrets are not supported yet; use a `file:` reference")]
+    #[error("{0} secrets are not available on this system; use a `file:` reference")]
     Unsupported(&'static str),
+    #[error("{reference}: {why}")]
+    Store { reference: String, why: String },
     #[error("secret `{0}` not found")]
     NotFound(String),
     #[error("{path}: {why}")]
@@ -124,7 +130,8 @@ impl fmt::Display for SecretRef {
 }
 
 impl SecretRef {
-    fn backend(&self) -> &'static str {
+    /// The store's name as written in the reference (`file`, `keychain`, …).
+    pub fn backend(&self) -> &'static str {
         match self {
             SecretRef::File(_) => "file",
             SecretRef::Keychain { .. } => "keychain",
@@ -138,8 +145,36 @@ impl SecretRef {
 pub fn read(r: &SecretRef) -> Result<Secret, SecretError> {
     match r {
         SecretRef::File(path) => read_file(path),
-        other => Err(SecretError::Unsupported(other.backend())),
+        SecretRef::Keychain { service, account } => os::keychain::read(service, account),
+        SecretRef::Dpapi(path) => os::dpapi::read(path),
+        SecretRef::SecretService(label) => os::secret_service::read(label),
     }
+}
+
+/// Write `value` to the store, replacing what was there (`scribed --set-secret`). A `file:` is
+/// written to a temporary file with mode `0600` and renamed over the old one.
+pub fn store(r: &SecretRef, value: &[u8]) -> Result<(), SecretError> {
+    if value.is_empty() {
+        return Err(SecretError::Store {
+            reference: r.to_string(),
+            why: "an empty secret is not stored".into(),
+        });
+    }
+    match r {
+        SecretRef::File(path) => {
+            check_dir(path.parent().unwrap_or(Path::new("/")))?;
+            replace_file(path, value)
+        }
+        SecretRef::Keychain { service, account } => os::keychain::store(service, account, value),
+        SecretRef::Dpapi(path) => os::dpapi::store(path, value),
+        SecretRef::SecretService(label) => os::secret_service::store(label, value),
+    }
+}
+
+/// Remove a keychain item (tests and uninstall); other stores are removed with their file or by
+/// the keyring's own tools.
+pub fn delete_keychain_item(service: &str, account: &str) -> Result<(), SecretError> {
+    os::keychain::delete(service, account)
 }
 
 /// Read a secret, or generate `len` random bytes, store them and return them (as hex text, the
@@ -149,15 +184,18 @@ pub fn read_or_create(r: &SecretRef, len: usize) -> Result<Secret, SecretError> 
         Err(SecretError::NotFound(_)) => {}
         other => return other,
     }
-    let SecretRef::File(path) = r else {
-        return Err(SecretError::Unsupported(r.backend()));
-    };
     let mut raw = vec![0u8; len];
     SystemRandom::new()
         .fill(&mut raw)
         .map_err(|_| SecretError::Random)?;
     let mut text: String = raw.iter().map(|b| format!("{b:02x}")).collect();
     raw.fill(0);
+    let SecretRef::File(path) = r else {
+        let stored = store(r, text.as_bytes());
+        drop(Secret(text.into_bytes()));
+        stored?;
+        return read(r);
+    };
     text.push('\n');
     let created = create_file(path, text.as_bytes());
     drop(Secret(text.into_bytes()));
@@ -169,7 +207,7 @@ pub fn read_or_create(r: &SecretRef, len: usize) -> Result<Secret, SecretError> 
     }
 }
 
-fn io_err(path: &Path) -> impl FnOnce(io::Error) -> SecretError + '_ {
+pub(crate) fn io_err(path: &Path) -> impl FnOnce(io::Error) -> SecretError + '_ {
     move |source| {
         if source.kind() == io::ErrorKind::NotFound {
             SecretError::NotFound(format!("file:{}", path.display()))
@@ -205,6 +243,35 @@ fn read_file(path: &Path) -> Result<Secret, SecretError> {
         });
     }
     Ok(Secret(bytes))
+}
+
+/// Write `contents` to `path` through a temporary file readable only by its owner, replacing an
+/// existing file.
+pub(crate) fn replace_file(path: &Path, contents: &[u8]) -> Result<(), SecretError> {
+    let dir = path.parent().unwrap_or(Path::new("/"));
+    let tmp = dir.join(format!(
+        ".{}.{}.new",
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("secret"),
+        std::process::id()
+    ));
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+    let write = || -> io::Result<()> {
+        let mut f = opts.open(&tmp)?;
+        f.write_all(contents)?;
+        f.sync_all()?;
+        fs::rename(&tmp, path)
+    };
+    let result = write();
+    let _ = fs::remove_file(&tmp);
+    result.map_err(|source| SecretError::Io {
+        path: path.to_owned(),
+        source,
+    })
 }
 
 /// Write a new file readable only by its owner, never replacing one that exists.

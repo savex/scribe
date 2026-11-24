@@ -70,6 +70,11 @@ rustls = { version = "0.23.46", default-features = false, features = ["ring", "s
 rustls-platform-verifier = "0.7"
 http = "1.5"
 httparse = "1.10"
+# OS secret stores (`scribe-secrets`): macOS keychain, Linux Secret Service (pure-Rust D-Bus, the
+# same zbus as notify-rust, secrets encrypted on the bus with pure-Rust AES); Windows DPAPI through
+# windows-sys.
+security-framework = "3.7"
+secret-service = { version = "6", default-features = false, features = ["rt-default", "crypto-rust"] }
 # Test certificates for the HTTPS tests.
 rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 # Desktop notifications for `scribe notify` (D-Bus in pure Rust on Linux, Notification Center on

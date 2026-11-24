@@ -52,11 +52,42 @@ pub struct Args {
     /// Run under the Windows service control manager (set by the installer; Windows only)
     #[arg(long)]
     pub service: bool,
+
+    /// Store a secret (e.g. a webhook's `secret`) read from standard input under this reference
+    /// (file:, keychain:, dpapi:, secret-service:) and exit
+    #[arg(long, value_name = "REFERENCE", conflicts_with_all = ["check_config", "service"])]
+    pub set_secret: Option<String>,
+
+    /// With --set-secret: store a new random key and print it, instead of reading standard input
+    #[arg(long, requires = "set_secret")]
+    pub generate: bool,
 }
 
 /// Entry point of the `scribed` binary.
 pub fn main() -> ExitCode {
     let args = Args::parse();
+    if let Some(reference) = &args.set_secret {
+        let value = if args.generate {
+            None
+        } else {
+            let mut input = Vec::new();
+            if let Err(e) = std::io::Read::read_to_end(&mut std::io::stdin(), &mut input) {
+                eprintln!("scribed: cannot read the secret from standard input: {e}");
+                return ExitCode::from(EXIT_FAILURE);
+            }
+            Some(input)
+        };
+        return match set_secret(reference, value) {
+            Ok(message) => {
+                println!("{message}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("scribed: {e}");
+                ExitCode::from(EXIT_CONFIG)
+            }
+        };
+    }
     if args.service {
         #[cfg(windows)]
         return crate::service::run_windows_service();
@@ -71,6 +102,43 @@ pub fn main() -> ExitCode {
         std::env::var_os("SCRIBE_CONFIG"),
         std::env::var("SCRIBE_LOG").ok(),
     )
+}
+
+/// `scribed --set-secret <reference>`: store `value` (one trailing newline dropped), or with
+/// `None` a new random 32-byte key as hex, which the message then shows so it can be given to
+/// the receiver. Returns what to print.
+pub fn set_secret(reference: &str, value: Option<Vec<u8>>) -> Result<String, String> {
+    let r: scribe_secrets::SecretRef = reference.parse().map_err(|e| format!("{e}"))?;
+    match value {
+        Some(mut bytes) => {
+            if bytes.ends_with(b"\n") {
+                bytes.pop();
+                if bytes.ends_with(b"\r") {
+                    bytes.pop();
+                }
+            }
+            if bytes.is_empty() {
+                return Err(
+                    "nothing on standard input; pipe the secret in, or use --generate".into(),
+                );
+            }
+            let stored = scribe_secrets::store(&r, &bytes);
+            bytes.fill(0);
+            stored.map_err(|e| e.to_string())?;
+            Ok(format!("stored the secret in {r}"))
+        }
+        None => {
+            let mut raw = [0u8; 32];
+            ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut raw)
+                .map_err(|_| "no random bytes available".to_owned())?;
+            let key: String = raw.iter().map(|b| format!("{b:02x}")).collect();
+            raw.fill(0);
+            scribe_secrets::store(&r, key.as_bytes()).map_err(|e| e.to_string())?;
+            Ok(format!(
+                "stored a new key in {r}; the webhook receiver checks signatures with this key:\n{key}"
+            ))
+        }
+    }
 }
 
 /// Runs scribed with explicit inputs, so tests don't depend on the process environment.

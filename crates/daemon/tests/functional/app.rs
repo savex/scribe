@@ -175,3 +175,35 @@ fn alert_outputs_follow_the_alerts_section() {
     assert_eq!(both.names(), ["log", "ops"]);
     assert!(!machine_name().is_empty());
 }
+
+#[test]
+fn set_secret_stores_piped_or_generated_keys() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("webhook.key");
+    let reference = format!("file:{}", path.display());
+    let r: scribe_secrets::SecretRef = reference.parse().unwrap();
+
+    let said = set_secret(&reference, Some(b"s3cret\n".to_vec())).unwrap();
+    assert_eq!(said, format!("stored the secret in {reference}"));
+    assert_eq!(scribe_secrets::read(&r).unwrap().expose(), b"s3cret");
+
+    let said = set_secret(&reference, None).unwrap();
+    let key = said.lines().last().unwrap();
+    assert_eq!(key.len(), 64);
+    assert_eq!(scribe_secrets::read(&r).unwrap().expose(), key.as_bytes());
+
+    assert!(set_secret(&reference, Some(b"\n".to_vec()))
+        .unwrap_err()
+        .contains("nothing on standard input"));
+    assert!(set_secret("hunter2", Some(b"x".to_vec()))
+        .unwrap_err()
+        .contains("malformed secret reference"));
+    let parsed =
+        Args::try_parse_from(["scribed", "--set-secret", &reference, "--generate"]).unwrap();
+    assert_eq!(parsed.set_secret.as_deref(), Some(reference.as_str()));
+    assert!(parsed.generate);
+    assert!(Args::try_parse_from(["scribed", "--generate"]).is_err());
+    assert!(
+        Args::try_parse_from(["scribed", "--set-secret", &reference, "--check-config"]).is_err()
+    );
+}

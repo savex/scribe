@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use scribe_secrets::{read, read_or_create, SecretError, SecretRef};
+use scribe_secrets::{read, read_or_create, store, SecretError, SecretRef};
 
 fn file(path: &Path) -> SecretRef {
     format!("file:{}", path.display()).parse().unwrap()
@@ -51,16 +51,121 @@ fn references_parse_and_print_back() {
 }
 
 #[test]
-fn os_stores_are_not_supported_yet() {
-    let r: SecretRef = "keychain:scribe/postgres".parse().unwrap();
-    assert!(matches!(
-        read(&r),
-        Err(SecretError::Unsupported("keychain"))
-    ));
-    assert!(matches!(
-        read_or_create(&r, 32),
-        Err(SecretError::Unsupported("keychain"))
-    ));
+fn other_systems_stores_are_unsupported() {
+    let mut refs: Vec<(&str, &str)> = Vec::new();
+    if !cfg!(target_os = "macos") {
+        refs.push(("keychain:scribe/postgres", "keychain"));
+    }
+    if !cfg!(windows) {
+        refs.push(("dpapi:/var/lib/scribe/w.dpapi", "dpapi"));
+    }
+    if !cfg!(target_os = "linux") {
+        refs.push(("secret-service:scribe-webhook", "secret-service"));
+    }
+    for (text, backend) in refs {
+        let r: SecretRef = text.parse().unwrap();
+        assert_eq!(r.backend(), backend);
+        assert!(
+            matches!(read(&r), Err(SecretError::Unsupported(b)) if b == backend),
+            "{text}"
+        );
+        assert!(matches!(
+            read_or_create(&r, 32),
+            Err(SecretError::Unsupported(_))
+        ));
+        assert!(matches!(store(&r, b"x"), Err(SecretError::Unsupported(_))));
+    }
+}
+
+#[test]
+fn store_replaces_a_file_secret_privately() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = file(&dir.path().join("webhook.key"));
+    store(&r, b"first").unwrap();
+    assert_eq!(read(&r).unwrap().expose(), b"first");
+    store(&r, b"second").unwrap();
+    assert_eq!(read(&r).unwrap().expose(), b"second");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(dir.path().join("webhook.key"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+    assert!(matches!(store(&r, b""), Err(SecretError::Store { .. })));
+}
+
+/// DPAPI needs no user interaction: a full round trip on every Windows run.
+#[cfg(windows)]
+#[test]
+fn dpapi_round_trip_and_garbage() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("webhook.dpapi");
+    let r: SecretRef = format!("dpapi:{}", path.display()).parse().unwrap();
+    assert!(matches!(read(&r), Err(SecretError::NotFound(_))));
+    let created = read_or_create(&r, 16).unwrap();
+    assert_eq!(created.expose().len(), 32, "hex of 16 bytes");
+    let sealed = std::fs::read(&path).unwrap();
+    assert!(
+        !sealed.windows(32).any(|w| w == created.expose()),
+        "the file holds a sealed blob, not the key"
+    );
+    assert_eq!(read(&r).unwrap(), created);
+    store(&r, b"replaced").unwrap();
+    assert_eq!(read(&r).unwrap().expose(), b"replaced");
+    std::fs::write(&path, b"not a dpapi blob").unwrap();
+    assert!(matches!(read(&r), Err(SecretError::Store { .. })));
+}
+
+/// The keychain may ask the user for permission on a desktop, so the round trip runs only where
+/// `SCRIBE_TEST_KEYCHAIN=1` says it is safe (the macOS CI runner). A missing item is always checked.
+#[cfg(target_os = "macos")]
+#[test]
+fn keychain_items_round_trip() {
+    let account = format!("test-{}", std::process::id());
+    let r = SecretRef::Keychain {
+        service: "scribe-test".into(),
+        account: account.clone(),
+    };
+    if std::env::var_os("SCRIBE_TEST_KEYCHAIN").is_none() {
+        let missing = SecretRef::Keychain {
+            service: "scribe-test-never-created".into(),
+            account,
+        };
+        assert!(matches!(read(&missing), Err(SecretError::NotFound(_))));
+        return;
+    }
+    let _ = scribe_secrets::delete_keychain_item("scribe-test", &account);
+    assert!(matches!(read(&r), Err(SecretError::NotFound(_))));
+    let created = read_or_create(&r, 16).unwrap();
+    assert_eq!(read(&r).unwrap(), created);
+    store(&r, b"replaced").unwrap();
+    assert_eq!(read(&r).unwrap().expose(), b"replaced");
+    scribe_secrets::delete_keychain_item("scribe-test", &account).unwrap();
+    assert!(matches!(read(&r), Err(SecretError::NotFound(_))));
+}
+
+/// Without a session bus (CI, a system service) the store reports what is missing; with a keyring,
+/// a label never stored is not found.
+#[cfg(target_os = "linux")]
+#[test]
+fn secret_service_explains_a_missing_bus() {
+    let r: SecretRef = format!(
+        "secret-service:scribe-test-never-created-{}",
+        std::process::id()
+    )
+    .parse()
+    .unwrap();
+    match read(&r) {
+        Err(SecretError::Store { reference, why }) => {
+            assert!(reference.starts_with("secret-service:"), "{reference}");
+            assert!(!why.is_empty());
+        }
+        Err(SecretError::NotFound(_)) => {}
+        other => panic!("unexpected {other:?}"),
+    }
 }
 
 #[test]

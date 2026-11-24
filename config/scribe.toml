@@ -153,7 +153,8 @@ max_per_minute = 30       # per output; the rest are counted and reported once a
 # [[alerts.webhooks]]
 # name = "ops"                                   # unique, shown in logs
 # url = "https://hooks.example.com/scribe"
-# secret = "file:/etc/scribe/webhook.key"        # HMAC key: file:, keychain:, dpapi:, secret-service:
+# secret = "file:/etc/scribe/webhook.key"        # HMAC key: file:, keychain:, dpapi:, secret-service:;
+#                                                # create one with `scribed --set-secret <ref> --generate`
 # pin_sha256 = "<64 hex digits>"               # optional; leave out to use the trust store
 # timeout = "10s"                                # connecting, and each read or write (1s–60s)
 

@@ -22,6 +22,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   posted as JSON and signed in `X-Scribe-Signature` (HMAC-SHA256), with retries on network errors,
   429 and 5xx; new `scribe-net` crate for outgoing HTTPS (OS certificate verifier or a pin, http only to
   loopback, same-origin redirects, timeouts, size cap); `Secret` can be built from bytes.
+- Phase 11 step 4: OS secret stores in `scribe-secrets`: `keychain:` (macOS), `dpapi:` (Windows, machine
+  scope) and `secret-service:` (Linux, encrypted D-Bus session); `store()`; `scribed --set-secret
+  <reference> [--generate]` stores a secret from standard input or a new random key.
 
 ### Changed
 - `AlertOutput::notify` returns a `Result` and gains `suppressed`; `RecordingAlertSink` records both.

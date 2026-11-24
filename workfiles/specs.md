@@ -187,7 +187,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-7 | Isolation | A slow or failing sink never blocks capture or other sinks | Implemented (writer task per sink; full queues drop and count)
 | NFR-8 | Privileges | Runs as root / SYSTEM only as long as the sensor needs; drops privileges after start | Proposed |
 | NFR-9 | API access | Local socket / named pipe only; caller identity from the OS; read calls for the `scribe` group, control calls for root / Administrators and `scribe-admin`, all control calls audited; clients verify the server (sections 6.3, 12.1.1) | Proposed |
-| NFR-10 | Secrets | Database credentials, TLS client keys, the webhook secret, the URL hash key and the optional storage key from the OS keychain, DPAPI, Secret Service or a root-only file; never in plain config; startup refused when config, `data_dir` or a `file:` credential is group / other-writable | Partly implemented (`scribe-secrets`: `file:` references with mode checks; OS stores in phase 11) |
+| NFR-10 | Secrets | Database credentials, TLS client keys, the webhook secret, the URL hash key and the optional storage key from the OS keychain, DPAPI, Secret Service or a root-only file; never in plain config; startup refused when config, `data_dir` or a `file:` credential is group / other-writable | Implemented (`scribe-secrets`: `file:` references with mode checks, macOS keychain, Windows DPAPI, Linux Secret Service; `scribed --set-secret`); Windows ACL checks with the installer (phase 13) |
 | NFR-11 | Robust parsing | Packet parsers never crash or hang on malformed input; fuzzed, crash-free for 7 runs in a row before release | Planned |
 | NFR-12 | Privacy | Store connection metadata only, never payloads; redact URL query values by default (section 12.2); data leaves the host only through sinks the admin configures | Decided (URL redaction), Proposed (rest) |
 | NFR-13 | Portability | Prebuilt binaries for `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Implemented (archives) |
@@ -211,6 +211,7 @@ Started by the service manager as root / SYSTEM: systemd unit `scribed` (Linux),
 | `scribed --version`, `-V` | Print `scribed <version>` | Implemented |
 | `scribed --config <path>` | Use this config file | Implemented |
 | `scribed --check-config` | Print the effective config (absolute paths, resolved percentages) and exit | Implemented |
+| `scribed --set-secret <reference> [--generate]` | Store a secret read from standard input (or, with `--generate`, a new random key printed once) in `file:`, `keychain:`, `dpapi:` or `secret-service:`; for webhook secrets and other credentials | Implemented (phase 11) |
 | SIGHUP (Linux, macOS) | Reload the config, same as `scribe daemon reset --config` | Planned (phase 5) |
 | SIGTERM / Ctrl-C / service stop | Flush sinks and shut down cleanly | Implemented for Ctrl-C and SIGTERM; service-manager stop in phase 5 |
 

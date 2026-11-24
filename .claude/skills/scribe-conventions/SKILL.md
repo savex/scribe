@@ -112,7 +112,7 @@ Local API (phase 10): `tonic` 0.14 with `tonic-prost` / `prost` 0.14; code gener
 |---|---|---|
 | `scribe-core` | lib | Flow events, modes, alerts, clock, sensor interface, `VERSION` |
 | `scribe-enrich` | lib | `Enricher`: TLS ClientHello (SNI, ALPN, ECH), HTTP request heads and `Host`, DNS answers and cache, QUIC Initial decryption, security detection (full URL parsing is in `scribe-module-url`) |
-| `scribe-secrets` | lib | Secret references (`file:` now; keychain, DPAPI, Secret Service in phase 11), key generation |
+| `scribe-secrets` | lib | Secret references (`file:`, macOS keychain, Windows DPAPI, Linux Secret Service), `read`, `store`, key generation |
 | `scribe-sensor-linux` / `-windows` / `-pcap` | lib | Capture sensors; `-pcap` has `decode`, `flows` (tracker and `replay`), `file` (pcap reader) and `ffi` (run-time libpcap) |
 | `scribe-storage-api` | lib | `StateStore`, `EventSink`, `StorageFactory` |
 | `scribe-storage-manager` | lib | Registry, writer task per sink (batching, retention), spool and replay, outage buffer, cache, health |
@@ -233,7 +233,7 @@ Three counters per host and per process + host, plus hourly buckets per host (sc
 | macOS service | launchd `com.scribe.daemon`; uninstaller `/Library/Application Support/scribe/uninstall.sh` | Proposed (used by e2e script) |
 | Windows service | `scribed` | Proposed (used by e2e script) |
 | Privileges | Runs as root / SYSTEM, drops privileges after the sensor starts | Proposed |
-| `scribed` flags | `--config <path>`, `--check-config` (prints the effective config as TOML, paths absolute, percentages explained), `--version` / `-V` | Decided (implemented) |
+| `scribed` flags | `--config <path>`, `--check-config` (prints the effective config as TOML, paths absolute, percentages explained), `--set-secret <reference>` (stores standard input, one trailing newline dropped; with `--generate` a new random 32-byte key as hex, printed for the receiver; exit 2 on errors), `--version` / `-V` | Decided (implemented) |
 | `scribed` exit codes | 0 success, 1 runtime failure, 2 usage or configuration error (including a bad `SCRIBE_LOG`) | Decided (implemented) |
 | `scribed` lifecycle | arguments → config → logging → create data and spool folders → storage via registry + `migrate()` (a not-implemented backend only warns) → wait for Ctrl-C or SIGTERM → flush sinks → exit 0. Windows service-manager stop arrives with phase 5 | Decided (implemented) |
 
@@ -370,7 +370,7 @@ Notes:
 | Total effort | 123–153.5 person-days; 74–92.5 remaining after phases 0, 0b and 1–5, 89–111 with a 20% buffer (includes the security design, +14.5 days, the module framework, +10–12 days, and the 2026-11-22 plan review, +3.5–4.5) |
 | Milestones (planned) | M1 MVP (phases 0, 0b, 1–6, 10, 11: pcap, SQLite, modes, CLI with `scribe daemon`, API access control, modules with URL) 67–82.5 days planned, 20.5–24 remaining; M2 native sensors 35.5–45.5 days; M3 production 20.5–25.5 days |
 | Main risks | Apple Network Extension entitlement and notarization lead time; eBPF kernel variance; Npcap needed for Windows payloads; DoH / ECH hide hostnames; caution-mode tuning; Release workflow not run on GitHub yet (Tests green on all three systems since 2026-11-23) |
-| Secrets | `scribe-secrets`: references `file:` (implemented: absolute path, Unix mode `0600` or stricter, owner = service account or root, no group/other-writable parent without sticky bit; created via temp file + hard link so a concurrent start keeps the first key; one trailing newline dropped), `keychain:<service>/<account>`, `dpapi:<path>`, `secret-service:<label>` (parsed, return `Unsupported` until phase 11, where the webhook secret needs them; Windows `file:` ACL checks with the installer in phase 13). `Secret` hides its bytes in `Debug` and zeroes them on drop. Modules get `ModuleContext::data_dir` for their files | Decided (file), Planned (OS stores) |
+| Secrets | `scribe-secrets`: references `file:` (implemented: absolute path, Unix mode `0600` or stricter, owner = service account or root, no group/other-writable parent without sticky bit; created via temp file + hard link so a concurrent start keeps the first key; one trailing newline dropped), `keychain:<service>/<account>` (macOS generic password via `security-framework`; root sees the System keychain), `dpapi:<path>` (Windows: file holding a `CryptProtectData` blob, machine scope, UI forbidden), `secret-service:<label>` (Linux: `secret-service` 6 with `crypto-rust`, DH-encrypted session, attributes `application = scribe`, `scribe-secret = <label>`, default collection; needs a session bus and an unlocked keyring) — implemented in phase 11, each only on its own system (`Unsupported` elsewhere); `store()` writes any of them (`file:` via temp file + rename, `0600`), `read_or_create` creates in any of them; Windows `file:` ACL checks with the installer in phase 13. `Secret` hides its bytes in `Debug` and zeroes them on drop. Modules get `ModuleContext::data_dir` for their files | Implemented (file; OS stores phase 11 step 4: DPAPI tested on every Windows run, keychain round trip only with `SCRIBE_TEST_KEYCHAIN=1`, Secret Service only checked for a missing bus) |
 
 ## 15. Development environment
 
