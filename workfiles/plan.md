@@ -14,7 +14,7 @@ Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe
 - **Product code:** phases 0, 0b, 1–6, 10 and 11 done (milestone M1); see [status.md](status.md). `scribed` captures with the pcap sensor on every system, enriches flows (SNI, `Host`, DNS, QUIC), runs the URL module and the policy, stores hosts, counters (per process and per hour), baselines, alerts and audit records on SQLite, and is controlled through the local API: every `scribe` command works, including `scribe daemon …`. Alerts reach the log, signed webhooks and desktop notifications (`scribe notify`); threat lists download with integrity checks; secrets can live in the OS key stores. Native sensors (phases 7–9), Postgres (12) and installers (13) remain. Automated tests cover 91.0% of product code.
 - **Test infrastructure (done):** test doubles (including module doubles), packet builders and fixture generator, storage, sensor and module conformance suites, 14 pcap fixtures with expected results, 19 daemon scenarios, draft raw sensor records, v1 and v2 schema snapshots, fuzz targets, UI mock data, end-to-end scripts. This was not a separate phase in the original plan; it front-loads most of the test work of phases 1–6.
 - **Design (done):** [specs.md](specs.md) with use cases and requirements, the v1 config draft [config/scribe.toml](../config/scribe.toml) holding every default, and answers to all open questions (paths, scoring, buffers and limits, URL privacy, crate layout, logging, minimum Rust version). Nothing blocks implementation.
-- **CI, versioning and tooling:** tag-based versioning, 8 GitHub workflows (Release and Version tracking automatic, the rest manual), VSCodium launch and task configs, conventions skill and `CLAUDE.md`. The same checks run locally before every commit. Tests run #1 (`45074989995`, 2026-11-22) passed on Linux only; run #2 (`45198461612`, 2026-11-23) ran all three systems: Linux and macOS passed, Windows had 9 test-portability failures; run #3 (`45202847881`, 2026-11-23) passed on all three, and run #4 (`45226370809`) after phase 10. Release ran once for `v0.2.0` (`45322623374`); the other manual workflows have not run yet (risk 9).
+- **CI, versioning and tooling:** tag-based versioning, 8 GitHub workflows (Release and Version tracking automatic, the rest manual), VSCodium launch and task configs, conventions skill and `CLAUDE.md`. The same checks run locally before every commit. Tests run #1 (`45074989995`, 2026-11-22) passed on Linux only; run #2 (`45198461612`, 2026-11-23) ran all three systems: Linux and macOS passed, Windows had 9 test-portability failures; run #3 (`45202847881`, 2026-11-23) passed on all three, and run #4 (`45226370809`) after phase 10; after phase 11 run #5 (`45448523591`) failed on 7 Windows-only test assumptions and run #6 (`45452687480`) passed on all three. Release ran once for `v0.2.0` (`45322623374`); the other manual workflows have not run yet (risk 9).
 
 ## Phases
 
@@ -44,7 +44,7 @@ With a 20% buffer for unknowns, plan on **64–82 person-days remaining**. That'
 
 | Milestone | Phases | Result | Planned | Remaining |
 |---|---|---|---|---|
-| **M1: MVP** | 0, 0b, 1–6, 10, 11 | Runs on all three OSes using pcap (no process attribution), SQLite storage, all three modes, CLI including `scribe daemon`, notifications, local API access control, module framework with the URL module | 67–82.5 days | **Done** (2026-11-24); first Tests run on all three systems pending |
+| **M1: MVP** | 0, 0b, 1–6, 10, 11 | Runs on all three OSes using pcap (no process attribution), SQLite storage, all three modes, CLI including `scribe daemon`, notifications, local API access control, module framework with the URL module | 67–82.5 days | **Done** (2026-11-24); Tests green on all three systems (run `45452687480`) |
 | **M2: Native sensors** | 7, 8, 9 | Process attribution and better hostname coverage on each OS; privilege split, XPC code signing | 35.5–45.5 days | 35.5–45.5 days |
 | **M3: Production** | 12, 13, 14 | Postgres over TLS, signed installers and checksums, fuzzed parsers, security review | 20.5–25.5 days | 18–23 days |
 
@@ -54,7 +54,7 @@ With a 20% buffer for unknowns, plan on **64–82 person-days remaining**. That'
 
 In this order, because each one turns existing tests and data into real coverage:
 
-0. **Run Tests on all three systems** after phase 11: the Windows DPAPI round trip, the Linux D-Bus build and the native ring / rustls builds only run there (the Linux container suite passed locally); then tag a release for M1.
+0. **Tag a release for M1:** Tests passed on all three systems after phase 11 (run `45452687480`, commit `44f0c44`; the first run, `45448523591`, found 7 Windows-only test problems, fixed in `44f0c44`).
 1. **Apply for Apple's Network Extension entitlement now**, so the wait overlaps M2 (risk 1). Listed since October; not done yet as far as this plan knows.
 2. **M2: native sensors** (phases 7–9, independent of each other) for process attribution; Postgres (phase 12) any time.
 3. **Any time, cheap:** add `cargo deny` / `cargo audit` to the Tests workflow and pin Actions by SHA (phase 14 work that needs no product code).

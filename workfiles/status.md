@@ -188,7 +188,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 | Test data | **100%** | 16 pcap fixtures (2 QUIC), all checked end to end; RFC 9001 / 9369 sample packets; 19 scenarios (all run), raw sensor samples, v1–v4 database snapshots, 10 UI mock API scenarios checked against the protocol | Checked by the fixture, end-to-end, scenario and snapshot tests |
 | Fuzzing | **~60%** | 4 targets with seeds (`tls_client_hello`, `dns_message`, `quic_initial`, `http_request`); they compile on stable | Never run (needs Rust nightly) |
 | End-to-end scripts | **100% scripted** | Linux, macOS, Windows | Never run (needs installers and CLI commands) |
-| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migrations 0001–0004 and their seeds | Tests green on Linux, macOS and Windows after phase 10 (run `45226370809`, 2026-11-23: 460 / 459 / 414 tests; Postgres job loads migrations 1–4); Release run `45322623374` (2026-11-23) published `v0.2.0` for all four targets with `SHA256SUMS`; Sensors, E2E, Fuzz and UI not run yet |
+| CI and versioning | **~90%** | 8 workflows; minimum-version job; release smoke test covers `scribed` and the URL module; Postgres job loads migrations 0001–0004 and their seeds | Tests green on Linux, macOS and Windows after phase 11 (run `45452687480`, 2026-11-24, commit `44f0c44`, after Windows test fixes for run `45448523591`); after phase 10 run `45226370809` (460 / 459 / 414 tests; Postgres job loads migrations 1–4); Release run `45322623374` (2026-11-23) published `v0.2.0` for all four targets with `SHA256SUMS`; Sensors, E2E, Fuzz and UI not run yet |
 
 **Overall:** 13,589 of 15,249 measurable lines covered (**89.1%**).
 
@@ -197,10 +197,10 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 - **Phases 0, 0b, 1–6, 10 and 11 are done: milestone M1 is complete.** Remaining effort: 53.5–68.5 days (64–82 with buffer).
 - **`scribed` runs end to end with the pcap sensor, is controlled through `scribe` and tells people:** log, signed webhooks and desktop notifications (`scribe notify`), threat lists from files or checked downloads, secrets in the OS key stores.
 - **Next steps:**
-  0. Run the Tests workflow on all three systems for phase 11 (Windows DPAPI, the D-Bus build on the Linux runner); then tag a release for M1.
+  0. Tag a release for M1; Tests passed on all three systems after phase 11 (run `45452687480`).
   1. Apply for Apple's Network Extension entitlement (plan risk 1).
   2. M2: native sensors (phases 7–9).
-- **Not verified here:** phase 11 on Windows (DPAPI round trip, toasts, named-pipe agent) until the next Tests run; real desktop notifications on any system (the agent is tested with a fake notifier); keychain and Secret Service round trips (gated: `SCRIBE_TEST_KEYCHAIN=1`, a desktop keyring); the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests and Release,
+- **Not verified here:** Windows toasts (DPAPI and the `scribe notify` agent over the named pipe passed in run `45452687480`); real desktop notifications on any system (the agent is tested with a fake notifier); keychain and Secret Service round trips (gated: `SCRIBE_TEST_KEYCHAIN=1`, a desktop keyring); the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests and Release,
   the Postgres backend beyond loading its migrations (run `45226370809` loads 0001–0004 and the seeds), the Windows named pipe outside the Windows runner (its tests passed there in run `45226370809`) and the fuzz targets (no nightly).
   Local Linux / Windows compile checks leave out crates with C code (bundled SQLite, `ring`: the daemon, `enrich`,
   `secrets`, `module-url`, test crates); the Tests workflow builds and passes them natively.
