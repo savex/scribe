@@ -153,7 +153,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | FR-13 | Keep baselines per profile with learned / manual entries; add and remove entries | Partly (stored per profile with learned / manual entries in SQLite; the policy adds and removes entries in memory; saving them and the commands arrive in phases 5 and 10) | Storage conformance; scenarios |
 | FR-14 | Score unlisted hosts with the non-ordinary rules and report the reason | Implemented (built-in and module signals, threat lists from files) | Caution scenarios |
 | FR-15 | Deduplicate alerts per host + process within a window; support acknowledging | Implemented in the engine (saving the alert state arrives in phase 5) | Scenario `alert-dedupe-window` |
-| FR-16 | Deliver alerts as OS notifications, log entries and optional webhook calls | Planned | `RecordingAlertSink` in daemon tests |
+| FR-16 | Deliver alerts as OS notifications, log entries and optional webhook calls | Implemented (phase 11: log and webhooks from `scribed`, notifications from the `scribe notify` agent in the user's session) | FUN-A01 – A03, INT-11 |
 | FR-17 | Store state in exactly one state store and events in zero or more event sinks, each subscribed to event kinds | Implemented (state store behind cache and outage buffer; sinks by subscribed kind through writer tasks) | Storage conformance; manager tests (planned) |
 | FR-18 | Provide SQLite (default) and PostgreSQL (feature `postgres`) backends | Partly (SQLite implemented and conformant; PostgreSQL in phase 12) | Storage conformance; Tests workflow |
 | FR-19 | Spool events when a sink fails and replay them in order; enforce per-sink retention | Implemented (spool and ordered replay, retention via `delete_before`) | `FaultySink` tests (planned) |
@@ -310,7 +310,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | SQLite backend | `crates/storage-sqlite` | Default state store and event sink | storage-api | Implemented (schemas v1–v2, both conformance suites)
 | PostgreSQL backend | `crates/storage-postgres` | Optional state store and event sink | storage-api | Stub (schema v1 done) |
 | Policy engine | `crates/policy` (`scribe-policy`), no I/O | Modes, scoring rules, threat lists, dedupe, learn time limit | core | Implemented (phase 4) |
-| Alert outputs | `crates/alerts` (`scribe-alerts`) | Dispatcher (queue and rate limit per output), log, webhook; OS notifications come from the `scribe notify` agent in the user's session | core | Partly (dispatcher and log, phase 11 step 1) |
+| Alert outputs | `crates/alerts` (`scribe-alerts`) | Dispatcher (queue and rate limit per output), log, webhook; OS notifications come from the `scribe notify` agent in the user's session | core, net, secrets | Implemented (phase 11) |
 | Local API | `crates/api` (`scribe-api`, features `server` / `client`) + `proto/scribe/v1/api.proto` | gRPC service and client | core, storage-api | Planned |
 | Daemon | `crates/daemon` (`scribed`) | Wires everything; config, logging, service lifecycle | all of the above | Stub |
 | CLI | `crates/cli` (`scribe`) | Command line client | core, API client | Partly |

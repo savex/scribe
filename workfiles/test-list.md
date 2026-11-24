@@ -105,11 +105,11 @@ limit). Compile time is not included.
 
 | Tag | Tests now | Tests planned (M3) | Planned wall time | Per-test limit (warn / kill) |
 |---|---|---|---|---|
-| `smoke` | 14 | ~20 (+ 6 live) | ≤ 5 s | 2 s / 6 s |
-| `functional` | 339 | ~330 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
-| `integration` | 15 | ~25 | ≤ 15 s | 5 s / 10 s |
-| `scenario` | 22 | 26 | ≤ 10 s | 5 s / 10 s |
-| **Total** | **390** | **~400** | **≤ 60 s** (limit 120 s) | |
+| `smoke` | 16 | ~20 (+ 6 live) | ≤ 5 s | 2 s / 6 s |
+| `functional` | 430 | ~450 | ≤ 30 s | 2 s / 6 s (suites ≤ 5 s) |
+| `integration` | 31 | ~35 | ≤ 15 s | 5 s / 10 s |
+| `scenario` | 30 | 32 | ≤ 10 s | 5 s / 10 s |
+| **Total** | **507** (after phase 11) | **~540** | **≤ 60 s** (limit 120 s) | |
 
 **How the budget holds:** runs are parallel, so wall time ≈ the longer of (total test time ÷ cores) and
 the slowest single test. With ~400 tests averaging under 0.5 s and no test over 10 s, a 4-core CI runner

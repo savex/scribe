@@ -29,6 +29,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   (`refresh`, default 24h) through `scribe-net`, checked against `sha256` or `minisign_key`
   (signature from `<url>.minisig`) and `max_entries`, and kept as a last good copy in
   `<data_dir>/threat-lists/` that is used at start and when a refresh fails; `ThreatSet::merge`.
+- Phase 11 done (milestone M1): plan, status (coverage re-measured, 89.7% of product code), readme,
+  specs, test list and conventions updated.
 
 ### Changed
 - `AlertOutput::notify` returns a `Result` and gains `suppressed`; `RecordingAlertSink` records both.

@@ -100,8 +100,11 @@ uses an uncommon port, or uses a random-looking name.
 
 - Data is kept in a local **SQLite** database by default. **PostgreSQL** can collect data from many machines.
 - If storage is down for a while, scribe keeps the data on disk and sends it later.
-- Alerts go to **desktop notifications**, a **log file** or a **webhook**.
-  Repeated alerts for the same host are grouped, so you are not flooded.
+- Alerts go to **desktop notifications** (`scribe notify`, started at login), the **log** and
+  **webhooks** (JSON signed with HMAC-SHA256, HTTPS only). Repeated alerts for the same host are
+  grouped, and each output is rate-limited, so you are not flooded.
+- **Threat lists** can be local files or downloads, checked by a pinned hash or a minisign
+  signature; a list that fails its checks never replaces the last good one.
 
 ## Privacy
 
@@ -119,7 +122,8 @@ uses an uncommon port, or uses a random-looking name.
 - User names and passwords inside URLs are always removed.
 - Data leaves the machine only if you set up a remote database or a webhook.
 - Passwords and keys are never written in the config file. The config points to a protected file
-  or, later, to the system key store.
+  or to the system key store (macOS keychain, Windows DPAPI, Linux Secret Service);
+  `scribed --set-secret <reference>` puts one there.
 
 ## Using scribe
 
@@ -142,6 +146,8 @@ scribe hosts --hourly example.com   # one host's traffic per hour
 scribe mode caution                 # switch mode
 scribe alerts                       # list alerts, with the URL for plaintext requests
 scribe alerts ack 12                # stop an alert from repeating
+scribe alerts --watch               # new alerts as they happen
+scribe notify                       # desktop notifications (see packaging/README.md for login)
 scribe baseline add example.com     # mark a host as known
 scribe url list --host example.com  # plaintext requests the URL module stored
 scribe daemon hibernate --for 30m   # pause processing for a while
@@ -189,7 +195,7 @@ Every setting is explained in [config/scribe.toml](config/scribe.toml).
 | Running as a service (systemd, launchd, Windows) | Done |
 | Live capture with the pcap sensor (every system; no process info) | Done |
 | Command-line queries and the local API (Unix socket, Windows named pipe) | Done |
-| Alert outputs (notifications, log, webhook) | Next |
+| Alert outputs (notifications, log, webhook), threat-list downloads, OS key stores | Done |
 | Native sensors for Linux, Windows and macOS (process attribution) | Planned |
 | PostgreSQL, installers | Planned |
 
