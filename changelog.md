@@ -33,6 +33,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   the webhook config test a Windows path, and the network tests allow for Windows retrying a refused
   connect for about 2 s; the TLS test server answers each connection on its own thread.
 - Plan and status record Tests run `45452687480` (after phase 11) as green on Linux, macOS and Windows.
+- Plan: options for the stubbed phases (7, 8, 9, 12, 13, 14, UI) with costs and recommendations, and a
+  new cross-platform option P (process attribution from the OS socket tables); status links to them.
 - Phase 11 done (milestone M1): plan, status (coverage re-measured, 89.7% of product code), readme,
   specs, test list and conventions updated.
 

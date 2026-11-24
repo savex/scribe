@@ -1,6 +1,6 @@
 # Implementation plan for scribe
 
-*Last updated 2026-11-22, after phase 6 (commits `f42a76b`…`b9a61ae`); before that after phase 5 (commits `39796b2`…`173e2bf`), phase 4 (commits `9c36205`…`ef17bee`), phase 3 (commits `5a2ce1b`…`568ccb9`), phase 2 (commits `6122243`…`d24cfef`), phase 1 (commit `4216ebc`) and a plan review: secrets crate added to phase 3, phase 2 and 4 scope completed, CI risk and pending decisions added. Progress details: [status.md](status.md).
+*Last updated 2026-11-24, after phase 11 (commits `2f6cf0e`…`44f0c44`, milestone M1) with options for the phases still stubbed (section *Options for the stubbed phases*); before that after phase 10 (`920c906`…`e78c339`), phase 6 (commits `f42a76b`…`b9a61ae`), phase 5 (commits `39796b2`…`173e2bf`), phase 4 (commits `9c36205`…`ef17bee`), phase 3 (commits `5a2ce1b`…`568ccb9`), phase 2 (commits `6122243`…`d24cfef`), phase 1 (commit `4216ebc`) and a plan review: secrets crate added to phase 3, phase 2 and 4 scope completed, CI risk and pending decisions added. Progress details: [status.md](status.md).
 Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md).*
 
 **Assumptions**
@@ -56,8 +56,115 @@ In this order, because each one turns existing tests and data into real coverage
 
 0. **Tag a release for M1:** Tests passed on all three systems after phase 11 (run `45452687480`, commit `44f0c44`; the first run, `45448523591`, found 7 Windows-only test problems, fixed in `44f0c44`).
 1. **Apply for Apple's Network Extension entitlement now**, so the wait overlaps M2 (risk 1). Listed since October; not done yet as far as this plan knows.
-2. **M2: native sensors** (phases 7–9, independent of each other) for process attribution; Postgres (phase 12) any time.
-3. **Any time, cheap:** add `cargo deny` / `cargo audit` to the Tests workflow and pin Actions by SHA (phase 14 work that needs no product code).
+2. **Choose the approach for each stubbed phase** (section *Options for the stubbed phases* below); the recommended order starts with process attribution on all three systems from socket tables (option P), then the native sensors.
+3. **M2: native sensors** (phases 7–9, independent of each other) for process attribution; Postgres (phase 12) any time.
+4. **Any time, cheap:** add `cargo deny` / `cargo audit` to the Tests workflow and pin Actions by SHA (phase 14 work that needs no product code).
+
+## Options for the stubbed phases
+
+*Added 2026-11-24, after M1.* Phases 7, 8, 9 and 12 are stubs (a crate that compiles and reports
+`unavailable`, or migrations only); 13 and 14 are partly scripted. For each, the realistic ways to
+build it, what they cost and what they give. Days are focused person-days like the phase table; the
+plan's estimates are for the option marked **plan**. Nothing here is decided until you pick.
+
+### P. Cross-cutting first step: process attribution from socket tables (new option)
+
+Every native sensor exists mainly for **process attribution**, which the pcap fallback lacks (UC-6).
+A cheaper route gives most of it on all three systems now, without kernel programs, drivers or
+Apple's entitlement: keep the pcap sensor for packets and names, and look up the owning process of
+each new flow in the OS socket table by its 5-tuple.
+
+| System | Source of the socket → process mapping |
+|---|---|
+| Linux | `NETLINK_SOCK_DIAG` (socket inode for the 5-tuple) and `/proc/<pid>/fd` → path from `/proc/<pid>/exe` |
+| Windows | `GetExtendedTcpTable` / `GetExtendedUdpTable` with `OWNER_PID`, then `QueryFullProcessImageNameW` |
+| macOS | `libproc`: `proc_listpids` and `proc_pidfdinfo(PROC_PIDFDSOCKETINFO)` per process, cached and refreshed on a miss |
+
+- **Gives:** process path and pid on most flows everywhere; one `ProcessResolver` interface in
+  `core`, three small implementations, the sensor conformance suite extended with a process case.
+- **Misses:** very short-lived connections (the socket is gone before the lookup) and UDP sockets
+  that send once; it reads other processes' tables, so it needs root / Administrator like capture.
+- **Cost:** 6–8 days for all three, no new risks. It stays useful afterwards as the attribution
+  for the pcap fallback (old kernels, no Npcap ETW rights, no approved extension).
+- **Recommendation:** do this first. It turns M2's main promise into something users get within
+  about a week and lowers the urgency of the three native sensors.
+
+### Phase 7: Linux sensor
+
+| Option | How | Gives | Costs and risks | Days |
+|---|---|---|---|---|
+| **7A eBPF with `aya`** (plan) | Rust eBPF programs on `tcp_connect` / `udp_sendmsg` / cgroup socket hooks, ring buffer, CO-RE via BTF | Every connection with pid, cgroup and the first bytes, no polling races; one language | eBPF programs need nightly Rust and `bpf-linker` to build (kept in a separate crate built by `xtask` / CI, the object embedded); `aya` raises the minimum Rust to 1.98 (risk 8); kernel 5.8+ | 11.5–15.5 |
+| 7B eBPF with `libbpf-rs` | Programs in C (`clang -target bpf`, `vmlinux.h`), loaded through libbpf (vendored C) | Most mature loader and verifier coverage across kernels | C toolchain and libbpf / libelf in every Linux build; two languages to review | 12–16 |
+| 7C No kernel programs | Option P on Linux plus `NETLINK_CONNECTOR` process events and conntrack events (`nfnetlink`) for short-lived flows | Works on any kernel, no eBPF privileges, simple to review | Short flows still racy without conntrack; conntrack needs the module loaded and `CAP_NET_ADMIN` | 5–7 (on top of P: 2–3) |
+
+**Recommendation:** P now, then **7A** with the eBPF object built in CI and checked into the
+release, so day-to-day builds stay on stable Rust. 7B only if `aya` turns out not to load on a
+kernel you must support.
+
+### Phase 8: Windows sensor
+
+| Option | How | Gives | Costs and risks | Days |
+|---|---|---|---|---|
+| **8A ETW + Npcap** (plan) | Real-time ETW session on `Microsoft-Windows-Kernel-Network` and `Microsoft-Windows-DNS-Client` (through `windows-sys` or the `ferrisetw` crate); packet contents from the existing pcap sensor joined by 5-tuple | Every connection with pid and the DNS names Windows resolved; SNI and URLs still from Npcap | Kernel-Network events need Administrator / a service with the right privilege; joining two event streams by 5-tuple and time; ETW buffer loss under load must be counted | 11–13 |
+| 8B Socket table only | Option P on Windows (IP Helper tables) and Npcap | Process for most flows, almost no new code | Misses short-lived flows; no DNS-client names (pcap DNS still works) | 2–3 (part of P) |
+| 8C WFP callout driver or WinDivert | Kernel filter with flow and payload | Exact attribution and payload in one place; the path to blocking later | Needs an EV code-signing certificate and driver review; WinDivert's driver is third-party code in the kernel | 20+ and vendor waits |
+
+**Recommendation:** P (that is 8B) now, then **8A**. 8C only with the later blocking feature.
+
+### Phase 9: macOS sensor
+
+| Option | How | Gives | Costs and risks | Days |
+|---|---|---|---|---|
+| **9A Network Extension** (plan) | Swift System Extension with `NEFilterDataProvider`, XPC to `scribed`, container app, notarized `.pkg` | Every flow with the app's audit token and signing identity, the remote host name the app asked for, the first bytes; the only Apple-supported way | Apple Developer Program, the content-filter entitlement (weeks of waiting, risk 1), notarization, user or MDM approval; Swift and XPC code to secure (risk 7) | 13–17 + waits |
+| 9B `libproc` socket table | Option P on macOS (`proc_pidfdinfo`), with the existing pcap sensor | Process path for most flows, no entitlement, works today | Races for short flows; polling cost grows with the number of processes; no per-app signing identity | 2–3 (part of P) |
+| 9C Private `NetworkStatistics` framework (what `nettop` uses) | Undocumented API | Every flow with process, no entitlement | Private API can break with any macOS update and blocks notarized distribution through some channels; not recommended | 5–7 |
+
+**Recommendation:** P (9B) now; **apply for the entitlement today** and build 9A when it arrives.
+
+### Phase 12: Postgres backend
+
+| Option | How | Gives | Costs and risks | Days |
+|---|---|---|---|---|
+| **12A `tokio-postgres` + `deadpool-postgres` + `tokio-postgres-rustls`** (plan) | Hand-written queries through the shared row codec, existing migrations | Fits the async storage manager; TLS on rustls like `scribe-net`; small dependency set | Queries checked only by the conformance suite (which already exists) | 5.5–6.5 |
+| 12B `sqlx` (Postgres, rustls) | Compile-time checked queries, its migration runner | Query typos caught at build time | Needs a database or the `.sqlx` offline data at build time; heavier; its migrator would replace the existing one | 6–7 |
+| 12C Event sink first, state store later | 12A for `EventSink` only (UC-9, the fleet history), Postgres as state store afterwards | The fleet use case in about half the time | Two steps; config rejects Postgres as state store until step two | 3 + 3 |
+
+**Recommendation:** **12A, delivered as 12C** (sink first): UC-9 is what people ask Postgres for.
+
+### Phase 13: packaging and release
+
+| Choice | Options | Recommendation |
+|---|---|---|
+| Linux packages | `cargo-deb` + `cargo-generate-rpm` (read `Cargo.toml`, Rust tools); or `nfpm` (one YAML for `.deb`, `.rpm`, `.apk`) | `nfpm`: one file for both formats and the same systemd unit and scriptlets |
+| Windows installer | WiX v5 through `cargo-wix`; or MSIX | WiX: MSIX can't install a classic service with files next to the app (specs 9.1) |
+| macOS package | `pkgbuild` / `productbuild` + `notarytool`; the extension (9A) joins later | As planned; the `.pkg` can ship before 9A with the daemon, CLI and the `scribe notify` agent |
+| Release signing (open question 13) | cosign keyless (GitHub OIDC, Rekor log); or minisign (a key you keep; offline checks; scribe already verifies minisign for threat lists) | minisign-signed `SHA256SUMS` plus GitHub build-provenance attestations: no online service needed to verify, same tool as threat lists |
+| Encryption at rest | SQLCipher + AES-GCM spool (plan); or leave it to full-disk encryption | Keep it optional and last; can slip past v1 (risk 7) |
+
+### Phase 14: hardening
+
+| Choice | Options | Recommendation |
+|---|---|---|
+| Fuzzing | Scheduled nightly `cargo fuzz` in CI (the Fuzz workflow exists, never run); or OSS-Fuzz | Run the existing workflow weekly on a schedule; OSS-Fuzz only once the project is public and stable |
+| Supply chain | `cargo deny` + `cargo audit` in Tests, Actions pinned by SHA, minimal `permissions:` | Do now; it needs no product code |
+| Performance | Criterion benchmarks for the parsers and pipeline; a load test replaying fixtures at high rate with memory limits from NFRs | Replay-based load test first: it checks the < 100 MB memory target directly |
+
+### UI (after M3)
+
+Tauri on the existing local API and mock data (planned), or a terminal UI (`ratatui`) first: a TUI
+needs no installers or code signing of its own and reuses the CLI client, so it can ship with M2.
+
+### Suggested order
+
+1. **P** (6–8 days): process attribution on all three systems.
+2. **Tag the M1 release**, and send the Network Extension entitlement request (no code).
+3. **12C** sink (3 days) and the cheap part of 14 (supply chain, scheduled fuzzing; 1 day).
+4. **7A** and **8A** (in parallel if two people), then **9A** when Apple approves.
+5. **13** installers, then the rest of 12 and 14.
+
+P adds 6–8 days to M2 (8B and 9B are part of it, not extra), so M2 becomes 41.5–53.5 days if all
+of 7A, 8A and 9A still follow. What P buys is that process attribution arrives in the first week
+instead of at the end of M2, and that each native sensor can then be judged on what it adds over P.
 
 ## Decisions since the first version
 
@@ -109,7 +216,7 @@ Open questions from [specs.md](specs.md) section 15 that a phase can't finish wi
 6. **Module framework scope:** a general interface designed with only one real module risks fitting URL tracking alone. A test-only metrics source module (`TicksModule`) already exercises the interface without a flow hook; keep the outputs generic and mark `scribe-module-api` unstable until a second real module exists.
 7. **Security scope (new):** the 12.1.1 design touches every phase and three OSes. The privilege split and the API access checks are the riskiest parts: keep the privileged code tiny, test every control call as a read-only peer, and review both in phase 14. Encryption at rest (`storage.encrypt`) is optional and can slip past v1 without blocking a release.
 8. **Minimum Rust version (resolved):** policy *follow dependencies*, 1.89 now. Remaining risk: a dependency may require a very recent Rust (aya 0.16 needs 1.98); that's accepted, since release binaries are built on current stable.
-9. **CI partly run:** Tests run #2 (`45198461612`, 2026-11-23): the whole workspace, including the crates with C code (bundled SQLite, `ring`), builds on Linux, macOS and Windows and passes on Linux and macOS; 9 Windows tests failed on Unix-only paths and TOML escapes; after the fix, run #3 (`45202847881`) passed on all three, and run #4 (`45226370809`, after phase 10) too, with the Windows named pipe and Postgres migrations 1–4. Version tracking has run (`45072299330`, once cited here as Tests by mistake). Release passed for `v0.2.0` (`45322623374`, 4 archives and `SHA256SUMS`); Sensors, E2E, Fuzz and UI have not run there yet.
+9. **CI partly run:** Tests run #2 (`45198461612`, 2026-11-23): the whole workspace, including the crates with C code (bundled SQLite, `ring`), builds on Linux, macOS and Windows and passes on Linux and macOS; 9 Windows tests failed on Unix-only paths and TOML escapes; after the fix, run #3 (`45202847881`) passed on all three, and run #4 (`45226370809`, after phase 10) too, with the Windows named pipe and Postgres migrations 1–4. Version tracking has run (`45072299330`, once cited here as Tests by mistake). Release passed for `v0.2.0` (`45322623374`, 4 archives and `SHA256SUMS`); after phase 11, run #5 (`45448523591`) failed on 7 Windows-only test assumptions and run #6 (`45452687480`) passed on all three. Sensors, E2E, Fuzz and UI have not run there yet.
 
 10. **Rosetta retirement (new, 2026-11-22):** macOS 27 is the last release with general-purpose Rosetta; from macOS 28 (autumn 2027) Apple keeps it only for older unmaintained games ([Apple](https://support.apple.com/en-us/102527)). Rosetta for Linux VMs (used by Apple `container` for `amd64` images) is reported to continue, but Apple's support page doesn't say so. So no build or test step may *depend* on Rosetta: Linux release builds cross-compile from a native `arm64` container, `x86_64` Linux tests run natively (WSL2 on the Windows x64 machine, or CI), and `x86_64` macOS tests run in CI. Rosetta stays an optional shortcut while it works.
 

@@ -199,7 +199,9 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 - **Next steps:**
   0. Tag a release for M1; Tests passed on all three systems after phase 11 (run `45452687480`).
   1. Apply for Apple's Network Extension entitlement (plan risk 1).
-  2. M2: native sensors (phases 7–9).
+  2. Pick an approach for each stubbed phase: [plan.md, *Options for the stubbed phases*](plan.md#options-for-the-stubbed-phases).
+     Recommended first: process attribution from the OS socket tables on all three systems (option P, 6–8 days),
+     then the native sensors (phases 7–9), the Postgres event sink (12C) and supply-chain checks (14).
 - **Not verified here:** Windows toasts (DPAPI and the `scribe notify` agent over the named pipe passed in run `45452687480`); real desktop notifications on any system (the agent is tested with a fake notifier); keychain and Secret Service round trips (gated: `SCRIBE_TEST_KEYCHAIN=1`, a desktop keyring); the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests and Release,
   the Postgres backend beyond loading its migrations (run `45226370809` loads 0001–0004 and the seeds), the Windows named pipe outside the Windows runner (its tests passed there in run `45226370809`) and the fuzz targets (no nightly).
   Local Linux / Windows compile checks leave out crates with C code (bundled SQLite, `ring`: the daemon, `enrich`,
