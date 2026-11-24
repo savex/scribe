@@ -46,13 +46,17 @@ fn start(connections: usize) -> TlsServer {
             let Ok((tcp, _)) = listener.accept() else {
                 return;
             };
-            let _ = tcp.set_read_timeout(Some(Duration::from_secs(5)));
-            let conn = rustls::ServerConnection::new(config.clone()).unwrap();
-            let mut tls = rustls::StreamOwned::new(conn, tcp);
-            let _ = read_request(&mut tls);
-            let _ = tls.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nsecure");
-            tls.conn.send_close_notify();
-            let _ = tls.flush();
+            // One thread per connection: a refused handshake never holds up the next client.
+            let config = config.clone();
+            thread::spawn(move || {
+                let _ = tcp.set_read_timeout(Some(Duration::from_secs(5)));
+                let conn = rustls::ServerConnection::new(config).unwrap();
+                let mut tls = rustls::StreamOwned::new(conn, tcp);
+                let _ = read_request(&mut tls);
+                let _ = tls.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\nsecure");
+                tls.conn.send_close_notify();
+                let _ = tls.flush();
+            });
         }
     });
     TlsServer { port, sha256 }
@@ -68,13 +72,18 @@ fn client(pin: Option<String>) -> Client {
 }
 
 #[test]
-fn https_with_a_self_signed_certificate_needs_its_pin() {
-    let server = start(3);
+fn a_self_signed_certificate_fails_the_system_trust_check() {
+    let server = start(1);
     let url = format!("https://localhost:{}/hook", server.port);
-
     let err = client(None).post(&url, &[], b"x").unwrap_err();
     assert!(matches!(err, NetError::Tls(..)), "{err}");
     assert!(!err.is_transient());
+}
+
+#[test]
+fn a_self_signed_certificate_is_accepted_only_with_its_pin() {
+    let server = start(2);
+    let url = format!("https://localhost:{}/hook", server.port);
 
     let r = client(Some(server.sha256.clone()))
         .post(&url, &[], b"x")

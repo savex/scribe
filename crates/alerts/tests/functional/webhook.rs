@@ -63,8 +63,12 @@ fn server(statuses: Vec<u16>) -> (String, Arc<Mutex<Vec<Got>>>) {
 }
 
 fn webhook(url: &str, clock: Arc<FakeClock>) -> WebhookOutput {
+    webhook_with(url, clock, Duration::from_secs(5))
+}
+
+fn webhook_with(url: &str, clock: Arc<FakeClock>, timeout: Duration) -> WebhookOutput {
     let client = Client::new(Options {
-        timeout: Duration::from_secs(5),
+        timeout,
         ..Options::default()
     })
     .unwrap();
@@ -151,9 +155,14 @@ fn webhook_network_failures_are_retried_then_reported() {
         .local_addr()
         .unwrap()
         .port();
-    let err = webhook(&format!("http://127.0.0.1:{port}/hook"), clock.clone())
-        .notify(&alert("example.com", clock.now()))
-        .unwrap_err();
-    assert!(err.starts_with("cannot reach http://127.0.0.1:"), "{err}");
+    // A short timeout: Windows retries a refused connect for about 2 s.
+    let err = webhook_with(
+        &format!("http://127.0.0.1:{port}/hook"),
+        clock.clone(),
+        Duration::from_millis(300),
+    )
+    .notify(&alert("example.com", clock.now()))
+    .unwrap_err();
+    assert!(err.contains("http://127.0.0.1:"), "{err}");
     assert!(err.ends_with("(after 3 attempts)"), "{err}");
 }

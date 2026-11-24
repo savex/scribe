@@ -99,6 +99,21 @@ impl Agent {
     }
 }
 
+/// A socket in `dir`, or a fresh named pipe on Windows.
+fn endpoint(dir: &Path) -> PathBuf {
+    if cfg!(windows) {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        PathBuf::from(format!(
+            r"\\.\pipe\scribe-notify-test-{}-{n}",
+            std::process::id()
+        ))
+    } else {
+        dir.join("api.sock")
+    }
+}
+
 fn empty() -> Scenario {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     Scenario::named(&root, "empty-first-launch").unwrap()
@@ -126,7 +141,7 @@ fn quick(max_per_minute: u32, min_score: u32) -> AgentOptions {
 #[tokio::test(flavor = "multi_thread")]
 async fn notify_agent_shows_alerts_and_rate_limits_them() {
     let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("api.sock");
+    let socket = endpoint(dir.path());
     let server = MockApiServer::start(empty(), &socket).unwrap();
     let clock = Arc::new(FakeClock::at_unix(1_800_000_000));
     let mut agent = Agent::start(&socket, quick(2, 0), clock.clone());
@@ -152,7 +167,7 @@ async fn notify_agent_shows_alerts_and_rate_limits_them() {
 #[tokio::test(flavor = "multi_thread")]
 async fn notify_agent_skips_low_scores_but_never_hibernation() {
     let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("api.sock");
+    let socket = endpoint(dir.path());
     let server = MockApiServer::start(empty(), &socket).unwrap();
     let clock = Arc::new(FakeClock::at_unix(1_800_000_000));
     let mut agent = Agent::start(&socket, quick(0, 50), clock);
@@ -172,7 +187,7 @@ async fn notify_agent_skips_low_scores_but_never_hibernation() {
 #[tokio::test(flavor = "multi_thread")]
 async fn notify_agent_waits_for_scribed_and_catches_up_after_a_restart() {
     let dir = tempfile::tempdir().unwrap();
-    let socket = dir.path().join("api.sock");
+    let socket = endpoint(dir.path());
     let clock = Arc::new(FakeClock::at_unix(1_800_000_000));
     // Started before scribed: it waits.
     let mut agent = Agent::start(&socket, quick(0, 0), clock);

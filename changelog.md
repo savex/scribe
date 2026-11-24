@@ -29,6 +29,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   (`refresh`, default 24h) through `scribe-net`, checked against `sha256` or `minisign_key`
   (signature from `<url>.minisig`) and `max_entries`, and kept as a last good copy in
   `<data_dir>/threat-lists/` that is used at start and when a refresh fails; `ThreatSet::merge`.
+- Phase 11 tests fixed for Windows (Tests run `45448523591`): `scribe notify` tests use a named pipe there,
+  the webhook config test a Windows path, and the network tests allow for Windows retrying a refused
+  connect for about 2 s; the TLS test server answers each connection on its own thread.
 - Phase 11 done (milestone M1): plan, status (coverage re-measured, 89.7% of product code), readme,
   specs, test list and conventions updated.
 

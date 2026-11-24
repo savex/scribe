@@ -866,7 +866,12 @@ mod functional {
         assert_eq!(h.name, "ops");
         assert_eq!(h.timeout.get(), std::time::Duration::from_secs(10));
         assert!(h.pin_sha256.is_some());
-        parse_ok("[[alerts.webhooks]]\nname = \"local\"\nurl = \"http://127.0.0.1:9000/x\"\nsecret = \"file:/etc/scribe/w.key\"\ntimeout = \"3s\"\n");
+        let key = if cfg!(windows) {
+            r"C:\scribe\w.key"
+        } else {
+            "/etc/scribe/w.key"
+        };
+        parse_ok(&format!("[[alerts.webhooks]]\nname = \"local\"\nurl = \"http://127.0.0.1:9000/x\"\nsecret = 'file:{key}'\ntimeout = \"3s\"\n"));
 
         for (text, says) in [
             (

@@ -163,7 +163,12 @@ fn silence_times_out_and_refusal_is_transient() {
     let err = quick
         .post(&format!("http://127.0.0.1:{port}/"), &[], b"x")
         .unwrap_err();
-    assert!(matches!(err, NetError::Connect(..)), "{err}");
+    // Refused at once on Unix; Windows retries a refused connect for about 2 s, so a short timeout
+    // can end it first. Either way it is worth trying again.
+    assert!(
+        matches!(err, NetError::Connect(..) | NetError::Timeout(_)),
+        "{err}"
+    );
     assert!(err.is_transient());
 
     let err = quick
