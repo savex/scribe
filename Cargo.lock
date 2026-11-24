@@ -1163,7 +1163,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "scribe-api"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "hyper-util",
  "libc",
@@ -1185,7 +1185,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-cli"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "clap",
  "scribe-api",
@@ -1201,7 +1201,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-core"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "fs4",
  "libc",
@@ -1215,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-daemon"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1253,7 +1253,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-enrich"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "proptest",
  "ring",
@@ -1263,7 +1263,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-module-api"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-core",
  "serde",
@@ -1274,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-module-conformance"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-core",
  "scribe-module-api",
@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-module-url"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "clap",
  "prost",
@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-policy"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "proptest",
  "scribe-core",
@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-secrets"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "libc",
  "ring",
@@ -1330,7 +1330,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-sensor-conformance"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-core",
  "scribe-sensor-pcap",
@@ -1339,14 +1339,14 @@ dependencies = [
 
 [[package]]
 name = "scribe-sensor-linux"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-core",
 ]
 
 [[package]]
 name = "scribe-sensor-pcap"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "libloading",
  "proptest",
@@ -1358,14 +1358,14 @@ dependencies = [
 
 [[package]]
 name = "scribe-sensor-windows"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-core",
 ]
 
 [[package]]
 name = "scribe-storage-api"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-core",
  "serde_json",
@@ -1374,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-conformance"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-core",
  "scribe-storage-api",
@@ -1384,7 +1384,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-manager"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-core",
  "scribe-storage-api",
@@ -1400,7 +1400,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-postgres"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "scribe-storage-api",
  "scribe-storage-conformance",
@@ -1409,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-sqlite"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "proptest",
  "rusqlite",
@@ -1423,7 +1423,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-test-support"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "ring",
  "scribe-api",
@@ -1440,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-tests"
-version = "0.1.0-alpha.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",

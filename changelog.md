@@ -10,6 +10,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-23
+
 ### Added
 - Phase 10 step 1: `scribe-api` crate with the local API protocol (`proto/scribe/v1/api.proto`, generated
   without `protoc` through `protox`), the Unix socket transport, caller identity from the socket and the access
@@ -329,6 +331,7 @@ design documents and phase 0.
 ### Removed
 - `config/scribe.example.toml`, replaced by `config/scribe.toml`.
 
-[Unreleased]: https://github.com/savex/scribe/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/savex/scribe/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/savex/scribe/releases/tag/v0.2.0
 [0.1.0-alpha.1]: https://github.com/savex/scribe/releases/tag/v0.1.0-alpha.1
 [0.1.1]: https://github.com/savex/scribe/releases/tag/v0.1.1
