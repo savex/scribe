@@ -134,6 +134,16 @@ socket = ""
 admin_group = "scribe-admin"
 
 
+# ─── Alert outputs ───────────────────────────────────────────────────────────
+
+# Every alert is stored and streamed to local API clients (the `WatchAlerts` call). These are
+# scribed's own outputs on top of that.
+# Changes apply on reload (`scribe daemon reset --config` or SIGHUP).
+[alerts]
+log = true                # a `scribe::alert` warning line in scribed's log per alert
+max_per_minute = 30       # per output; the rest are counted and reported once a minute; 0 = unlimited
+
+
 # ─── Storage ─────────────────────────────────────────────────────────────────
 
 [storage.state]

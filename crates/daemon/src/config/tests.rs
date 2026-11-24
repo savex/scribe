@@ -735,7 +735,7 @@ mod functional {
         use crate::config::reload::plan;
         let running = resolve_text("mode = \"learn\"\n[log]\nlevel = \"info\"\n");
         let new = resolve_text(&format!(
-            "mode = \"alert\"\nprofile = \"work\"\ndata_dir = \"{}\"\n[policy]\nthreshold = 40\n[modules.url]\nquery = \"strip\"\n[daemon]\nmax_hibernate = \"1h\"\n[log]\nlevel = \"debug\"\nformat = \"json\"\n[storage.cache]\nmax_hosts = 10\n[sensor]\ninterface = \"eth1\"\n[api]\nadmin_group = \"wheel\"\n",
+            "mode = \"alert\"\nprofile = \"work\"\ndata_dir = \"{}\"\n[policy]\nthreshold = 40\n[modules.url]\nquery = \"strip\"\n[daemon]\nmax_hibernate = \"1h\"\n[log]\nlevel = \"debug\"\nformat = \"json\"\n[storage.cache]\nmax_hosts = 10\n[sensor]\ninterface = \"eth1\"\n[api]\nadmin_group = \"wheel\"\n[alerts]\nmax_per_minute = 5\n",
             host_path("/srv/scribe")
         ));
         let p = plan(&running, new);
@@ -747,7 +747,8 @@ mod functional {
                 "policy",
                 "modules",
                 "daemon",
-                "log.level"
+                "log.level",
+                "alerts"
             ]
         );
         assert_eq!(
@@ -773,6 +774,24 @@ mod functional {
         );
         assert_ne!(p.settings.config.modules, running.config.modules);
         assert_eq!(p.settings.config.api, running.config.api);
+        assert_eq!(p.settings.config.alerts.max_per_minute, 5);
+    }
+
+    #[test]
+    fn alerts_section_defaults_and_checks() {
+        let s = resolve_text("");
+        assert!(s.config.alerts.log);
+        assert_eq!(s.config.alerts.max_per_minute, 30);
+        let set = resolve_text("[alerts]\nlog = false\nmax_per_minute = 0\n");
+        assert!(!set.config.alerts.log);
+        assert_eq!(set.config.alerts.max_per_minute, 0);
+        for bad in [
+            "[alerts]\nmax_per_minute = -1\n",
+            "[alerts]\nnotify = true\n",
+            "[alerts]\nlog = \"yes\"\n",
+        ] {
+            parse_err(bad);
+        }
     }
 
     #[test]

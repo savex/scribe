@@ -61,6 +61,7 @@ pub fn plan(running: &Settings, new: Settings) -> ReloadPlan {
     );
     live("daemon", old.daemon != cfg.daemon);
     live("log.level", old.log.level != cfg.log.level);
+    live("alerts", old.alerts != cfg.alerts);
     let mut restart = |key, changed: bool| {
         if changed {
             needs_restart.push(key);
@@ -97,6 +98,7 @@ pub fn plan(running: &Settings, new: Settings) -> ReloadPlan {
     settings.config.modules = cfg.modules.clone();
     settings.config.privacy = cfg.privacy.clone();
     settings.config.daemon = cfg.daemon.clone();
+    settings.config.alerts = cfg.alerts.clone();
     settings.config.log.level = cfg.log.level;
     settings.log.level = new.log.level;
     settings.modules = new.modules;

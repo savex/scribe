@@ -272,7 +272,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-P03 | `signals::entropy_matches_hand_computed_values`, `random_looking_names_are_flagged_and_ordinary_ones_are_not`, `entropy_is_bounded_by_the_alphabet` | Label length and bits-per-character limits | In memory | < 10 ms | Exists |
 | FUN-P04 | `engine::alerts_repeat_once_per_window_per_host_and_process`, `acknowledged_alerts_stay_silent`, `a_repeat_with_new_notes_updates_the_earlier_alert` | Window per host + process from the last alert; acknowledged stays silent; notes added to the earlier alert | `FakeClock` | < 10 ms | Exists |
 | FUN-P05 | `engine::learn_ends_after_learn_for_and_switches_mode`, `a_mode_switch_applies_to_the_next_flow`, `a_paused_learn_timer_ends_later_by_the_pause` | `learn_for` switch; mode change from the next flow; paused while hibernating | `FakeClock` | < 10 ms | Exists |
-| FUN-A01 | `log_output_writes_alerts` | Alert log line format | Temp dir | < 10 ms | Phase 11 |
+| FUN-A01 | `log::log_output_writes_alerts`, `log_output_line_without_host_and_summary`; `throttle::*` (3), `dispatch::*` (6) | Alert log line format (text and JSON); rate limit per output with one summary per window; lanes deliver in order, drop when full, count failures, close with a grace | In memory | < 10 ms | Exists |
 | FUN-A02 | `webhook_signing_and_https` | HMAC test vectors, HTTPS only, no cross-host redirects (local test server) | Port `:0` | 50 ms | Phase 11 |
 | FUN-A03 | `notification_adapters` | OS notification calls through a fake OS interface | In memory | < 10 ms | Phase 11 |
 | FUN-A04 | `threat_list_integrity` | Bad checksum rejected; last good list kept; entry cap | Temp dir | < 10 ms | Phase 11 |

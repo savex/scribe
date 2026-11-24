@@ -12,6 +12,7 @@ use std::time::{Duration, SystemTime};
 
 use anyhow::Context as _;
 use clap::Parser;
+use scribe_alerts::{Dispatcher, LogOutput};
 use scribe_core::{Clock, Observation, Sensor, SystemClock, VERSION};
 use scribe_enrich::Enricher;
 use scribe_module_api::ConfigDoc;
@@ -600,7 +601,11 @@ pub async fn serve_full(
     };
 
     let (alerts_tx, _) = tokio::sync::broadcast::channel::<AlertRecord>(crate::api::ALERT_BACKLOG);
-    let mut writer = Writer::new(chain, alerts_tx.clone());
+    let mut writer = Writer::new(
+        chain,
+        alerts_tx.clone(),
+        alert_outputs(&settings, clock.clone()),
+    );
     let mut started = Writes::default();
     if let Some(previous) = unclean {
         warn!(
@@ -796,6 +801,9 @@ pub async fn serve_full(
                         let result = reload(&mut running, &mut pipeline, &storage, clock.as_ref(), &caller).await;
                         let result = match result {
                             Ok((report, writes)) => {
+                                if report.applied.iter().any(|k| k == "alerts") {
+                                    writer.set_outputs(alert_outputs(&running, clock.clone()));
+                                }
                                 writer.apply(&storage, pipeline.profile(), writes).await;
                                 config_loaded = clock.now();
                                 Ok(report)
@@ -814,7 +822,10 @@ pub async fn serve_full(
             }
             _ = hangup(&mut hup) => {
                 match reload(&mut running, &mut pipeline, &storage, clock.as_ref(), "SIGHUP").await {
-                    Ok((_, writes)) => {
+                    Ok((report, writes)) => {
+                        if report.applied.iter().any(|k| k == "alerts") {
+                            writer.set_outputs(alert_outputs(&running, clock.clone()));
+                        }
                         writer.apply(&storage, pipeline.profile(), writes).await;
                         config_loaded = clock.now();
                     }
@@ -825,6 +836,7 @@ pub async fn serve_full(
                 let was = pipeline.is_hibernating();
                 let writes = pipeline.tick();
                 writer.apply(&storage, pipeline.profile(), writes).await;
+                writer.outputs.tick();
                 follow_state(was, &pipeline, sensor.as_mut(), &restart_tx, &mut capturing);
                 pipeline.modules_mut().tick();
                 drain.run(queue.take(), &storage).await;
@@ -886,7 +898,10 @@ pub async fn serve_full(
         );
     }
 
-    drop(writer);
+    let late = writer.outputs.close(OUTPUTS_GRACE);
+    if !late.is_empty() {
+        warn!("alert outputs still busy at shutdown: {}", late.join(", "));
+    }
     match Arc::try_unwrap(storage) {
         Ok(storage) => storage.shutdown().await,
         Err(storage) => {
@@ -1129,22 +1144,53 @@ fn audit(ts: std::time::SystemTime, message: String) -> StoredEvent {
     })
 }
 
-/// Seals audit and alert records into the chain, applies pipeline writes to storage and reports
-/// alerts; storage errors are logged once until a write succeeds again.
+/// How long alert outputs get at shutdown to finish their queues.
+const OUTPUTS_GRACE: Duration = Duration::from_secs(3);
+
+/// scribed's own alert outputs from `[alerts]` (phase 11).
+pub fn alert_outputs(settings: &Settings, clock: Arc<dyn Clock>) -> Dispatcher {
+    let config = &settings.config.alerts;
+    let mut outputs: Vec<Arc<dyn scribe_core::AlertOutput>> = Vec::new();
+    if config.log {
+        outputs.push(Arc::new(LogOutput));
+    }
+    let dispatcher = Dispatcher::new(outputs, config.max_per_minute, clock);
+    info!(
+        outputs = %dispatcher.names().join(", "),
+        max_per_minute = config.max_per_minute,
+        "alert outputs ready"
+    );
+    dispatcher
+}
+
+/// Seals audit and alert records into the chain, applies pipeline writes to storage and hands
+/// alerts to the outputs; storage errors are logged once until a write succeeds again.
 struct Writer {
     chain: Chain,
     failing: bool,
     /// Sealed alerts for `WatchAlerts` clients.
     alerts: tokio::sync::broadcast::Sender<AlertRecord>,
+    outputs: Dispatcher,
 }
 
 impl Writer {
-    fn new(chain: Chain, alerts: tokio::sync::broadcast::Sender<AlertRecord>) -> Self {
+    fn new(
+        chain: Chain,
+        alerts: tokio::sync::broadcast::Sender<AlertRecord>,
+        outputs: Dispatcher,
+    ) -> Self {
         Self {
             chain,
             failing: false,
             alerts,
+            outputs,
         }
+    }
+
+    /// Swap the outputs after a reload; the old ones finish their queues on their own.
+    fn set_outputs(&mut self, outputs: Dispatcher) {
+        let old = std::mem::replace(&mut self.outputs, outputs);
+        let _ = old.close(Duration::ZERO);
     }
 
     async fn apply(&mut self, storage: &Storage, profile: &str, mut writes: Writes) {
@@ -1159,15 +1205,7 @@ impl Writer {
             }
         }
         for alert in &writes.alerts {
-            warn!(
-                target: "scribe::alert",
-                reason = %alert.reason,
-                host = alert.host.as_deref().unwrap_or("-"),
-                dst = %std::net::SocketAddr::new(alert.dst_ip, alert.dst_port),
-                process = alert.process_path.as_deref().unwrap_or("-"),
-                score = alert.score,
-                "alert"
-            );
+            self.outputs.send(alert);
         }
         if writes.is_empty() {
             return;

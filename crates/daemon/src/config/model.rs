@@ -32,6 +32,7 @@ pub struct Config {
     pub daemon: Daemon,
     pub sensor: SensorConfig,
     pub api: Api,
+    pub alerts: Alerts,
 }
 
 impl Default for Config {
@@ -49,6 +50,7 @@ impl Default for Config {
             daemon: Daemon::default(),
             sensor: SensorConfig::default(),
             api: Api::default(),
+            alerts: Alerts::default(),
         }
     }
 }
@@ -83,6 +85,29 @@ impl Default for Api {
         Self {
             socket: Spanned::new(0..0, String::new()),
             admin_group: Spanned::new(0..0, "scribe-admin".to_owned()),
+        }
+    }
+}
+
+// ─── Alert outputs ──────────────────────────────────────────────────────────
+
+/// `[alerts]`: where alerts go besides storage and the API's alert stream (specs 9.1, phase 11).
+/// Applies live on reload.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, default)]
+pub struct Alerts {
+    /// Write each alert as a `scribe::alert` warning in scribed's log.
+    pub log: bool,
+    /// Per output, at most this many alerts a minute; the rest are counted and reported once
+    /// when the minute ends. `0` = unlimited. Storage and `scribe alerts` always get every alert.
+    pub max_per_minute: u32,
+}
+
+impl Default for Alerts {
+    fn default() -> Self {
+        Self {
+            log: true,
+            max_per_minute: 30,
         }
     }
 }

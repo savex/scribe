@@ -307,7 +307,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | SQLite backend | `crates/storage-sqlite` | Default state store and event sink | storage-api | Implemented (schemas v1–v2, both conformance suites)
 | PostgreSQL backend | `crates/storage-postgres` | Optional state store and event sink | storage-api | Stub (schema v1 done) |
 | Policy engine | `crates/policy` (`scribe-policy`), no I/O | Modes, scoring rules, threat lists, dedupe, learn time limit | core | Implemented (phase 4) |
-| Alert outputs | `crates/alerts` (`scribe-alerts`) | OS notifications, log, webhook | core | Planned (interface exists) |
+| Alert outputs | `crates/alerts` (`scribe-alerts`) | Dispatcher (queue and rate limit per output), log, webhook; OS notifications come from the `scribe notify` agent in the user's session | core | Partly (dispatcher and log, phase 11 step 1) |
 | Local API | `crates/api` (`scribe-api`, features `server` / `client`) + `proto/scribe/v1/api.proto` | gRPC service and client | core, storage-api | Planned |
 | Daemon | `crates/daemon` (`scribed`) | Wires everything; config, logging, service lifecycle | all of the above | Stub |
 | CLI | `crates/cli` (`scribe`) | Command line client | core, API client | Partly |
@@ -553,7 +553,7 @@ change live:
 
 | Applies live | Needs a restart (reported, not applied) |
 |---|---|
-| `mode` (only when the file's value changed, so a mode set through the API isn't undone), `profile` (its baseline is loaded), all of `[policy]` (scores, threshold, usual ports, entropy; threat list files read again), `[modules.*]` and `privacy.url_query`, `[daemon]`, `[log] level` (unless `SCRIBE_LOG` is set); alert outputs (phase 11) | `data_dir`; the state store backend and its URL; any `[[storage.sinks]]` change, retention and batching included; cache, buffer and spool limits; `[log] file`, `output`, `format`, `rotate`, `max_size`, `keep`; the sensor; the API socket |
+| `mode` (only when the file's value changed, so a mode set through the API isn't undone), `profile` (its baseline is loaded), all of `[policy]` (scores, threshold, usual ports, entropy; threat list files read again), `[modules.*]` and `privacy.url_query`, `[daemon]`, `[log] level` (unless `SCRIBE_LOG` is set); `[alerts]` | `data_dir`; the state store backend and its URL; any `[[storage.sinks]]` change, retention and batching included; cache, buffer and spool limits; `[log] file`, `output`, `format`, `rotate`, `max_size`, `keep`; the sensor; the API socket |
 
 A reload is all-or-nothing for the live settings: if the file fails any check, or a threat list or the new
 profile's baseline can't be read, nothing changes and the running config stays. Restart-only changes are
@@ -595,6 +595,8 @@ Loaded and checked by `crates/daemon/src/config/` (phase 0).
 | `[modules.url] query` | `full` \| `redact_values` \| `strip` \| `path_only` \| `hash` | `redact_values` | Implemented (section 12.2) |
 | `[modules.url] hash_key` | secret reference for the `hash` key | `file:<data_dir>/url_hash.key` (created on first start) | Implemented |
 | `[privacy] url_query` | as `[modules.url] query` | — | Deprecated alias, read with a warning for one minor version |
+| `[alerts] log` | boolean: a `scribe::alert` warning per alert in scribed's log | `true` | Implemented (phase 11) |
+| `[alerts] max_per_minute` | integer, per output; the rest counted and reported once a minute; `0` = unlimited | `30` | Implemented (phase 11) |
 | `[storage.state] kind` | `sqlite` \| `postgres` | `sqlite` | Decided |
 | `[storage.state] path` (SQLite) | path | `state.db` | Draft default |
 | `[storage.state] url`, `credentials` (Postgres) | URL without password; secret reference (`keychain:`, `dpapi:`, `secret-service:`, `file:`) | — | Decided / Proposed |

@@ -141,3 +141,17 @@ fn the_fallback_sensor_takes_over_when_the_native_one_fails() {
     s.start(tx).unwrap(); // a restart goes straight to the fallback
     assert_eq!(s.name(), "fake");
 }
+
+#[test]
+fn alert_outputs_follow_the_alerts_section() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock: std::sync::Arc<dyn scribe_core::Clock> =
+        std::sync::Arc::new(scribe_test_support::FakeClock::at_unix(1_800_000_000));
+    let on = alert_outputs(&settings_in(dir.path()), clock.clone());
+    assert_eq!(on.names(), ["log"]);
+    let off = alert_outputs(
+        &settings_with(dir.path(), "[alerts]\nlog = false\n"),
+        clock.clone(),
+    );
+    assert!(off.names().is_empty());
+}

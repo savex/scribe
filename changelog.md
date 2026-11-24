@@ -10,7 +10,13 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ## [Unreleased]
 
+### Added
+- Phase 11 step 1: `scribe-alerts` crate with the alert `Dispatcher` (a thread, a bounded queue and a
+  per-minute rate limit per output, with one summary of held-back alerts per minute) and `LogOutput`;
+  new `[alerts]` config section (`log`, `max_per_minute`), applied live on reload.
+
 ### Changed
+- `AlertOutput::notify` returns a `Result` and gains `suppressed`; `RecordingAlertSink` records both.
 - Plan, status and conventions record the first Release run (`45322623374`): `v0.2.0` published for four targets with `SHA256SUMS`.
 
 ## [0.2.0] - 2026-11-23

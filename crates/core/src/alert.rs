@@ -17,8 +17,16 @@ pub struct Alert {
     pub notes: Notes,
 }
 
-/// Destination for alerts: OS notification, log, webhook.
+/// Destination for alerts: log, webhook (`scribe-alerts`); OS notifications come from the
+/// `scribe notify` agent in the user's session. Each output runs on its own thread, so a slow one
+/// never holds up the pipeline or the other outputs.
 pub trait AlertOutput: Send + Sync {
     fn name(&self) -> &str;
-    fn notify(&self, alert: &Alert);
+    /// Deliver one alert; an `Err` is counted and logged by the dispatcher.
+    fn notify(&self, alert: &Alert) -> Result<(), String>;
+    /// `count` alerts were held back by the rate limit during the window that just ended.
+    fn suppressed(&self, count: u64) -> Result<(), String> {
+        let _ = count;
+        Ok(())
+    }
 }

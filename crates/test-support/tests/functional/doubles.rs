@@ -105,7 +105,10 @@ fn recording_alert_sink_keeps_alerts() {
         score: 80,
         reason: "raw_ip".into(),
         notes: Default::default(),
-    });
+    })
+    .unwrap();
+    AlertOutput::suppressed(&sink, 4).unwrap();
     assert_eq!(sink.count(), 1);
     assert_eq!(sink.alerts()[0].reason, "raw_ip");
+    assert_eq!(sink.suppressed_counts(), vec![4]);
 }
