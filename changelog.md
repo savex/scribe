@@ -10,6 +10,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ## [Unreleased]
 
+### Changed
+- Plan, status and conventions record the first Release run (`45322623374`): `v0.2.0` published for four targets with `SHA256SUMS`.
+
 ## [0.2.0] - 2026-11-23
 
 ### Added
