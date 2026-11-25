@@ -68,6 +68,13 @@ jobs:
             sudo "${{ steps.build.outputs.bin }}" --ignored sensors::
           fi
 
+      - name: Service as NT SERVICE\scribed (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo build -p scribe-daemon -p scribe-cli --locked
+          scripts/ci/windows-service-check.ps1 -Bin (Resolve-Path target/debug).Path
+
       - name: Capture after dropping root (Linux)
         if: runner.os == 'Linux'
         # Alone in its process: the test drops the privileges of the whole test binary.

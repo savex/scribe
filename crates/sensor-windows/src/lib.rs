@@ -4,20 +4,24 @@
 //! - **who**: a real-time ETW session on `Microsoft-Windows-Kernel-Network` reports every TCP
 //!   connection attempt and UDP datagram with the process that made it ([`events::NetEvent`]),
 //!   and `Microsoft-Windows-DNS-Client` every completed query with the addresses Windows resolved
-//!   ([`events::DnsQuery`], passed on as a DNS response by [`dns`]);
+//!   ([`events::DnsQuery`], passed on as a DNS response by [`dns`]); `Microsoft-Windows-Kernel-Process`
+//!   gives each process's path ([`processes`]), so scribed needs no rights over other processes;
 //! - **what**: packets from Npcap through the pcap sensor's flow tracker (first bytes for SNI and
 //!   URLs, DNS, QUIC, closes). Without Npcap, [`flows::EtwFlows`] makes the flows from the
 //!   Kernel-Network events alone.
 //!
-//! `scribe_process::join` matches the two by address. [`events`], [`dns`] and [`flows`] build on
+//! `scribe_process::join` matches the two by address. [`events`], [`dns`], [`flows`] and
+//! [`processes`] build on
 //! every system (their tests run everywhere); the ETW session is Windows only.
 
 pub mod dns;
 pub mod events;
 pub mod flows;
+pub mod processes;
 
 pub use events::{DnsQuery, EventError, NetEvent, NetKind};
 pub use flows::EtwFlows;
+pub use processes::{DevicePaths, ProcEvent, ProcKind, Processes};
 
 #[cfg(windows)]
 mod sensor;

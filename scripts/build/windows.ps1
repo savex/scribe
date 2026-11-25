@@ -209,11 +209,13 @@ function Invoke-ServiceTest {
         Copy-Item (Join-Path $bins 'scribed.exe') $dir
         Copy-Item (Join-Path $Root 'packaging\windows\install-service.ps1') $dir
         $data = (Join-Path $dir 'data') -replace '\\', '/'
-        Set-Content -Path (Join-Path $dir 'scribe.toml') -Value "data_dir = '$data'`n[log]`nfile = 'scribed.log'`n"
+        Set-Content -Path (Join-Path $dir 'scribe.toml') -Value "data_dir = '$data'`n[log]`nfile = 'logs/scribed.log'`n"
         Say 'install and start'
         & (Join-Path $dir 'install-service.ps1')
         $service = Get-Service -Name 'scribed'
         $service.WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
+        $as = (Get-CimInstance Win32_Service -Filter "Name='scribed'").StartName
+        if ($as -ne 'NT SERVICE\scribed') { throw "the service runs as '$as', not NT SERVICE\scribed" }
         Start-Sleep -Seconds 2
         Say 'stop'
         Stop-Service -Name 'scribed'

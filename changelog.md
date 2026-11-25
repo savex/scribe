@@ -61,6 +61,14 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   there, run `45695681303`) and 5.8 mounts the host root over 9p (no virtiofs root found).
   In run `45705206686` 5.15, 6.1 and 6.18 passed; 5.8 boots with `psi=0` (5.8.0 oopses in `psi_trigger_create`
   when the runner's systemd-udevd writes a cgroup pressure file).
+- `install-service.ps1` runs scribed as its virtual account `NT SERVICE\scribed` (member of Performance Log
+  Users for the ETW session, read access to its folder, write access to `data` and `logs`) instead of
+  LocalSystem; `-LocalSystem` keeps the old account, `-Writable` adds folders. `scribe` accepts a pipe server
+  running as that account. Sensor tests check the installed service end to end on Windows
+  (`scripts/ci/windows-service-check.ps1`).
+- The ETW sensor takes process paths from Microsoft-Windows-Kernel-Process (start, stop and the rundown it asks
+  for at start; NT paths turned into drive paths), so it needs no rights over other processes;
+  `QueryFullProcessImageNameW` is only the fallback (FUN-SN03, 5 tests).
 - Plan and status record Tests run `45722363836` and Sensor tests run `45722367989` as green: the ETW sensor passes conformance on
   the Windows runner (8A step 2).
 - Plan and status record Tests run `45719108985` (8A step 1) as green on Linux, macOS and Windows.
@@ -72,6 +80,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job fails only for lack of Npcap on the runner) as green.
 - Plan and status record Tests run `45658820882` and Sensor tests run `45658825832` (eBPF sensor on x86_64) as green.
 - Plan and status record Tests run `45648605321` (option 9B finished) as green on Linux, macOS and Windows.
+
+### Security
+
+- Windows: scribed no longer runs as LocalSystem when installed with `install-service.ps1`; it runs as
+  `NT SERVICE\scribed` (service SID), with the ETW session through Performance Log Users (specs NFR-8).
 
 ## [0.3.0-alpha.2] - 2026-11-25
 

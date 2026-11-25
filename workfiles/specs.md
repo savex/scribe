@@ -818,7 +818,7 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 - Privilege split: loading eBPF, the ETW kernel session and opening pcap stay in the small privileged part; the parsers (SNI, QUIC, HTTP, DNS) run after privileges are dropped.
 - Linux: pinned bpffs maps root-only; keep only `CAP_BPF` / `CAP_PERFMON` / `CAP_NET_RAW`, on one thread that (re)starts capture, and drop the rest; the executable path comes from the eBPF programs, so no ptrace rights over other processes are needed (implemented 2026-11-25).
 - systemd unit: `NoNewPrivileges`, `ProtectSystem=strict` with `ReadWritePaths` for data and logs, `PrivateTmp`, `CapabilityBoundingSet`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET` (`AF_PACKET` for the eBPF sensor's packet socket), `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute`.
-- Windows: service SID; processing under `NT SERVICE\scribed` instead of SYSTEM where the ETW session allows it.
+- Windows: service SID; processing under `NT SERVICE\scribed` instead of SYSTEM where the ETW session allows it. Implemented 2026-11-25: `install-service.ps1` runs scribed as that virtual account in Performance Log Users (ETW session), with read access to its folder and write access to `data` and `logs`; process paths come from Microsoft-Windows-Kernel-Process (start / stop / rundown), so no rights over other processes are needed; the `scribe` client accepts a pipe server running as SYSTEM or `NT SERVICE\scribed`. `-LocalSystem` keeps the old account (e.g. Npcap restricted to Administrators).
 
 **Postgres sink (leaves the host)**
 

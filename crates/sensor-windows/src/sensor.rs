@@ -1,14 +1,17 @@
-//! The ETW sensor (Windows): a real-time session on Kernel-Network and DNS-Client, joined with
-//! packets from Npcap when it is installed.
+//! The ETW sensor (Windows): a real-time session on Kernel-Network, DNS-Client and
+//! Kernel-Process, joined with packets from Npcap when it is installed.
 //!
 //! Threads:
 //! - `scribe-etw`: `ProcessTrace` on the session; its callback copies each event's id and user
 //!   data into a channel and returns (ETW drops events while a callback is slow);
-//! - `scribe-etw-join`: parses the events, reports connections to the join and makes flows from
+//! - `scribe-etw-join`: parses the events, keeps each process's path (from its start event, or the
+//!   rundown the session asks for at start), reports connections to the join and makes flows from
 //!   them when there are no packets, or joins them with the pcap sensor's observations;
 //! - the pcap sensor's own threads, when Npcap loads.
 //!
-//! The session needs Administrator rights (or the Performance Log Users group). Events arrive
+//! The session needs Administrator rights or the Performance Log Users group (the installer adds
+//! `NT SERVICE\scribed` to it). Paths come from Kernel-Process, so reading other processes needs
+//! no rights; `QueryFullProcessImageNameW` is only the fallback. Events arrive
 //! about once a second (`FlushTimer`), so packet observations wait up to [`HOLD`] for theirs.
 
 use std::mem::{offset_of, size_of};
@@ -26,14 +29,19 @@ use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_ALREADY_EXISTS, 
 use windows_sys::Win32::System::Diagnostics::Etw::{
     CloseTrace, ControlTraceW, EnableTraceEx2, OpenTraceW, ProcessTrace, StartTraceW,
     CONTROLTRACE_HANDLE, ENABLE_TRACE_PARAMETERS, ENABLE_TRACE_PARAMETERS_VERSION_2,
-    EVENT_CONTROL_CODE_ENABLE_PROVIDER, EVENT_FILTER_DESCRIPTOR, EVENT_FILTER_TYPE_EVENT_ID,
-    EVENT_RECORD, EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_LOGFILEW, EVENT_TRACE_PROPERTIES,
-    EVENT_TRACE_REAL_TIME_MODE, PROCESSTRACE_HANDLE, PROCESS_TRACE_MODE_EVENT_RECORD,
-    PROCESS_TRACE_MODE_REAL_TIME, TRACE_LEVEL_VERBOSE, WNODE_FLAG_TRACED_GUID,
+    EVENT_CONTROL_CODE_CAPTURE_STATE, EVENT_CONTROL_CODE_ENABLE_PROVIDER, EVENT_FILTER_DESCRIPTOR,
+    EVENT_FILTER_TYPE_EVENT_ID, EVENT_RECORD, EVENT_TRACE_CONTROL_STOP, EVENT_TRACE_LOGFILEW,
+    EVENT_TRACE_PROPERTIES, EVENT_TRACE_REAL_TIME_MODE, PROCESSTRACE_HANDLE,
+    PROCESS_TRACE_MODE_EVENT_RECORD, PROCESS_TRACE_MODE_REAL_TIME, TRACE_LEVEL_VERBOSE,
+    WNODE_FLAG_TRACED_GUID,
 };
 
 use crate::events::{
     DNS_QUERY_COMPLETED, TCP_CONNECT_V4, TCP_CONNECT_V6, UDP_SEND_V4, UDP_SEND_V6,
+};
+use crate::processes::{
+    DevicePaths, ProcEvent, Processes, KEYWORD_PROCESS, PROCESS_RUNDOWN, PROCESS_START,
+    PROCESS_STOP,
 };
 use crate::{dns, DnsQuery, EtwFlows, NetEvent};
 
@@ -44,6 +52,7 @@ pub const SESSION: &str = "scribe-etw";
 
 const KERNEL_NETWORK: GUID = GUID::from_u128(0x7dd42a49_5329_4832_8dfd_43d979153a88);
 const DNS_CLIENT: GUID = GUID::from_u128(0x1c95126e_7eea_49a9_a3fe_a378b03ddb4d);
+const KERNEL_PROCESS: GUID = GUID::from_u128(0x22fb2cd6_0e7b_422b_a0c7_2fad1fd0e716);
 const INVALID_PROCESSTRACE: u64 = u64::MAX;
 
 fn same(a: &GUID, b: &GUID) -> bool {
@@ -54,6 +63,7 @@ fn same(a: &GUID, b: &GUID) -> bool {
 enum Provider {
     Network,
     Dns,
+    Process,
 }
 
 /// One event as the callback copied it.
@@ -139,9 +149,15 @@ fn start_session(name: &[u16]) -> Result<CONTROLTRACE_HANDLE, SensorError> {
     Err(win32("StartTraceW", ERROR_ALREADY_EXISTS))
 }
 
-/// Enables `provider` for the events `ids` only (dropping, e.g., Kernel-Network's per-packet
-/// send / receive events in the kernel); without the filter on systems that don't take it.
-fn enable(session: CONTROLTRACE_HANDLE, provider: &GUID, ids: &[u16]) -> Result<(), SensorError> {
+/// Enables `provider` (`keywords`) for the events `ids` only (dropping, e.g., Kernel-Network's
+/// per-packet send / receive events in the kernel); without the filter on systems that don't
+/// take it.
+fn enable(
+    session: CONTROLTRACE_HANDLE,
+    provider: &GUID,
+    keywords: u64,
+    ids: &[u16],
+) -> Result<(), SensorError> {
     // EVENT_FILTER_EVENT_ID: FilterIn (BOOLEAN), Reserved, Count, then the ids.
     let mut filter = vec![1u8, 0];
     filter.extend_from_slice(&(ids.len() as u16).to_le_bytes());
@@ -167,7 +183,7 @@ fn enable(session: CONTROLTRACE_HANDLE, provider: &GUID, ids: &[u16]) -> Result<
                 provider,
                 EVENT_CONTROL_CODE_ENABLE_PROVIDER,
                 TRACE_LEVEL_VERBOSE as u8,
-                u64::MAX,
+                keywords,
                 0,
                 0,
                 params,
@@ -183,6 +199,23 @@ fn enable(session: CONTROLTRACE_HANDLE, provider: &GUID, ids: &[u16]) -> Result<
     }
 }
 
+/// Asks `provider` to report its state now (Kernel-Process: one rundown event per process).
+fn capture_state(session: CONTROLTRACE_HANDLE, provider: &GUID, keywords: u64) -> u32 {
+    // SAFETY: a running session and a valid GUID, no parameters.
+    unsafe {
+        EnableTraceEx2(
+            session,
+            provider,
+            EVENT_CONTROL_CODE_CAPTURE_STATE,
+            TRACE_LEVEL_VERBOSE as u8,
+            keywords,
+            0,
+            0,
+            std::ptr::null(),
+        )
+    }
+}
+
 /// Copies one event to the channel the context points at.
 unsafe extern "system" fn on_event(record: *mut EVENT_RECORD) {
     // SAFETY: ETW passes a valid record for the duration of the call; UserContext is the
@@ -192,6 +225,8 @@ unsafe extern "system" fn on_event(record: *mut EVENT_RECORD) {
         Provider::Network
     } else if same(&r.EventHeader.ProviderId, &DNS_CLIENT) {
         Provider::Dns
+    } else if same(&r.EventHeader.ProviderId, &KERNEL_PROCESS) {
+        Provider::Process
     } else {
         return;
     };
@@ -273,6 +308,7 @@ fn work(
     stats: Arc<Mutex<AttributionStats>>,
 ) {
     let owners = Owners::new(clock.clone(), exe_path());
+    let mut processes = Processes::new(DevicePaths::system());
     let mut joiner = Joiner::new(owners, clock.clone(), HOLD);
     let mut flows = EtwFlows::new();
     let mut bad = 0u64;
@@ -286,7 +322,9 @@ fn work(
                 match raw.provider {
                     Provider::Network => match NetEvent::parse(raw.id, &raw.data) {
                         Ok(Some(e)) => {
-                            joiner.record(&e.connection());
+                            let mut c = e.connection();
+                            c.path = processes.path(e.pid).map(str::to_owned);
+                            joiner.record(&c);
                             if !packets {
                                 ready.extend(
                                     joiner.push(flows.observe(&e, now).into_iter().collect()),
@@ -315,6 +353,16 @@ fn work(
                         }
                     }
                     Provider::Dns => {}
+                    Provider::Process => match ProcEvent::parse(raw.id, &raw.data) {
+                        Ok(Some(e)) => processes.apply(&e, now),
+                        Ok(None) => {}
+                        Err(err) => {
+                            bad += 1;
+                            if bad == 1 {
+                                tracing::warn!("ETW: {err}");
+                            }
+                        }
+                    },
                 }
             }
             Ok(Input::Packet(obs)) => ready.extend(joiner.push(vec![obs])),
@@ -362,9 +410,18 @@ impl Sensor for EtwSensor {
         let enabled = enable(
             session,
             &KERNEL_NETWORK,
+            u64::MAX,
             &[TCP_CONNECT_V4, TCP_CONNECT_V6, UDP_SEND_V4, UDP_SEND_V6],
         )
-        .and_then(|()| enable(session, &DNS_CLIENT, &[DNS_QUERY_COMPLETED]));
+        .and_then(|()| enable(session, &DNS_CLIENT, u64::MAX, &[DNS_QUERY_COMPLETED]))
+        .and_then(|()| {
+            enable(
+                session,
+                &KERNEL_PROCESS,
+                KEYWORD_PROCESS,
+                &[PROCESS_START, PROCESS_STOP, PROCESS_RUNDOWN],
+            )
+        });
         if let Err(e) = enabled {
             stop_session(&name);
             return Err(e);
@@ -439,7 +496,18 @@ impl Sensor for EtwSensor {
             .name("scribe-etw-join".into())
             .spawn(move || work(rx, out, clock, packets, stop2, stats))
             .map_err(SensorError::Io)?;
-        tracing::info!(packets, "ETW sensor started (Kernel-Network, DNS-Client)");
+        // The paths of processes already running; until they arrive, QueryFullProcessImageNameW.
+        let rc = capture_state(session, &KERNEL_PROCESS, KEYWORD_PROCESS);
+        if rc != ERROR_SUCCESS {
+            tracing::info!(
+                "ETW process rundown not available: {}",
+                std::io::Error::from_raw_os_error(rc as i32)
+            );
+        }
+        tracing::info!(
+            packets,
+            "ETW sensor started (Kernel-Network, DNS-Client, Kernel-Process)"
+        );
         self.running = Some(Running {
             name,
             trace: handle,

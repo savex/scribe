@@ -5,7 +5,8 @@
 //! access; the read and admin groups, when they exist, may read and write but not create pipe
 //! instances, so nobody else can squat the name. [`serve`] accepts connections and attaches the
 //! client's identity from its process token. Client: [`connect`] refuses a pipe server that doesn't
-//! run as SYSTEM (or, with `RootOrSelf`, as the calling user).
+//! run as SYSTEM or as scribed's service account [`SERVICE_ACCOUNT`] (or, with `RootOrSelf`, as the
+//! calling user). Only the service control manager gives a process the service account's SID.
 
 // Some helpers serve only the server or only the client side.
 #![cfg_attr(
@@ -37,6 +38,8 @@ const SE_GROUP_USE_FOR_DENY_ONLY: u32 = 0x10;
 const SDDL_REVISION_1: u32 = 1;
 const SID_SYSTEM: &str = "S-1-5-18";
 const SID_ADMINISTRATORS: &str = "S-1-5-32-544";
+/// The virtual account the installer runs scribed as (its service SID).
+pub const SERVICE_ACCOUNT: &str = r"NT SERVICE\scribed";
 /// Read and write data, but not FILE_CREATE_PIPE_INSTANCE (= FILE_APPEND_DATA).
 const CLIENT_RIGHTS: &str = "0x0012019b";
 
@@ -183,18 +186,19 @@ fn process_user_sid(pid: Option<u32>) -> io::Result<String> {
     sid_string(user.User.Sid).ok_or_else(|| io::Error::other("cannot read the token's user"))
 }
 
-/// Refuses a pipe server whose process isn't run by SYSTEM (or the calling user, with
-/// `RootOrSelf`).
+/// Refuses a pipe server whose process isn't run by SYSTEM or scribed's service account (or the
+/// calling user, with `RootOrSelf`).
 fn check_server_pid(pid: u32, check: ServerCheck) -> io::Result<()> {
     let owner = process_user_sid(Some(pid))?;
     let ok = owner == SID_SYSTEM
+        || sid_of_name(SERVICE_ACCOUNT).is_some_and(|sid| owner == sid)
         || (check == ServerCheck::RootOrSelf && owner == process_user_sid(None)?);
     if ok {
         Ok(())
     } else {
         Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            format!("the pipe server runs as {owner}, not SYSTEM; refusing to talk to it"),
+            format!("the pipe server runs as {owner}, not SYSTEM or {SERVICE_ACCOUNT}; refusing to talk to it"),
         ))
     }
 }
