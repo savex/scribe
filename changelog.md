@@ -17,6 +17,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   the critical metric `attribution_low` and makes health degraded. A table read over 50 ms spaces out the
   next ones (ten times its length, at most 5 s). Finishes the macOS sensor (plan option 9B).
 
+### Changed
+
+- Plan and status record Tests run `45648605321` (option 9B finished) as green on Linux, macOS and Windows.
+
 ## [0.3.0-alpha.2] - 2026-11-25
 
 ### Added
