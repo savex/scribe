@@ -18,10 +18,12 @@ struct TlsServer {
 }
 
 /// Serves `connections` HTTPS connections on 127.0.0.1 with a fresh self-signed certificate for
-/// `localhost`, answering `200 OK` with body `secure`.
+/// `localhost` and `127.0.0.1` (the tests use the address: on Windows `localhost` tries `::1` first,
+/// and a refused connection there costs about 2 s), answering `200 OK` with body `secure`.
 fn start(connections: usize) -> TlsServer {
     let rcgen::CertifiedKey { cert, signing_key } =
-        rcgen::generate_simple_self_signed(vec!["localhost".to_owned()]).unwrap();
+        rcgen::generate_simple_self_signed(vec!["localhost".to_owned(), "127.0.0.1".to_owned()])
+            .unwrap();
     let der: CertificateDer<'static> = cert.der().clone();
     let sha256: String = ring::digest::digest(&ring::digest::SHA256, der.as_ref())
         .as_ref()
@@ -74,7 +76,7 @@ fn client(pin: Option<String>) -> Client {
 #[test]
 fn a_self_signed_certificate_fails_the_system_trust_check() {
     let server = start(1);
-    let url = format!("https://localhost:{}/hook", server.port);
+    let url = format!("https://127.0.0.1:{}/hook", server.port);
     let err = client(None).post(&url, &[], b"x").unwrap_err();
     assert!(matches!(err, NetError::Tls(..)), "{err}");
     assert!(!err.is_transient());
@@ -83,7 +85,7 @@ fn a_self_signed_certificate_fails_the_system_trust_check() {
 #[test]
 fn a_self_signed_certificate_is_accepted_only_with_its_pin() {
     let server = start(2);
-    let url = format!("https://localhost:{}/hook", server.port);
+    let url = format!("https://127.0.0.1:{}/hook", server.port);
 
     let r = client(Some(server.sha256.clone()))
         .post(&url, &[], b"x")

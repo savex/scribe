@@ -42,6 +42,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   specs, test list and conventions updated.
 
 ### Changed
+- Tests: the SQLite counter property runs 12 cases instead of 24 and the TLS tests connect to `127.0.0.1`,
+  so neither comes near the 6 s limit on the Windows runner (Tests run `45520007761` timed out once).
 - `AlertOutput::notify` returns a `Result` and gains `suppressed`; `RecordingAlertSink` records both.
 - Plan, status and conventions record the first Release run (`45322623374`): `v0.2.0` published for four targets with `SHA256SUMS`.
 

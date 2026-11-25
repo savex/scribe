@@ -49,7 +49,9 @@ struct Expected {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(24))]
+    // 12 cases: each writes a SQLite file, which took 4.6–6.1 s for 24 cases on the Windows
+    // runner (Tests runs 45452687480, 45520007761) against the 6 s limit.
+    #![proptest_config(ProptestConfig::with_cases(12))]
 
     /// Stored counters equal the sums of the deltas; first / last seen are min / max; flags only
     /// turn on.
