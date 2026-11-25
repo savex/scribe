@@ -47,6 +47,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   specs, test list and conventions updated.
 
 ### Changed
+- Plan: macOS stays on the pcap sensor with `libproc` process attribution (option 9B, built with option P);
+  the Network Extension (option 9A) moves to a new *Later options* section outside the totals; the
+  entitlement request is no longer on the critical path. Remaining effort 40–51 days.
 - Plan: the Linux eBPF sensor (phase 7) will use `libbpf-rs` with eBPF programs in C (option 7B) instead
   of `aya`; no minimum-Rust raise to 1.98 is expected any more; Linux builds will need `clang`,
   `libelf-dev` and `zlib1g-dev`. Totals updated for option P and the Postgres sink.

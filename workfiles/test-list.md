@@ -227,7 +227,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-SN05 | `scribe-process` functional (11): `parse::*` (3), `resolver::*` (5), `live::*` (3); daemon `the_pcap_sensor_gets_process_lookup_unless_turned_off` | `/proc/net` lines (IPv4, IPv6, v4-mapped, UDP, listen, garbage); matching by 5-tuple, wildcard UDP and v4-mapped; refresh at most every 100 ms (`FakeClock`); unreadable table; the wrapper fills in new flows only; this process's own TCP and UDP sockets found in the real table of each system | In memory / loopback sockets | < 50 ms | Exists |
 | FUN-SN02 | `ebpf_samples_decode` | `testdata/events/linux-ebpf/*` → expected observations | Reads samples | < 10 ms | Phase 7 |
 | FUN-SN03 | `etw_samples_decode` | `testdata/events/windows-etw/*` → expected observations | Reads samples | < 10 ms | Phase 8 |
-| FUN-SN04 | `xpc_messages_decode` | `testdata/events/macos-ne/*` → expected observations; bad messages rejected | Reads samples | < 10 ms | Phase 9 |
+| FUN-SN04 | `xpc_messages_decode` | `testdata/events/macos-ne/*` → expected observations; bad messages rejected | Reads samples | < 10 ms | Only with option 9A (later) |
 | FUN-SN05 | `cases_use_distinct_ports`, `every_case_reaches_its_local_server` | Sensor traffic generator works on loopback | Ports `:0` | 50 ms | Exists |
 
 **Modules**

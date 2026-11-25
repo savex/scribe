@@ -49,7 +49,7 @@ Each operating system has its own sensor. It reports the destination, the progra
 |---|---|---|
 | Linux | eBPF | Yes |
 | Windows | ETW | Yes |
-| macOS | Network Extension | Yes |
+| macOS | Packet capture with the process from the system's socket table (a Network Extension is an option for later) | Yes (very short connections may have none) |
 | Any of them | Packet capture (libpcap / Npcap) | No (fallback) |
 
 ### 2. Enrichment finds the host name
@@ -263,7 +263,7 @@ crates/
   api/                  local API: protocol, socket / named-pipe transport, caller identity
   cli/                  the scribe command
 proto/                  gRPC protocol files
-macos/                  Network Extension (planned)
+macos/                  Network Extension (optional, later)
 ui/                     optional desktop app (planned)
 config/                 default configuration
 testdata/               sample captures, scenarios, database snapshots

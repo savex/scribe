@@ -1,6 +1,6 @@
 # Implementation plan for scribe
 
-*Last updated 2026-11-25: option 7B chosen for the Linux sensor; option P, supply-chain checks and the Postgres sink done. Before that 2026-11-24, after phase 11 (commits `2f6cf0e`…`44f0c44`, milestone M1) with options for the phases still stubbed (section *Options for the stubbed phases*); before that after phase 10 (`920c906`…`e78c339`), phase 6 (commits `f42a76b`…`b9a61ae`), phase 5 (commits `39796b2`…`173e2bf`), phase 4 (commits `9c36205`…`ef17bee`), phase 3 (commits `5a2ce1b`…`568ccb9`), phase 2 (commits `6122243`…`d24cfef`), phase 1 (commit `4216ebc`) and a plan review: secrets crate added to phase 3, phase 2 and 4 scope completed, CI risk and pending decisions added. Progress details: [status.md](status.md).
+*Last updated 2026-11-25: option 9B chosen for macOS (9A kept as a later option); option 7B chosen for the Linux sensor; option P, supply-chain checks and the Postgres sink done. Before that 2026-11-24, after phase 11 (commits `2f6cf0e`…`44f0c44`, milestone M1) with options for the phases still stubbed (section *Options for the stubbed phases*); before that after phase 10 (`920c906`…`e78c339`), phase 6 (commits `f42a76b`…`b9a61ae`), phase 5 (commits `39796b2`…`173e2bf`), phase 4 (commits `9c36205`…`ef17bee`), phase 3 (commits `5a2ce1b`…`568ccb9`), phase 2 (commits `6122243`…`d24cfef`), phase 1 (commit `4216ebc`) and a plan review: secrets crate added to phase 3, phase 2 and 4 scope completed, CI risk and pending decisions added. Progress details: [status.md](status.md).
 Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe-conventions/SKILL.md).*
 
 **Assumptions**
@@ -11,7 +11,7 @@ Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe
 
 ## Progress so far
 
-- **Product code:** phases 0, 0b, 1–6, 10 and 11 done (milestone M1); see [status.md](status.md). `scribed` captures with the pcap sensor on every system, enriches flows (SNI, `Host`, DNS, QUIC), runs the URL module and the policy, stores hosts, counters (per process and per hour), baselines, alerts and audit records on SQLite, and is controlled through the local API: every `scribe` command works, including `scribe daemon …`. Alerts reach the log, signed webhooks and desktop notifications (`scribe notify`); threat lists download with integrity checks; secrets can live in the OS key stores. Native sensors (phases 7–9), Postgres (12) and installers (13) remain. Automated tests cover 91.0% of product code.
+- **Product code:** phases 0, 0b, 1–6, 10 and 11 done (milestone M1); see [status.md](status.md). `scribed` captures with the pcap sensor on every system, enriches flows (SNI, `Host`, DNS, QUIC), runs the URL module and the policy, stores hosts, counters (per process and per hour), baselines, alerts and audit records on SQLite, and is controlled through the local API: every `scribe` command works, including `scribe daemon …`. Alerts reach the log, signed webhooks and desktop notifications (`scribe notify`); threat lists download with integrity checks; secrets can live in the OS key stores. Native sensors for Linux and Windows (phases 7–8; macOS stays on the socket table, option 9B), the Postgres state store (12) and installers (13) remain. Automated tests cover 91.0% of product code.
 - **Test infrastructure (done):** test doubles (including module doubles), packet builders and fixture generator, storage, sensor and module conformance suites, 14 pcap fixtures with expected results, 19 daemon scenarios, draft raw sensor records, v1 and v2 schema snapshots, fuzz targets, UI mock data, end-to-end scripts. This was not a separate phase in the original plan; it front-loads most of the test work of phases 1–6.
 - **Design (done):** [specs.md](specs.md) with use cases and requirements, the v1 config draft [config/scribe.toml](../config/scribe.toml) holding every default, and answers to all open questions (paths, scoring, buffers and limits, URL privacy, crate layout, logging, minimum Rust version). Nothing blocks implementation.
 - **CI, versioning and tooling:** tag-based versioning, 8 GitHub workflows (Release and Version tracking automatic, the rest manual), VSCodium launch and task configs, conventions skill and `CLAUDE.md`. The same checks run locally before every commit. Tests run #1 (`45074989995`, 2026-11-22) passed on Linux only; run #2 (`45198461612`, 2026-11-23) ran all three systems: Linux and macOS passed, Windows had 9 test-portability failures; run #3 (`45202847881`, 2026-11-23) passed on all three, and run #4 (`45226370809`) after phase 10; after phase 11 run #5 (`45448523591`) failed on 7 Windows-only test assumptions and run #6 (`45452687480`) passed on all three. Release ran once for `v0.2.0` (`45322623374`); the other manual workflows have not run yet (risk 9).
@@ -30,22 +30,22 @@ Decisions and config values: [scribe-conventions skill](../.claude/skills/scribe
 | 6 | **pcap sensor** (fallback) | libpcap / Npcap capture of SYN, UDP, DNS and ClientHello packets; reassemble the first bytes of each flow. Per phase 0b: send `Observation`s with up to 4 KiB of client bytes and `Payload` observations for later requests on a connection, copy payload past the ClientHello / `Host` header only when an enabled module needs it, and pass the new *stop, then start again* sensor conformance case | 700 | 200 | 4–5 | **Done** — decoder (Ethernet / VLAN, loopback, raw IP, Linux cooked; IPv4, IPv6), pcap file reader and replay, flow tracker (first bytes reassembled, later HTTP requests, QUIC follow-ups, DNS responses, closes with bytes), live capture with libpcap / Npcap loaded at run time, `[sensor] interface`, fallback from the native sensors; passes the sensor conformance suite (with the new stop / start case) live on Linux; every fixture through replay and the pipeline | 0 |
 | 7 | **Linux eBPF sensor** | Option **7B** (decided 2026-11-25): eBPF programs in C (`clang -target bpf`, `vmlinux.h`, CO-RE) on `tcp_connect` / `udp_sendmsg` and cgroup sockets, a socket filter for packet contents, loaded through `libbpf-rs` (vendored libbpf) with a generated skeleton, ring-buffer reader, process lookup via `/proc` (shared with option P). Security: privileged part only loads and attaches, keeps only `CAP_BPF` / `CAP_PERFMON`, root-only pinned maps | 1,700 (Rust + C eBPF) | 350 | 12–16 | **~2%** — stub, draft raw records | 12–16 |
 | 8 | **Windows ETW sensor** | Kernel-Network and DNS-Client providers, process path lookup, Npcap for packet contents. Security: service SID, processing as `NT SERVICE\scribed` where ETW allows | 1,300 | 230 | 11–13 | **~2%** — stub, draft raw records | 11–13 |
-| 9 | **macOS Network Extension** | Swift `NEFilterDataProvider` (~1,000 Swift), XPC bridge in Rust (~500), container app and installer. Security: code-signing requirement checked both ways on XPC, versioned schema with size limits, decoder fuzzed | 1,650 (Swift + Rust) | 200 | 13–17 | **0%** — draft XPC message format only | 13–17 |
+| 9 | **macOS sensor** | Option **9B** (decided 2026-11-25): the pcap sensor with process attribution from `libproc` (built as part of option P). Left: attribution hit rate (`AttributionStats`) in `scribe daemon status` and the health check, a load check of the `libproc` scan with many processes and a time budget per scan. The Network Extension (option 9A) is kept for later, outside the totals (section *Later options*) | 150 | 50 | 1–2 | **~80%** — `libproc` socket table and the `Attributed` wrapper done with option P (2026-11-24); draft XPC format kept for 9A | 1–2 |
 | 10 | **Local API and CLI** | gRPC (tonic) over a Unix socket or named pipe, access control by socket permissions and caller identity (read vs control calls); CLI commands `status`, `hosts`, `mode`, `alerts`, `baseline add/rm`, `alerts ack`, `export`; `scribe daemon status` (with `--json`, `--watch`), `health` (also `grpc.health.v1`), `reset`, `hibernate [--for]`, `wakeup`. Security: socket in a `root:scribe` `0750` directory, named-pipe access list with `first_pipe_instance` / `reject_remote_clients`, OS identity in request extensions, clients check the server, message / timeout / stream limits, `export` streamed and written by the CLI. Modules: `ListModules`, `ModuleStatus`, per-module services, `scribe modules` and module subcommands, per-module section in `daemon status` | 2,000 | 700 | 12–13 | **Done** — `scribe-api` (protocol without `protoc`, Unix socket and Windows named pipe, caller identity, access policy, limits), read and control calls in `scribed` with audit events and `grpc.health.v1`, every CLI command incl. `scribe daemon`, `scribe modules`, `scribe audit verify`, per-module services (`scribe url list`); from phase 5: hourly counter buckets (schema v4), alert state restored at start, audit verification; `MockApiServer` and the UI mocks checked against the protocol | 0 |
 | 11 | **Alert outputs** | OS notifications on each platform, structured log, webhook. Security: HTTPS only (loopback excepted), no cross-host redirects, HMAC-signed webhooks with the secret from the keychain, optional pinning; threat-list download with optional `sha256` / `minisign` check, last good list kept, entry cap. OS secret-store backends for `scribe-secrets` (macOS keychain, DPAPI, Secret Service; moved from phase 3), first needed by the webhook secret | 900 | 250 | 5.5–7 | **Done** — `scribe-alerts` (dispatcher with a queue and rate limit per output, log, signed webhook), `scribe-net` (HTTPS rules, pinning), `scribe notify` agent in the user's session (a system service can't reach the desktop) with login files, threat-list downloads with `sha256` / minisign / entry cap and last good copy, keychain / DPAPI / Secret Service and `scribed --set-secret` | 0 |
 | 12 | **Postgres backend** | tokio-postgres with a deadpool connection pool, migrations, conformance tests against a Postgres container in CI. Security: TLS via `tokio-postgres-rustls`, default `verify-full`, `disable` / `prefer` rejected off loopback, optional client certificates; `INSERT`-only sink role, one role per host with row-level security; heartbeats | 1,100 | 250 | 5.5–6.5 | **~50%** — event sink done (option 12C, 2026-11-25): `tokio-postgres` on the backend's own worker runtime, TLS through `scribe-net`'s verifier (forced for any server off this machine), password from `credentials`, optional `schema`, migrations under an advisory lock, one-statement batches, passes the sink conformance suite and INT-15 against Postgres 16. Left: state store, `ca` / client certificates, least-privilege roles, heartbeats | 3 |
 | 13 | **Packaging and release** | `.deb` / `.rpm`, MSI (WiX, keeps config / data / logs next to the app across upgrades), macOS `.pkg` with notarization, signing, install and uninstall scripts. Security: hardened systemd unit, `scribe` / `scribe-admin` groups and file modes, signed `SHA256SUMS` and build provenance, signed `.deb` / `.rpm` repositories; optional `storage.encrypt` (SQLCipher, AES-256-GCM spool, key in the OS secret store) | 1,000 (scripts/config + Rust) | 150 | 9–11 | **~15%** — Release workflow builds archives for 4 targets with checksums; installers left | 8–10 |
 | 14 | **Hardening** | Fuzz the packet parsers, performance and memory tests under load, security review, user docs. Security: `cargo deny` / `cargo audit` in Tests, Actions pinned by SHA with minimal `permissions:` (can be done any time), review against specs 12.1.1 | 500 | 300 | 6–8 | **~10%** — fuzz targets and workflow; never run | 5–7 |
-| | **Total** | | **~18,000** | **~5,400** | **123.5–154** | **phases 0, 0b, 1–6, 10, 11 done; option P; Postgres sink** | **52–66** |
+| | **Total** | | **~16,500** | **~5,250** | **111.5–139** | **phases 0, 0b, 1–6, 10, 11 done; option P; Postgres sink** | **40–51** |
 
-With a 20% buffer for unknowns, plan on **62–79 person-days remaining**. That's about 3–4 months for one developer, or under 2 months for two or three working in parallel.
+With a 20% buffer for unknowns, plan on **48–61 person-days remaining**. That's about 2.5–3 months for one developer, or about 6 weeks for two or three working in parallel. Option 9A (the macOS Network Extension, 13–17 days plus Apple's waits) is not in these totals: it stays available for later.
 
 ## Milestones
 
 | Milestone | Phases | Result | Planned | Remaining |
 |---|---|---|---|---|
 | **M1: MVP** | 0, 0b, 1–6, 10, 11 | Runs on all three OSes using pcap (no process attribution), SQLite storage, all three modes, CLI including `scribe daemon`, notifications, local API access control, module framework with the URL module | 67–82.5 days | **Done** (2026-11-24); Tests green on all three systems (run `45452687480`) |
-| **M2: Native sensors** | 7, 8, 9 | Process attribution and better hostname coverage on each OS; privilege split, XPC code signing | 36–46 days | 36–46 days (Linux as option 7B) |
+| **M2: Native sensors** | 7, 8, 9 | Every connection with its process on Linux (eBPF, option 7B) and Windows (ETW, 8A); macOS keeps the pcap sensor with `libproc` attribution (option 9B); privilege split | 24–31 days | 24–31 days (9A later, optional) |
 | **M3: Production** | 12, 13, 14 | Postgres over TLS, signed installers and checksums, fuzzed parsers, security review | 20.5–25.5 days | 16–20 days (Postgres sink and supply-chain checks done) |
 
 **Parallel work:** after M1, the three native sensors (phases 7, 8 and 9) don't depend on each other, so they can go to different developers. Postgres (phase 12) can be done any time after phase 2.
@@ -55,9 +55,9 @@ With a 20% buffer for unknowns, plan on **62–79 person-days remaining**. That'
 In this order, because each one turns existing tests and data into real coverage:
 
 0. **Tag a release for M1:** Tests passed on all three systems after phase 11 (run `45452687480`, commit `44f0c44`; the first run, `45448523591`, found 7 Windows-only test problems, fixed in `44f0c44`).
-1. **Apply for Apple's Network Extension entitlement now**, so the wait overlaps M2 (risk 1). Listed since October; not done yet as far as this plan knows.
+1. ~~Apply for Apple's Network Extension entitlement~~: no longer needed for M2, since macOS uses option 9B. Apply only when option 9A is picked (section *Later options*).
 2. **Choose the approach for each stubbed phase** (section *Options for the stubbed phases* below); the recommended order starts with process attribution on all three systems from socket tables (option P), then the native sensors.
-3. **M2: native sensors** (phases 7–9, independent of each other) for process attribution; Postgres (phase 12) any time.
+3. **M2: native sensors** for Linux (7B) and Windows (8A), independent of each other, and the rest of 9B; Postgres (phase 12) any time.
 4. **Any time, cheap:** add `cargo deny` / `cargo audit` to the Tests workflow and pin Actions by SHA (phase 14 work that needs no product code).
 
 ## Options for the stubbed phases
@@ -131,11 +131,15 @@ eBPF programs in C. What that means for the work:
 
 | Option | How | Gives | Costs and risks | Days |
 |---|---|---|---|---|
-| **9A Network Extension** (plan) | Swift System Extension with `NEFilterDataProvider`, XPC to `scribed`, container app, notarized `.pkg` | Every flow with the app's audit token and signing identity, the remote host name the app asked for, the first bytes; the only Apple-supported way | Apple Developer Program, the content-filter entitlement (weeks of waiting, risk 1), notarization, user or MDM approval; Swift and XPC code to secure (risk 7) | 13–17 + waits |
-| 9B `libproc` socket table | Option P on macOS (`proc_pidfdinfo`), with the existing pcap sensor | Process path for most flows, no entitlement, works today | Races for short flows; polling cost grows with the number of processes; no per-app signing identity | 2–3 (part of P) |
+| 9A Network Extension (later option) | Swift System Extension with `NEFilterDataProvider`, XPC to `scribed`, container app, notarized `.pkg` | Every flow with the app's audit token and signing identity, the remote host name the app asked for, the first bytes; the only Apple-supported way | Apple Developer Program, the content-filter entitlement (weeks of waiting, risk 1), notarization, user or MDM approval; Swift and XPC code to secure (risk 7) | 13–17 + waits |
+| **9B `libproc` socket table** (plan, decided 2026-11-25) | Option P on macOS (`proc_pidfdinfo`), with the existing pcap sensor | Process path for most flows, no entitlement, works today | Races for short flows; polling cost grows with the number of processes; no per-app signing identity | Done with P; 1–2 to finish |
 | 9C Private `NetworkStatistics` framework (what `nettop` uses) | Undocumented API | Every flow with process, no entitlement | Private API can break with any macOS update and blocks notarized distribution through some channels; not recommended | 5–7 |
 
-**Recommendation:** P (9B) now; **apply for the entitlement today** and build 9A when it arrives.
+**Decision (2026-11-25): 9B** is the macOS sensor for M2. It is in place since option P; phase 9 keeps
+only the hit-rate metric and a load check of the scan (1–2 days). **9A stays an option for later**
+(section *Later options*): nothing in 9B blocks it, the draft XPC message format
+(`testdata/events/macos-ne/`) and `macos/ScribeExtension/` are kept, and the Network Extension would
+plug in as a native sensor ahead of the pcap one, as on Linux and Windows. 9C stays rejected.
 
 ### Phase 12: Postgres backend
 
@@ -153,7 +157,7 @@ eBPF programs in C. What that means for the work:
 |---|---|---|
 | Linux packages | `cargo-deb` + `cargo-generate-rpm` (read `Cargo.toml`, Rust tools); or `nfpm` (one YAML for `.deb`, `.rpm`, `.apk`) | `nfpm`: one file for both formats and the same systemd unit and scriptlets |
 | Windows installer | WiX v5 through `cargo-wix`; or MSIX | WiX: MSIX can't install a classic service with files next to the app (specs 9.1) |
-| macOS package | `pkgbuild` / `productbuild` + `notarytool`; the extension (9A) joins later | As planned; the `.pkg` can ship before 9A with the daemon, CLI and the `scribe notify` agent |
+| macOS package | `pkgbuild` / `productbuild` + `notarytool` | The `.pkg` ships the daemon, CLI and the `scribe notify` agent; the extension joins only if 9A is picked later |
 | Release signing (open question 13) | cosign keyless (GitHub OIDC, Rekor log); or minisign (a key you keep; offline checks; scribe already verifies minisign for threat lists) | minisign-signed `SHA256SUMS` plus GitHub build-provenance attestations: no online service needed to verify, same tool as threat lists |
 | Encryption at rest | SQLCipher + AES-GCM spool (plan); or leave it to full-disk encryption | Keep it optional and last; can slip past v1 (risk 7) |
 
@@ -173,14 +177,14 @@ needs no installers or code signing of its own and reuses the CLI client, so it 
 ### Suggested order
 
 1. ~~**P**~~ done 2026-11-24: process attribution on all three systems.
-2. **Tag the M1 release**, and send the Network Extension entitlement request (no code).
+2. **Tag the M1 release.**
 3. ~~**12C** sink~~ done 2026-11-25, and the cheap part of 14 (supply chain done 2026-11-25; fuzzing by hand before releases).
-4. **7B** and **8A** (in parallel if two people), then **9A** when Apple approves.
+4. **7B** and **8A** (in parallel if two people), and the small rest of **9B**.
 5. **13** installers, then the rest of 12 and 14.
 
-P adds 6–8 days to M2 (8B and 9B are part of it, not extra), so M2 becomes 41.5–53.5 days if all
-of 7B, 8A and 9A still follow. What P buys is that process attribution arrives in the first week
-instead of at the end of M2, and that each native sensor can then be judged on what it adds over P.
+P took about a day; with 9B chosen for macOS, M2 is 7B, 8A and the rest of 9B (24–31 days). What P
+bought is that process attribution arrived first, and that each native sensor is judged on what it
+adds over P: on macOS, 9B (that is, P) is judged enough for now.
 
 ## Decisions since the first version
 
@@ -201,6 +205,7 @@ instead of at the end of M2, and that each native sensor can then be judged on w
 | SQLite through `rusqlite` 0.43 with bundled SQLite (phase 1) | No system SQLite needed on any OS; local Linux / Windows compile checks from macOS leave the `sqlite` feature out (it needs a C cross compiler), so only CI builds it there |
 | SQLite calls run synchronously behind a mutex (phase 1) | Resolved in phase 2: each database runs on its own worker thread |
 | Plan review 2026-11-22 | Secrets crate in phase 3 (+2–3 days), retention call, async SQLite and missing storage tests in phase 2 (+1.5), module signal scores in phase 4 (+0.5), shared codec saves 0.5 in phase 12; "rare host" removed from phase 4 (it is in neither the spec nor the config). Remaining +3.5–4.5 days, M1 +4–5 |
+| Option 9B chosen 2026-11-25 | macOS keeps the pcap sensor with `libproc` attribution (built with option P) instead of a Network Extension: no entitlement, no Swift / XPC code, no Apple waits; short connections may keep no process and there is no per-app signing identity. 9A stays a later option outside the totals. Phase 9: 13–17 → 1–2 days |
 | Option 7B chosen 2026-11-25 | The Linux eBPF sensor uses `libbpf-rs` with C programs instead of `aya`: no nightly Rust or `bpf-linker`, no minimum-Rust raise to 1.98; in exchange Linux builds need `clang`, `libelf-dev` and `zlib1g-dev`. +0.5 day (phase 7: 12–16) |
 | Phase 11 done 2026-11-24 | OS notifications come from a `scribe notify` agent in the user's session (a system service can't post to a desktop on any of the three systems), with login files in `packaging/`; outgoing HTTPS through a small own client (`scribe-net`) because no maintained client lets a caller pin a certificate; the webhook sits behind a `scribe-alerts` feature so the CLI stays free of ring's C code. Remaining −5.5–7 days, M1 done |
 | Phase 10 done 2026-11-23 | Took in the phase 5 leftovers (hourly buckets as schema v4, alert state at start, `scribe audit verify`); protocol built with `protox`, so no `protoc` on any build machine; the Windows named pipe is compiled locally but only exercised by the Windows CI runner; group creation (`scribe`, `scribe-admin`) stays with the installers (phase 13). Remaining −11.5–12.5 days, M1 −11.5–12.5 |
@@ -225,7 +230,7 @@ Open questions from [specs.md](specs.md) section 15 that a phase can't finish wi
 
 ## Risks
 
-1. **Apple's Network Extension entitlement and notarization:** approval can take weeks of waiting on top of the work. Apply during M1.
+1. **Apple's Network Extension entitlement and notarization:** approval can take weeks of waiting on top of the work. Off the critical path since option 9B (2026-11-25); it applies again only if option 9A is picked. Notarization of the `.pkg` (phase 13) still needs the Developer Program.
 2. **eBPF across kernel versions:** use CO-RE (compile once, run everywhere) and keep pcap as the fallback for kernels older than 5.8.
 3. **Windows packet contents:** ETW gives flows but not payloads, so SNI needs Npcap. A WFP driver would remove that dependency but requires EV signing; leave it for a later blocking feature.
 4. **Hostname visibility:** DNS-over-HTTPS and Encrypted Client Hello hide hostnames. Detect and report these flows as "unresolved" rather than dropping them.
@@ -255,6 +260,14 @@ Verified here: `macos.sh doctor / check / release / xcode` (universal binary fro
 cross-compiled, binaries need glibc 2.34; 359 tests pass on Linux). `windows.ps1` parses in PowerShell 7.4 and its
 `doctor` runs; it has not run on Windows yet. Not verified: `linux.sh` with docker or podman, and in WSL2. CI doesn't
 call the scripts yet.
+
+## Later options (not in the totals)
+
+Work that is designed and could be added at any time, but is not planned now.
+
+| Option | What it adds over the plan | Effort | Before starting |
+|---|---|---|---|
+| **9A macOS Network Extension** | Every connection on macOS with its process, even the shortest; the app's signing identity (Team ID, bundle ID) per flow; the host name the app asked for; the first bytes without pcap; later, blocking verdicts | 13–17 days (~1,000 Swift, ~500 Rust: XPC bridge, container app), plus Apple's waits | Apple Developer Program; apply for the content-filter entitlement (weeks); notarization; user or MDM approval; the XPC security items (signing requirement both ways, size limits, fuzzed decoder) come back into scope. Kept ready: `macos/ScribeExtension/`, the draft XPC format in `testdata/events/macos-ne/`, FUN-SN04 |
 
 ## Not included
 - **Tauri UI:** about 4–6k LOC (TypeScript + Rust), 20–30 days. Test folders and mock API data already exist.

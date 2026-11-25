@@ -139,7 +139,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | ID | Requirement | Status | Verified by |
 |---|---|---|---|
 | FR-1 | Capture every outgoing TCP connection and UDP / QUIC flow, IPv4 and IPv6, on macOS, Linux and Windows | Partly (pcap sensor on every OS, verified live on Linux; native sensors in phases 7–9) | Sensor conformance suite; pcap fixtures |
-| FR-2 | Attribute each flow to its process (pid and path) where the sensor allows; the pcap fallback reports no process | Partly (the pcap fallback reports no process; native sensors in phases 7–9) | Sensor conformance (`expect_process_info`) |
+| FR-2 | Attribute each flow to its process (pid and path) where the sensor allows; the pcap fallback reports no process | Partly (the pcap sensor gets the process from the OS socket table, option P, which misses very short connections; native sensors for Linux and Windows in phases 7–8; macOS stays on the socket table, option 9B) | Sensor conformance (`expect_process_info`) |
 | FR-3 | Find the host name in this order: TLS SNI, HTTP `Host` header, DNS cache (IP → queried name, CNAME chains map back to the queried name) | Implemented (`scribe_enrich::Enricher`; a name the sensor reports ranks after `Host`; wired to traffic in phase 5) | pcap fixtures `tls13_sni_ipv4`, `http_plain`, `dns_cname_then_tls`, `dns_aaaa_then_tls` |
 | FR-4 | Classify each flow as `tls`, `quic`, `plaintext` or `unknown` from its first bytes, never from the port | Implemented (TCP and UDP, QUIC long headers) | Functional tests in `enrich`; every fixture end to end |
 | FR-5 | For ECH, record the outer public name and flag the flow `ech` | Implemented | Fixture `tls_ech` |
@@ -274,7 +274,7 @@ Tauri app talking only to the local API; **Planned** (not in the 14 phases). Tes
 
 ### 6.5 macOS Network Extension
 
-`ScribeExtension`, a Swift System Extension (`NEFilterDataProvider`) started by macOS after user or MDM approval. Sends flow messages to `scribed` over XPC (draft format in `testdata/events/macos-ne/`). **Planned.**
+`ScribeExtension`, a Swift System Extension (`NEFilterDataProvider`) started by macOS after user or MDM approval. Sends flow messages to `scribed` over XPC (draft format in `testdata/events/macos-ne/`). **Optional, later (plan option 9A).** macOS uses the pcap sensor with process attribution from `libproc` (option 9B, decided 2026-11-25); the extension would plug in later as a native sensor ahead of it.
 
 ### 6.6 Development and release entry points (implemented)
 
@@ -305,7 +305,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | Windows sensor | `crates/sensor-windows` | ETW kernel-network and DNS-client events, Npcap for payloads | core | Stub |
 | pcap sensor | `crates/sensor-pcap` | Capture on every OS (macOS today, the fallback on Linux and Windows), no process info of its own; libpcap / Npcap loaded at run time | core | Implemented (phase 6) |
 | Process attribution | `crates/process` (`scribe-process`) | Owner of each new flow from the OS socket table (Linux `/proc`, macOS `libproc`, Windows IP Helper); `Attributed` wraps the pcap sensor (name `pcap+sockets`) | core | Implemented (plan option P) |
-| macOS extension | `macos/ScribeExtension` | Network Extension + XPC bridge | — | Planned |
+| macOS extension | `macos/ScribeExtension` | Network Extension + XPC bridge | — | Optional, later (option 9A); macOS uses pcap + `libproc` (9B) |
 | Storage API | `crates/storage-api` | `StateStore`, `EventSink`, `StorageFactory`, data model, errors | core | Implemented (interfaces) |
 | Storage manager | `crates/storage-manager` | Backend registry, routing to sinks; later host cache, batching, spool, retention | storage-api, backends | Implemented (registry, writer tasks, spool, outage buffer, host cache, health)
 | SQLite backend | `crates/storage-sqlite` | Default state store and event sink | storage-api | Implemented (schemas v1–v2, both conformance suites)
@@ -773,9 +773,9 @@ than `[storage.hours] keep` (default `90d`, `""` = forever). Host totals are nev
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
-| Native capture | eBPF (C programs, `libbpf-rs`, CO-RE), kernel 5.8+ | Network Extension (Swift) | ETW |
+| Native capture | eBPF (C programs, `libbpf-rs`, CO-RE), kernel 5.8+ | none: pcap with `libproc` attribution (option 9B); Network Extension optional later (9A) | ETW |
 | Process attribution | yes | yes | yes |
-| Packet contents (SNI) | eBPF socket filter | Network Extension first bytes | Npcap |
+| Packet contents (SNI) | eBPF socket filter | libpcap (Network Extension first bytes with 9A) | Npcap |
 | Fallback | libpcap | libpcap | Npcap |
 | Service | systemd | launchd | Windows service |
 | Installer | `.deb`, `.rpm` | notarized `.pkg` | MSI |
