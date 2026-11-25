@@ -199,8 +199,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 - **Phases 0, 0b, 1–6, 10 and 11 are done: milestone M1 is complete.** Remaining effort: 40–51 days (48–61 with buffer), with the Linux sensor as option 7B (`libbpf-rs`, C eBPF programs) and macOS on option 9B; option 9A (Network Extension, 13–17 days) stays outside the totals.
 - **`scribed` runs end to end with the pcap sensor, is controlled through `scribe` and tells people:** log, signed webhooks and desktop notifications (`scribe notify`), threat lists from files or checked downloads, secrets in the OS key stores.
 - **Next steps:**
-  0. Tag a release for M1; Tests passed on all three systems after phase 11 (run `45452687480`).
-  1. Tag the M1 release. (The Network Extension entitlement is needed only if option 9A is picked later.)
+  1. M1 tagged as `v0.3.0-alpha.2` (2026-11-25, Bump version; Tests green in run `45533785706`). The Network Extension entitlement is needed only if option 9A is picked later.
   2. Option P (process attribution from the OS socket tables) is implemented and green on all three systems (run `45521781418`). Next from
      [plan.md, *Options for the stubbed phases*](plan.md#options-for-the-stubbed-phases): the Postgres event sink (12C), supply-chain
      checks (14) — both done and green in run `45533785706` — then the native sensors for Linux (7B) and Windows (8A); macOS stays on option 9B.

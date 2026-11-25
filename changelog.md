@@ -55,6 +55,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `libelf-dev` and `zlib1g-dev`. Totals updated for option P and the Postgres sink.
 - Supply chain (plan phase 14): `deny.toml` and a *Dependencies* job in Tests (`cargo deny`: RustSec advisories,
   licenses, bans, sources); every GitHub Action pinned by commit SHA; the workspace is `publish = false`.
+- Milestone M1 is released as `v0.3.0-alpha.2` (plan, status and conventions updated).
 - Plan and status record Tests run `45533785706` as green: the new *Dependencies* job and the Postgres sink
   tests (conformance, INT-15) passed in CI for the first time.
 - Plan and status record Tests run `45521781418` (option P) as green on Linux, macOS and Windows.

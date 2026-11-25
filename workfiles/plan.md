@@ -44,7 +44,7 @@ With a 20% buffer for unknowns, plan on **48–61 person-days remaining**. That'
 
 | Milestone | Phases | Result | Planned | Remaining |
 |---|---|---|---|---|
-| **M1: MVP** | 0, 0b, 1–6, 10, 11 | Runs on all three OSes using pcap (no process attribution), SQLite storage, all three modes, CLI including `scribe daemon`, notifications, local API access control, module framework with the URL module | 67–82.5 days | **Done** (2026-11-24); Tests green on all three systems (run `45452687480`) |
+| **M1: MVP** | 0, 0b, 1–6, 10, 11 | Runs on all three OSes using pcap (no process attribution), SQLite storage, all three modes, CLI including `scribe daemon`, notifications, local API access control, module framework with the URL module | 67–82.5 days | **Done** (2026-11-24); Tests green on all three systems (run `45452687480`); released as `v0.3.0-alpha.2` (2026-11-25) |
 | **M2: Native sensors** | 7, 8, 9 | Every connection with its process on Linux (eBPF, option 7B) and Windows (ETW, 8A); macOS keeps the pcap sensor with `libproc` attribution (option 9B); privilege split | 24–31 days | 24–31 days (9A later, optional) |
 | **M3: Production** | 12, 13, 14 | Postgres over TLS, signed installers and checksums, fuzzed parsers, security review | 20.5–25.5 days | 16–20 days (Postgres sink and supply-chain checks done) |
 
@@ -54,7 +54,7 @@ With a 20% buffer for unknowns, plan on **48–61 person-days remaining**. That'
 
 In this order, because each one turns existing tests and data into real coverage:
 
-0. **Tag a release for M1:** Tests passed on all three systems after phase 11 (run `45452687480`, commit `44f0c44`; the first run, `45448523591`, found 7 Windows-only test problems, fixed in `44f0c44`).
+0. ~~**Tag a release for M1**~~ tagged `v0.3.0-alpha.2` on 2026-11-25 (Bump version, minor + `alpha.2`; it also carries option P, the supply-chain checks and the Postgres sink). Tests passed on all three systems after phase 11 (run `45452687480`, commit `44f0c44`; the first run, `45448523591`, found 7 Windows-only test problems, fixed in `44f0c44`).
 1. ~~Apply for Apple's Network Extension entitlement~~: no longer needed for M2, since macOS uses option 9B. Apply only when option 9A is picked (section *Later options*).
 2. **Choose the approach for each stubbed phase** (section *Options for the stubbed phases* below); the recommended order starts with process attribution on all three systems from socket tables (option P), then the native sensors.
 3. **M2: native sensors** for Linux (7B) and Windows (8A), independent of each other, and the rest of 9B; Postgres (phase 12) any time.
@@ -177,7 +177,7 @@ needs no installers or code signing of its own and reuses the CLI client, so it 
 ### Suggested order
 
 1. ~~**P**~~ done 2026-11-24: process attribution on all three systems.
-2. **Tag the M1 release.**
+2. ~~**Tag the M1 release**~~ `v0.3.0-alpha.2`, 2026-11-25.
 3. ~~**12C** sink~~ done 2026-11-25, and the cheap part of 14 (supply chain done 2026-11-25; fuzzing by hand before releases).
 4. **7B** and **8A** (in parallel if two people), and the small rest of **9B**.
 5. **13** installers, then the rest of 12 and 14.

@@ -304,7 +304,7 @@ Full design: `workfiles/specs.md` 7.4 (7.4.9 lists what changed from the draft).
 | Binary version | `1.2.0` on a tag, `1.2.0+3.gabc1234` after 3 commits, `<cargo>+g<sha>` with no tag; no dirty marker | Decided (`crates/core/build.rs`) |
 | Override | `SCRIBE_VERSION` env var (release builds) | Decided |
 | Bump after a pre-release | Same-level bump finalizes it (`2.0.0-rc.1` + major → `2.0.0`) | Decided (`scripts/version.sh`) |
-| First releases | `v0.1.1` (2026-11-08, tag only local, never pushed; superseded), `v0.1.0-alpha.1` (2026-11-22, Bump version started from 0.0.0 because no tag was on GitHub) and `v0.2.0` (2026-11-23, after phase 10; first GitHub release, Release run `45322623374`) | Recorded |
+| First releases | `v0.1.1` (2026-11-08, tag only local, never pushed; superseded), `v0.1.0-alpha.1` (2026-11-22, Bump version started from 0.0.0 because no tag was on GitHub) and `v0.2.0` (2026-11-23, after phase 10; first GitHub release, Release run `45322623374`) and `v0.3.0-alpha.2` (2026-11-25, milestone M1 plus option P, supply-chain checks and the Postgres sink; minor bump with a pre-release label because `0.2.0-alpha.2` would sort below `0.2.0`) | Recorded |
 | Releases come from | Tags on `main` only | Decided |
 | Release targets | `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Decided |
 | Release assets | `scribe-<version>-<target>.tar.gz` (`.zip` on Windows) + `SHA256SUMS` | Decided |
