@@ -35,6 +35,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Ring buffer 1 MiB. Root-only test `service::privileges_keeper_restarts_capture_as_a_user`, run alone in
   the Sensors workflow.
 
+- Sensor tests job `kernels`: the eBPF sensor on Linux 5.8, 5.15, 6.1 and 6.18 (Ubuntu mainline builds booted
+  with virtme-ng under KVM on the Ubuntu runner, `scripts/ci/kernel-check.sh` in the guest); a kernel without
+  BTF is checked with the pcap sensor only and warned about.
+
 ### Changed
 
 - Plan and status record Tests run `45681530177` and Sensor tests run `45681534506` (privilege split on x86_64;

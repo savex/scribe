@@ -378,7 +378,7 @@ These stages keep their own time budgets (test approach section 11) and never bl
 
 | Stage | Tests | Budget |
 |---|---|---|
-| Privileged sensor conformance | `pcap_sensor_conforms` and `ebpf_sensor_conforms` (both pass in the Linux build container, kernel 6.18 arm64: `scripts/build/linux.sh run --privileged cargo test -p scribe-sensor-conformance --test functional -- --ignored`; the eBPF one checks pid and path of TLS, HTTP, TCP and UDP flows; both green on the Ubuntu x86_64 runner in Sensor tests run `45658825832`) and the native sensors on each OS; Linux kernel matrix (later) | < 2 h |
+| Privileged sensor conformance | `pcap_sensor_conforms` and `ebpf_sensor_conforms` (both pass in the Linux build container, kernel 6.18 arm64: `scripts/build/linux.sh run --privileged cargo test -p scribe-sensor-conformance --test functional -- --ignored`; the eBPF one checks pid and path of TLS, HTTP, TCP and UDP flows; both green on the Ubuntu x86_64 runner in Sensor tests run `45658825832`) and the native sensors on each OS; Linux kernel matrix 5.8, 5.15, 6.1, 6.18 in job `kernels` (virtme-ng guests, `scripts/ci/kernel-check.sh`: eBPF and pcap conformance plus `service::privileges_keeper_restarts_capture_as_a_user`; pcap only on a kernel without BTF) | < 2 h |
 | End-to-end | `tests/e2e/` on installed packages | 1–2 days with the release checklist |
 | Fuzzing | `fuzz/` targets, 30 min each | < 2 h |
 | Performance, soak, volume | 1,000 connections/s; 24 h soak; 10M events | Before release |

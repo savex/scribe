@@ -66,5 +66,51 @@ jobs:
         # Alone in its process: the test drops the privileges of the whole test binary.
         run: sudo "${{ steps.build.outputs.daemon }}" --ignored --exact service::privileges_keeper_restarts_capture_as_a_user
 
-  # TODO: Linux kernel matrix (5.8, 5.15, 6.1, latest) with virtme-ng once the eBPF sensor exists.
+  # The eBPF sensor on each kernel of the matrix: virtme-ng boots an Ubuntu mainline build under KVM
+  # with the runner's filesystem as a copy-on-write root, so the test binaries built here run as root
+  # in the guest (scripts/ci/kernel-check.sh). 5.8 is the oldest supported on x86_64.
+  kernels:
+    name: eBPF on Linux ${{ matrix.kernel }}
+    if: inputs.os == 'all' || inputs.os == 'ubuntu'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        kernel: [v5.8, v5.15, v6.1, v6.18]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+
+      - name: Build tools, capture libraries and the VM runner
+        uses: ./.github/actions/linux-build-deps
+        with:
+          extra: libpcap-dev qemu-system-x86 busybox-static virtiofsd kmod zstd
+
+      - name: KVM for the runner user
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: virtme-ng
+        run: pipx install virtme-ng==1.42
+
+      - name: Build privileged tests
+        id: build
+        run: |
+          artifact() {
+            cargo test -p "$1" --test functional --no-run --locked --message-format=json \
+              | jq -r 'select(.reason == "compiler-artifact" and .target.name == "functional" and .executable != null) | .executable'
+          }
+          echo "conformance=$(artifact scribe-sensor-conformance)" >> "$GITHUB_OUTPUT"
+          echo "daemon=$(artifact scribe-daemon)" >> "$GITHUB_OUTPUT"
+
+      - name: Sensor tests on ${{ matrix.kernel }}
+        run: |
+          vng -r "${{ matrix.kernel }}" --user root --network user --cpus 2 -m 2G -- \
+            "$GITHUB_WORKSPACE/scripts/ci/kernel-check.sh" \
+            "${{ steps.build.outputs.conformance }}" "${{ steps.build.outputs.daemon }}"
+
   # TODO: macOS Network Extension needs a self-hosted Mac with the MDM approval profile.

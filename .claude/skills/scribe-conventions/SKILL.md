@@ -335,7 +335,7 @@ Notes:
 | Local test server timeout | **5 s** | Decided |
 | Postgres test DB | `postgres://scribe:scribe@localhost:5432/scribe_test` (`SCRIBE_TEST_POSTGRES_URL`), `postgres:16` in CI | Decided |
 | Fuzz run time | 1800 s per target | Decided (workflow default) |
-| Linux kernel matrix | 5.8, 5.15, 6.1, latest (virtme-ng / lvh) | Proposed |
+| Linux kernel matrix | 5.8, 5.15, 6.1, 6.18 (latest): Sensor tests job `kernels` (Ubuntu runner, `os` all or ubuntu) boots each Ubuntu mainline build with virtme-ng 1.42 (`pipx`, `vng -r <version> --user root --network user`) under KVM (udev rule makes `/dev/kvm` usable); the guest shares the runner's filesystem copy-on-write, so the test binaries built on the runner run there through `scripts/ci/kernel-check.sh` (eBPF and pcap conformance, the keeper test alone); a kernel without BTF gets a warning and the pcap test only (decided 2026-11-25 over lvh, whose Debian images would need binaries built for them) | Implemented (not yet run) |
 | Coverage targets | ≥ 80% for `core`, `enrich`, `storage-*`, policy engine; ≥ 60% overall | Proposed |
 | Test tags and layout | Smoke, integration, scenario: binaries of the `scribe-tests` crate (`tests/smoke`, `tests/integration`, `tests/scenario`, helpers in `tests/support`, `scribed-under-test` / `scribe-under-test` bins); functional: `crates/<crate>/tests/functional/`; unit tests in `src/` only for private code, under `mod functional`. `scripts/check-test-tags.sh` (nextest list) requires exactly one tag per test; smoke changes nothing outside its temp dir, live smoke is read-only | Decided |
 | Test runner | `cargo-nextest`, process per test; `.config/nextest.toml`: warn 2 s / kill 6 s, integration and scenario warn 5 s / kill 10 s; profile `ci` writes JUnit | Decided |
