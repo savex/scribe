@@ -19,6 +19,10 @@ mod attributed;
 mod os;
 mod table;
 
-pub use attributed::{Attributed, AttributionStats};
+pub use attributed::Attributed;
 pub use os::{os_table, parse_proc_net, ProcNetEntry};
-pub use table::{normalise, Owner, Resolver, SocketEntry, SocketTable, Transport, MIN_REFRESH};
+pub use scribe_core::AttributionStats;
+pub use table::{
+    normalise, Owner, Resolver, ScanStats, SocketEntry, SocketTable, Transport, MAX_REFRESH,
+    MIN_REFRESH, SCAN_BUDGET, SLOW_FACTOR,
+};

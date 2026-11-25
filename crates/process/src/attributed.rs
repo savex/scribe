@@ -2,16 +2,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
-use scribe_core::{FlowKind, Observation, Protocol, Sensor, SensorError};
+use scribe_core::{AttributionStats, FlowKind, Observation, Protocol, Sensor, SensorError};
 
 use crate::table::{Resolver, Transport};
-
-/// How many flows got a process from the socket table.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct AttributionStats {
-    pub attributed: u64,
-    pub missed: u64,
-}
 
 #[derive(Default)]
 struct Counters {
@@ -37,10 +30,20 @@ impl Attributed {
         }
     }
 
+    /// New flows with and without a process, and the table reads behind them.
     pub fn stats(&self) -> AttributionStats {
+        let scans = self
+            .resolver
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .scan_stats();
         AttributionStats {
             attributed: self.counters.attributed.load(Ordering::Relaxed),
             missed: self.counters.missed.load(Ordering::Relaxed),
+            scans: scans.scans,
+            slow_scans: scans.slow,
+            last_scan: scans.last,
+            max_scan: scans.max,
         }
     }
 }
@@ -88,6 +91,10 @@ impl Sensor for Attributed {
         self.inner.set_payload(needed);
     }
 
+    fn attribution(&self) -> Option<AttributionStats> {
+        Some(self.stats())
+    }
+
     fn start(&mut self, out: Sender<Observation>) -> Result<(), SensorError> {
         let (tx, rx) = mpsc::channel::<Observation>();
         self.inner.start(tx)?;
@@ -114,6 +121,9 @@ impl Sensor for Attributed {
         tracing::info!(
             attributed = s.attributed,
             missed = s.missed,
+            scans = s.scans,
+            slow_scans = s.slow_scans,
+            max_scan_ms = s.max_scan.as_millis() as u64,
             "process attribution from the socket table"
         );
     }

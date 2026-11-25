@@ -20,5 +20,5 @@ pub use clock::{Clock, SystemClock};
 pub use event::{FlowEvent, FlowKind, Observation, Protocol, Security, HEAD_MAX};
 pub use mode::Mode;
 pub use module::{MetricSample, ModuleRecord, Notes};
-pub use sensor::{Sensor, SensorError};
+pub use sensor::{AttributionStats, Sensor, SensorError};
 pub use units::{HumanDuration, SizeLimit};

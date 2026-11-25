@@ -78,6 +78,19 @@ message Sensor {
   // "ok", "fallback" or "detached".
   string health = 3;
   bool fallback = 4;
+  // Process lookups in the OS socket table; unset when the sensor does none.
+  optional Attribution attribution = 5;
+}
+
+// New flows that got their process from the OS socket table, and the reads of that table.
+message Attribution {
+  uint64 attributed = 1;
+  uint64 missed = 2;
+  uint64 scans = 3;
+  // Reads over the scan budget (50 ms); each one spaces the next reads out.
+  uint64 slow_scans = 4;
+  double last_scan_s = 5;
+  double max_scan_s = 6;
 }
 
 message Storage {

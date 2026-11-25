@@ -7,6 +7,7 @@ use std::time::Duration;
 use scribe_core::{FlowKind, Sensor};
 use scribe_process::{
     Attributed, AttributionStats, Owner, Resolver, SocketEntry, SocketTable, Transport,
+    MAX_REFRESH, MIN_REFRESH, SCAN_BUDGET,
 };
 use scribe_test_support::{flow, FakeClock, FakeSensor};
 
@@ -231,11 +232,133 @@ fn the_wrapper_fills_in_new_flows_and_keeps_what_the_sensor_knew() {
         Some("/opt/app77/bin/app")
     );
     sensor.stop();
+    let stats = sensor.stats();
     assert_eq!(
-        sensor.stats(),
-        AttributionStats {
-            attributed: 2,
-            missed: 1
-        }
+        (stats.attributed, stats.missed),
+        (2, 1),
+        "the new TCP and QUIC flows found, the unknown one missed; the close isn't counted"
+    );
+    assert_eq!(stats.hit_rate(), Some(2.0 / 3.0));
+    assert!(stats.scans >= 1);
+    assert_eq!(sensor.attribution(), Some(stats));
+    assert_eq!(AttributionStats::default().hit_rate(), None);
+}
+
+/// A table whose every read takes `took` on the fake clock, with `sockets` entries.
+struct SlowTable {
+    clock: Arc<FakeClock>,
+    took: Arc<Mutex<Duration>>,
+    sockets: u32,
+    reads: Arc<Mutex<usize>>,
+}
+
+impl SocketTable for SlowTable {
+    fn snapshot(&mut self) -> io::Result<Vec<SocketEntry>> {
+        *self.reads.lock().unwrap() += 1;
+        self.clock.advance(*self.took.lock().unwrap());
+        Ok((0..self.sockets)
+            .map(|i| SocketEntry {
+                transport: Transport::Tcp,
+                local: SocketAddr::new(
+                    std::net::Ipv4Addr::from(0xC000_0200 + (i >> 16)).into(),
+                    (i & 0xFFFF) as u16,
+                ),
+                remote: Some(addr("203.0.113.9:443")),
+                pid: 1000 + i % 500,
+            })
+            .collect())
+    }
+    fn process_path(&self, pid: u32) -> Option<String> {
+        Some(format!("/opt/app{pid}/bin/app"))
+    }
+}
+
+fn slow_resolver(took: Duration, sockets: u32) -> (Resolver, Arc<FakeClock>, SlowTable) {
+    let clock = Arc::new(FakeClock::at_unix(1_800_000_000));
+    let table = SlowTable {
+        clock: clock.clone(),
+        took: Arc::new(Mutex::new(took)),
+        sockets,
+        reads: Arc::new(Mutex::new(0)),
+    };
+    let handle = SlowTable {
+        clock: clock.clone(),
+        took: table.took.clone(),
+        sockets,
+        reads: table.reads.clone(),
+    };
+    (Resolver::new(Box::new(table), clock.clone()), clock, handle)
+}
+
+#[test]
+fn a_slow_scan_spaces_out_the_next_reads_and_a_fast_one_resets_that() {
+    let (mut r, clock, table) = slow_resolver(Duration::from_millis(200), 10);
+    let miss = |r: &mut Resolver| {
+        r.lookup(
+            Transport::Tcp,
+            addr("198.51.100.1:9999"),
+            addr("203.0.113.9:443"),
+        )
+    };
+    assert_eq!(miss(&mut r), None);
+    let s = r.scan_stats();
+    assert_eq!(
+        (s.scans, s.slow, s.last, s.max),
+        (1, 1, Duration::from_millis(200), Duration::from_millis(200))
+    );
+    // 200 ms × 10 = 2 s before the next read (time since the read started).
+    assert_eq!(r.refresh_gap(), Duration::from_secs(2));
+    clock.advance(Duration::from_millis(1_700));
+    assert_eq!(miss(&mut r), None);
+    assert_eq!(
+        *table.reads.lock().unwrap(),
+        1,
+        "too early for another read"
+    );
+    clock.advance(Duration::from_millis(100));
+    *table.took.lock().unwrap() = Duration::from_millis(5);
+    assert_eq!(miss(&mut r), None);
+    assert_eq!(*table.reads.lock().unwrap(), 2);
+    assert_eq!(r.refresh_gap(), MIN_REFRESH, "a fast read resets the gap");
+    let s = r.scan_stats();
+    assert_eq!(
+        (s.scans, s.slow, s.last, s.max),
+        (2, 1, Duration::from_millis(5), Duration::from_millis(200))
+    );
+}
+
+#[test]
+fn the_gap_after_a_very_slow_scan_is_capped() {
+    let (mut r, _, _) = slow_resolver(Duration::from_secs(3), 1);
+    r.lookup(
+        Transport::Tcp,
+        addr("198.51.100.1:9999"),
+        addr("203.0.113.9:443"),
+    );
+    assert_eq!(r.refresh_gap(), MAX_REFRESH);
+    assert!(SCAN_BUDGET < MIN_REFRESH);
+}
+
+#[test]
+fn a_table_of_a_hundred_thousand_sockets_answers_every_lookup() {
+    // Load check of the lookup side: many processes and sockets in one table. The real
+    // scan cost is measured by `live::many_own_sockets_scan_within_the_budget`.
+    let (mut r, _, table) = slow_resolver(Duration::ZERO, 100_000);
+    let started = std::time::Instant::now();
+    for i in (0..100_000u32).step_by(7) {
+        let local = SocketAddr::new(
+            std::net::Ipv4Addr::from(0xC000_0200 + (i >> 16)).into(),
+            (i & 0xFFFF) as u16,
+        );
+        let owner = r
+            .lookup(Transport::Tcp, local, addr("203.0.113.9:443"))
+            .expect("every socket is in the table");
+        assert_eq!(owner.pid, 1000 + i % 500);
+    }
+    assert_eq!(*table.reads.lock().unwrap(), 1, "hits come from the copy");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        started.elapsed()
     );
 }

@@ -3,6 +3,7 @@
 
 use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::Arc;
+use std::time::Duration;
 
 use scribe_core::SystemClock;
 use scribe_process::{os_table, Resolver, Transport};
@@ -63,4 +64,39 @@ fn a_socket_that_is_not_open_has_no_owner() {
     assert!(resolver()
         .lookup(Transport::Tcp, local, "203.0.113.9:443".parse().unwrap())
         .is_none());
+}
+
+#[test]
+fn many_own_sockets_scan_within_the_budget() {
+    // Load check of the real scan: 400 open TCP connections (800 sockets) in this process on
+    // top of whatever the system runs. The scan must find them all and stay well within a
+    // second; the resolver itself spaces out reads that go over its 50 ms budget.
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let target = listener.local_addr().unwrap();
+    let mut pairs = Vec::new();
+    for _ in 0..400 {
+        let client = TcpStream::connect(target).unwrap();
+        let (server, _) = listener.accept().unwrap();
+        pairs.push((client, server));
+    }
+    let mut r = resolver();
+    let started = std::time::Instant::now();
+    for (client, _) in &pairs {
+        let owner = r
+            .lookup(
+                Transport::Tcp,
+                client.local_addr().unwrap(),
+                client.peer_addr().unwrap(),
+            )
+            .expect("every connection is in the table");
+        assert_eq!(owner.pid, std::process::id());
+    }
+    let elapsed = started.elapsed();
+    let scans = r.scan_stats();
+    assert_eq!(scans.scans, 1, "one read answers all 400 lookups");
+    eprintln!(
+        "socket table read in {:?} (400 lookups {elapsed:?})",
+        scans.last
+    );
+    assert!(scans.last < Duration::from_secs(1), "{:?}", scans.last);
 }

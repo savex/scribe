@@ -8,7 +8,7 @@ use scribe_api::pb::scribe_client::ScribeClient;
 use scribe_api::pb::{self, health_reply::Level};
 use scribe_api::unix::{self, ServerCheck};
 use scribe_core::platform::DefaultPaths;
-use scribe_core::{FlowKind, Observation, Security};
+use scribe_core::{FlowKind, Observation, Security, Sensor};
 use scribe_daemon::app::{serve_full, Command, ServeOptions};
 use scribe_daemon::config::{context, parse, resolve, HostFacts, Settings, Source};
 use scribe_test_support::packets::tls::client_hello_sni;
@@ -102,6 +102,16 @@ impl Daemon {
         extra: &str,
         observations: Vec<Observation>,
     ) -> Self {
+        let sensor = Box::new(FakeSensor::from_observations(observations));
+        Self::start_sensor(dir, mode, extra, sensor).await
+    }
+
+    pub(crate) async fn start_sensor(
+        dir: tempfile::TempDir,
+        mode: &str,
+        extra: &str,
+        sensor: Box<dyn Sensor>,
+    ) -> Self {
         let socket = dir.path().join("run/api.sock");
         let (commands, rx) = mpsc::channel(8);
         let (stop, stopped) = oneshot::channel::<()>();
@@ -111,7 +121,7 @@ impl Daemon {
         };
         let task = tokio::spawn(serve_full(
             settings_with(dir.path(), mode, extra),
-            Box::new(FakeSensor::from_observations(observations)),
+            sensor,
             options,
             async {
                 let _ = stopped.await;
@@ -932,5 +942,139 @@ async fn old_hourly_buckets_are_pruned() {
         .unwrap()
         .into_inner();
     assert_eq!(hosts.items.len(), 2, "host totals are never pruned");
+    daemon.stop().await;
+}
+
+/// A socket table that knows the first `known` of the flows from `attribution_flows`.
+struct KnownSockets {
+    known: u16,
+}
+
+impl scribe_process::SocketTable for KnownSockets {
+    fn snapshot(&mut self) -> std::io::Result<Vec<scribe_process::SocketEntry>> {
+        Ok((0..self.known)
+            .map(|i| scribe_process::SocketEntry {
+                transport: scribe_process::Transport::Tcp,
+                local: format!("192.0.2.10:{}", 40_000 + i).parse().unwrap(),
+                remote: Some("203.0.113.9:443".parse().unwrap()),
+                pid: 300,
+            })
+            .collect())
+    }
+    fn process_path(&self, _pid: u32) -> Option<String> {
+        Some("/opt/agent/bin/agent".into())
+    }
+}
+
+/// `n` new TCP flows from 192.0.2.10:40000… to 203.0.113.9:443, without a process.
+fn attribution_flows(n: u16) -> Vec<Observation> {
+    (0..n)
+        .map(|i| {
+            let mut o = flow("203.0.113.9:443").observe();
+            o.event.kind = FlowKind::NewFlow;
+            o.event.src = format!("192.0.2.10:{}", 40_000 + i).parse().unwrap();
+            o
+        })
+        .collect()
+}
+
+fn attributed_daemon_sensor(flows: u16, known: u16) -> Box<dyn Sensor> {
+    let inner = FakeSensor::from_observations(attribution_flows(flows)).without_process_info();
+    let resolver = scribe_process::Resolver::new(
+        Box::new(KnownSockets { known }),
+        std::sync::Arc::new(scribe_core::SystemClock),
+    );
+    Box::new(scribe_process::Attributed::new(Box::new(inner), resolver))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn status_and_health_report_the_process_attribution_hit_rate() {
+    // 30 of 120 new flows (25%) get a process: below half, a critical metric.
+    let daemon = Daemon::start_sensor(
+        tempfile::tempdir().unwrap(),
+        "learn",
+        "",
+        attributed_daemon_sensor(120, 30),
+    )
+    .await;
+    let mut client = daemon.client().await;
+    let status = eventually(
+        || {
+            let mut c = client.clone();
+            async move {
+                c.get_status(pb::StatusRequest {})
+                    .await
+                    .unwrap()
+                    .into_inner()
+            }
+        },
+        |s| {
+            s.sensor
+                .as_ref()
+                .and_then(|s| s.attribution.as_ref())
+                .is_some_and(|a| a.attributed + a.missed == 120)
+        },
+    )
+    .await;
+    let sensor = status.sensor.unwrap();
+    assert_eq!(sensor.name, "fake");
+    assert!(sensor.process_info);
+    let a = sensor.attribution.unwrap();
+    assert_eq!((a.attributed, a.missed), (30, 90));
+    assert!(a.scans >= 1, "{a:?}");
+    assert_eq!(a.slow_scans, 0);
+    let low: Vec<&pb::Critical> = status
+        .critical
+        .iter()
+        .filter(|c| c.kind == "attribution_low")
+        .collect();
+    assert_eq!(low.len(), 1, "{:?}", status.critical);
+    assert!(
+        low[0].detail.contains("only 30 of 120 new flows (25%)"),
+        "{}",
+        low[0].detail
+    );
+    let health = client
+        .health(pb::HealthRequest {})
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(health.level, Level::Degraded as i32, "{:?}", health.reasons);
+    daemon.stop().await;
+
+    // 90 of 120 (75%): reported, but not critical.
+    let daemon = Daemon::start_sensor(
+        tempfile::tempdir().unwrap(),
+        "learn",
+        "",
+        attributed_daemon_sensor(120, 90),
+    )
+    .await;
+    let client = daemon.client().await;
+    let status = eventually(
+        || {
+            let mut c = client.clone();
+            async move {
+                c.get_status(pb::StatusRequest {})
+                    .await
+                    .unwrap()
+                    .into_inner()
+            }
+        },
+        |s| {
+            s.sensor
+                .as_ref()
+                .and_then(|s| s.attribution.as_ref())
+                .is_some_and(|a| a.attributed + a.missed == 120)
+        },
+    )
+    .await;
+    let a = status.sensor.unwrap().attribution.unwrap();
+    assert_eq!((a.attributed, a.missed), (90, 30));
+    assert!(
+        status.critical.iter().all(|c| c.kind != "attribution_low"),
+        "{:?}",
+        status.critical
+    );
     daemon.stop().await;
 }

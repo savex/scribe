@@ -2393,6 +2393,7 @@ dependencies = [
  "scribe-module-url",
  "scribe-net",
  "scribe-policy",
+ "scribe-process",
  "scribe-secrets",
  "scribe-sensor-pcap",
  "scribe-storage-api",

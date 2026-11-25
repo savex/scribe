@@ -45,6 +45,7 @@ fn status() -> pb::Status {
             process_info: false,
             health: "fallback".into(),
             fallback: true,
+            attribution: None,
         }),
         storage: Some(pb::Storage {
             state: Some(pb::StorageTarget {
@@ -115,6 +116,43 @@ fn status_lists_critical_metrics_first() {
     }
     let colored = output::status(&status(), true);
     assert!(colored.contains("\x1b[1;31m! fallback_sensor"), "{colored}");
+}
+
+#[test]
+fn attribution_shows_the_hit_rate_and_table_reads() {
+    let mut s = status();
+    s.sensor = Some(pb::Sensor {
+        name: "pcap+sockets".into(),
+        process_info: true,
+        health: "ok".into(),
+        fallback: false,
+        attribution: Some(pb::Attribution {
+            attributed: 940,
+            missed: 60,
+            scans: 52,
+            slow_scans: 0,
+            last_scan_s: 0.003,
+            max_scan_s: 0.012,
+        }),
+    });
+    let text = output::status(&s, false);
+    assert!(
+        text.contains("process    socket table: 940 of 1000 new flows (94%), 52 reads, last 3 ms, max 12 ms\n"),
+        "{text}"
+    );
+    let slow = pb::Attribution {
+        attributed: 0,
+        missed: 0,
+        scans: 3,
+        slow_scans: 2,
+        last_scan_s: 0.08,
+        max_scan_s: 0.12,
+    };
+    assert_eq!(
+        output::attribution(&slow),
+        "socket table: no new flows yet, 3 reads, last 80 ms, max 120 ms, 2 over budget"
+    );
+    assert!(!output::status(&status(), false).contains("process    "));
 }
 
 #[test]

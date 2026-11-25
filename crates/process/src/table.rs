@@ -8,6 +8,23 @@ use scribe_core::Clock;
 
 /// Shortest time between two reads of the socket table; misses in between wait for the next.
 pub const MIN_REFRESH: Duration = Duration::from_millis(100);
+/// A read of the table that takes longer than this is slow: the next read waits
+/// [`SLOW_FACTOR`] times as long as it took (at most [`MAX_REFRESH`]), so scanning a busy
+/// system stays around a tenth of one core at worst.
+pub const SCAN_BUDGET: Duration = Duration::from_millis(50);
+pub const SLOW_FACTOR: u32 = 10;
+/// Longest wait between two reads after slow ones.
+pub const MAX_REFRESH: Duration = Duration::from_secs(5);
+
+/// Reads of the socket table and how long they took.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScanStats {
+    pub scans: u64,
+    /// Reads over [`SCAN_BUDGET`].
+    pub slow: u64,
+    pub last: Duration,
+    pub max: Duration,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Transport {
@@ -63,6 +80,9 @@ pub struct Resolver {
     by_port: HashMap<(Transport, u16), u32>,
     paths: HashMap<u32, Option<String>>,
     read_at: Option<SystemTime>,
+    /// Wait before the next read: [`MIN_REFRESH`], longer after a slow read.
+    gap: Duration,
+    scans: ScanStats,
     failing: bool,
 }
 
@@ -75,6 +95,8 @@ impl Resolver {
             by_port: HashMap::new(),
             paths: HashMap::new(),
             read_at: None,
+            gap: MIN_REFRESH,
+            scans: ScanStats::default(),
             failing: false,
         }
     }
@@ -88,9 +110,22 @@ impl Resolver {
             .copied()
     }
 
+    /// How often the table was read and how long that took.
+    pub fn scan_stats(&self) -> ScanStats {
+        self.scans
+    }
+
+    /// Wait before the next read of the table.
+    pub fn refresh_gap(&self) -> Duration {
+        self.gap
+    }
+
     fn refresh(&mut self, now: SystemTime) {
         self.read_at = Some(now);
-        match self.table.snapshot() {
+        let snapshot = self.table.snapshot();
+        let took = self.clock.now().duration_since(now).unwrap_or_default();
+        self.time_scan(took);
+        match snapshot {
             Ok(entries) => {
                 self.failing = false;
                 self.exact.clear();
@@ -115,6 +150,28 @@ impl Resolver {
         }
     }
 
+    fn time_scan(&mut self, took: Duration) {
+        let s = &mut self.scans;
+        s.scans += 1;
+        s.last = took;
+        s.max = s.max.max(took);
+        if took > SCAN_BUDGET {
+            s.slow += 1;
+            let gap = (took * SLOW_FACTOR).clamp(MIN_REFRESH, MAX_REFRESH);
+            if s.slow == 1 {
+                tracing::warn!(
+                    "reading the socket table took {} ms (budget {} ms); reading it at most every {} ms",
+                    took.as_millis(),
+                    SCAN_BUDGET.as_millis(),
+                    gap.as_millis()
+                );
+            }
+            self.gap = gap;
+        } else {
+            self.gap = MIN_REFRESH;
+        }
+    }
+
     /// The owner of the flow from `local` to `remote`, if its socket is still open.
     pub fn lookup(
         &mut self,
@@ -128,7 +185,7 @@ impl Resolver {
                 let now = self.clock.now();
                 let stale = self
                     .read_at
-                    .is_none_or(|at| now.duration_since(at).unwrap_or_default() >= MIN_REFRESH);
+                    .is_none_or(|at| now.duration_since(at).unwrap_or_default() >= self.gap);
                 if !stale {
                     return None;
                 }

@@ -13,6 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use scribe_api::access::{Access, AccessPolicy};
 use scribe_api::pb;
 use scribe_api::pb::scribe_server::Scribe;
+use scribe_core::AttributionStats;
 use scribe_storage_api::{
     AlertRecord, EntrySource, EventKind, EventQuery, Health, Host, HostQuery, StorageError,
     StoredEvent,
@@ -37,6 +38,10 @@ pub const ALERT_BACKLOG: usize = 256;
 const EXPORT_PAGE: usize = 500;
 /// Spool or buffer use above this share of its limit is a critical metric.
 const HIGH_WATER: f64 = 0.8;
+/// Below this share of new flows with a process from the socket table, the hit rate is a
+/// critical metric (once there are [`ATTRIBUTION_MIN_FLOWS`] new flows to judge by).
+pub const ATTRIBUTION_LOW: f64 = 0.5;
+pub const ATTRIBUTION_MIN_FLOWS: u64 = 100;
 /// How often `grpc.health.v1` is brought up to date.
 const HEALTH_EVERY: Duration = Duration::from_secs(2);
 
@@ -68,6 +73,8 @@ pub struct SensorInfo {
     pub capturing: bool,
     /// Running without process info on a system that has a native sensor.
     pub fallback: bool,
+    /// Process lookups in the OS socket table, for a sensor that does them.
+    pub attribution: Option<AttributionStats>,
 }
 
 /// Storage parts of the status, read without the main loop.
@@ -231,6 +238,22 @@ pub fn critical(snap: &Snapshot, view: &StorageView, layout: &Layout) -> Vec<pb:
             },
         );
     }
+    if let Some(a) = &snap.sensor.attribution {
+        let flows = a.attributed + a.missed;
+        if let Some(rate) = a
+            .hit_rate()
+            .filter(|r| flows >= ATTRIBUTION_MIN_FLOWS && *r < ATTRIBUTION_LOW)
+        {
+            add(
+                "attribution_low",
+                format!(
+                    "only {} of {flows} new flows ({:.0}%) got a process from the socket table; is scribed allowed to read other processes?",
+                    a.attributed,
+                    rate * 100.0
+                ),
+            );
+        }
+    }
     for m in &snap.status.modules {
         if let RunState::Failed(why) = &m.state {
             add("module_failed", format!("{}: {why}", m.id));
@@ -300,6 +323,14 @@ pub fn status_message(snap: &Snapshot, view: &StorageView, layout: &Layout) -> p
             }
             .into(),
             fallback: snap.sensor.fallback,
+            attribution: snap.sensor.attribution.map(|a| pb::Attribution {
+                attributed: a.attributed,
+                missed: a.missed,
+                scans: a.scans,
+                slow_scans: a.slow_scans,
+                last_scan_s: a.last_scan.as_secs_f64(),
+                max_scan_s: a.max_scan.as_secs_f64(),
+            }),
         }),
         storage: Some(pb::Storage {
             state: Some(pb::StorageTarget {

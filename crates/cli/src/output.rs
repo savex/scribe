@@ -64,6 +64,34 @@ fn or_dash(s: Option<&str>) -> String {
     }
 }
 
+/// The `process` row: how many new flows got their process from the socket table, and the
+/// reads of that table, e.g. `socket table: 940 of 1000 new flows (94%), 52 reads, last 3 ms,
+/// max 12 ms`.
+pub fn attribution(a: &pb::Attribution) -> String {
+    let flows = a.attributed + a.missed;
+    let share = if flows == 0 {
+        "no new flows yet".to_owned()
+    } else {
+        format!(
+            "{} of {} ({:.0}%)",
+            a.attributed,
+            plural(flows, "new flow", "new flows"),
+            a.attributed as f64 * 100.0 / flows as f64
+        )
+    };
+    let ms = |s: f64| format!("{:.0} ms", s * 1000.0);
+    let mut out = format!(
+        "socket table: {share}, {}, last {}, max {}",
+        plural(a.scans, "read", "reads"),
+        ms(a.last_scan_s),
+        ms(a.max_scan_s)
+    );
+    if a.slow_scans > 0 {
+        out.push_str(&format!(", {} over budget", a.slow_scans));
+    }
+    out
+}
+
 /// `scribe daemon status`: critical metrics first (marked `!`, red on a terminal).
 pub fn status(s: &pb::Status, color: bool) -> String {
     let mut out = String::new();
@@ -116,6 +144,9 @@ pub fn status(s: &pb::Status, color: bool) -> String {
                 sensor.health
             ),
         );
+        if let Some(a) = &sensor.attribution {
+            row("process", attribution(a));
+        }
     }
     row(
         "config",

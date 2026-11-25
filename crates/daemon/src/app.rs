@@ -802,6 +802,7 @@ pub async fn serve_full(
                                 process_info: sensor.has_process_info(),
                                 capturing,
                                 fallback: is_fallback(sensor.as_ref()),
+                                attribution: sensor.attribution(),
                             },
                             started: started_at,
                             now: clock.now(),
@@ -1147,6 +1148,10 @@ impl Sensor for FallbackSensor {
 
     fn has_process_info(&self) -> bool {
         self.active().has_process_info()
+    }
+
+    fn attribution(&self) -> Option<scribe_core::AttributionStats> {
+        self.active().attribution()
     }
 
     fn set_payload(&mut self, needed: bool) {

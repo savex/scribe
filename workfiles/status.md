@@ -169,7 +169,7 @@ earlier edit (`111411c`); they are restored.
 | `sensor-pcap` | 6 | **100%** | Decoder, flow tracker, pcap replay, live capture (libpcap / Npcap at run time), device choice; conformance passes live on Linux | — | **82%** (676/827; live capture runs as root, measured in the container suite, not here) |
 | `sensor-linux` (eBPF) | 7 | **~2%** | Stub, Linux only | eBPF programs, loader, process lookup | n/a (not built on macOS) |
 | `sensor-windows` (ETW) | 8 | **~2%** | Stub, Windows only | ETW session, DNS-client events, Npcap | n/a (not built on macOS) |
-| macOS sensor (option 9B) | 9 | **~80%** | pcap sensor with `libproc` attribution (option P) | Hit rate in `scribe daemon status`, load check of the scan (1–2 days). The Network Extension (option 9A) is a later option, not planned | — |
+| macOS sensor (option 9B) | 9 | **100%** | pcap sensor with `libproc` attribution (option P); hit rate in `scribe daemon status` and health (`attribution_low`); 50 ms scan budget with back-off; load checks (one real read with 400 own connections: 4.7 ms, unprivileged) | The Network Extension (option 9A) is a later option, not planned. A root scan of every process is not measured | — |
 | Local API (`crates/api`) and `cli` | 10, 11 | **100%** | gRPC protocol (no `protoc` needed), Unix socket and Windows named pipe with caller identity, access policy, limits; every `scribe` command incl. `scribe daemon …`, `scribe modules`, `scribe audit verify`, `scribe url list`, `scribe alerts --watch`, `scribe notify`, `--json`, `--watch` | — | **94%** (261/279) `api`, **85%** (910/1075) `cli`; the named pipe runs only on the Windows CI runner |
 | Alert outputs (`crates/alerts`) | 11 | **100%** | Dispatcher (queue and rate limit per output), log, signed webhook; desktop notifications through `scribe notify` | — | **96%** (288/300) |
 | Outgoing HTTPS (`crates/net`) | 11 | **100%** | HTTP/1.1 client on rustls: https only except loopback, OS trust store or pin, same-origin redirects, timeouts, size cap; webhook signature | Proxies (not planned) | **90%** (482/534) |
@@ -196,13 +196,13 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 
 ## What this means
 
-- **Phases 0, 0b, 1–6, 10 and 11 are done: milestone M1 is complete.** Remaining effort: 40–51 days (48–61 with buffer), with the Linux sensor as option 7B (`libbpf-rs`, C eBPF programs) and macOS on option 9B; option 9A (Network Extension, 13–17 days) stays outside the totals.
+- **Phases 0, 0b, 1–6, 10 and 11 are done: milestone M1 is complete.** Remaining effort: 39–49 days (47–59 with buffer), with the Linux sensor as option 7B (`libbpf-rs`, C eBPF programs) and macOS on option 9B; option 9A (Network Extension, 13–17 days) stays outside the totals.
 - **`scribed` runs end to end with the pcap sensor, is controlled through `scribe` and tells people:** log, signed webhooks and desktop notifications (`scribe notify`), threat lists from files or checked downloads, secrets in the OS key stores.
 - **Next steps:**
   1. M1 tagged as `v0.3.0-alpha.2` (2026-11-25, Bump version; Tests green in run `45533785706`). The Network Extension entitlement is needed only if option 9A is picked later.
   2. Option P (process attribution from the OS socket tables) is implemented and green on all three systems (run `45521781418`). Next from
      [plan.md, *Options for the stubbed phases*](plan.md#options-for-the-stubbed-phases): the Postgres event sink (12C), supply-chain
-     checks (14) — both done and green in run `45533785706` — then the native sensors for Linux (7B) and Windows (8A); macOS stays on option 9B.
+     checks (14) — both done and green in run `45533785706` — then the native sensors for Linux (7B) and Windows (8A). macOS stays on option 9B, finished 2026-11-25 (hit rate in status and health, scan budget, load checks).
 - **Not verified here:** Windows toasts (DPAPI and the `scribe notify` agent over the named pipe passed in run `45452687480`); real desktop notifications on any system (the agent is tested with a fake notifier); keychain and Secret Service round trips (gated: `SCRIBE_TEST_KEYCHAIN=1`, a desktop keyring); the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests and Release,
   the Postgres state store (not built; the event sink passed its conformance suite and INT-15 in run `45533785706`), the Windows named pipe outside the Windows runner (its tests passed there in run `45226370809`) and the fuzz targets (no nightly).
   Local Linux / Windows compile checks leave out crates with C code (bundled SQLite, `ring`: the daemon, `enrich`,

@@ -10,6 +10,13 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ## [Unreleased]
 
+### Added
+
+- `scribe daemon status` shows how many new flows got their process from the OS socket table and how long
+  reading the table takes (`process` row; API `Sensor.attribution`); under 50% of at least 100 new flows is
+  the critical metric `attribution_low` and makes health degraded. A table read over 50 ms spaces out the
+  next ones (ten times its length, at most 5 s). Finishes the macOS sensor (plan option 9B).
+
 ## [0.3.0-alpha.2] - 2026-11-25
 
 ### Added

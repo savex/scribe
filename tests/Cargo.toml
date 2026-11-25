@@ -52,6 +52,7 @@ scribe-policy.workspace = true
 scribe-net.workspace = true
 scribe-secrets.workspace = true
 scribe-sensor-pcap.workspace = true
+scribe-process.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
