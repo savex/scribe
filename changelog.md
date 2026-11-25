@@ -61,6 +61,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   there, run `45695681303`) and 5.8 mounts the host root over 9p (no virtiofs root found).
   In run `45705206686` 5.15, 6.1 and 6.18 passed; 5.8 boots with `psi=0` (5.8.0 oopses in `psi_trigger_create`
   when the runner's systemd-udevd writes a cgroup pressure file).
+- Plan and status record Tests run `45722363836` and Sensor tests run `45722367989` as green: the ETW sensor passes conformance on
+  the Windows runner (8A step 2).
 - Plan and status record Tests run `45719108985` (8A step 1) as green on Linux, macOS and Windows.
 - Plan and status record Sensor tests run `45712541202` as green: the eBPF sensor passes on Linux 5.8, 5.15, 6.1 and
   6.18 (phase 7 done).
