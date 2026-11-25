@@ -10,10 +10,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
-# Build tools; libpcap for the pcap sensor (phase 6). On arm64 also the x86_64 cross toolchain.
+# Build tools; libpcap for the pcap sensor (phase 6); clang, libelf and zlib for the eBPF sensor
+# (phase 7, option 7B). On arm64 also the x86_64 cross toolchain.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       build-essential pkg-config git python3 curl ca-certificates xz-utils libpcap-dev \
+      clang libelf-dev zlib1g-dev \
  && if [ "$(dpkg --print-architecture)" = arm64 ]; then \
       apt-get install -y --no-install-recommends gcc-x86-64-linux-gnu libc6-dev-amd64-cross; \
     fi \

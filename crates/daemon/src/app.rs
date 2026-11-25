@@ -1085,7 +1085,7 @@ fn platform_sensor(settings: &Settings) -> Box<dyn Sensor> {
     let pcap = with_process_lookup(settings, pcap);
     #[cfg(target_os = "linux")]
     return Box::new(FallbackSensor::new(
-        Box::new(scribe_sensor_linux::EbpfSensor),
+        Box::new(scribe_sensor_linux::EbpfSensor::default()),
         pcap,
     ));
     #[cfg(windows)]

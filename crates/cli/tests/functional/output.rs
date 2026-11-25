@@ -137,8 +137,18 @@ fn attribution_shows_the_hit_rate_and_table_reads() {
     });
     let text = output::status(&s, false);
     assert!(
-        text.contains("process    socket table: 940 of 1000 new flows (94%), 52 reads, last 3 ms, max 12 ms\n"),
+        text.contains("process    940 of 1000 new flows (94%); socket table: 52 reads, last 3 ms, max 12 ms\n"),
         "{text}"
+    );
+    let native = pb::Attribution {
+        attributed: 2,
+        missed: 0,
+        ..Default::default()
+    };
+    assert_eq!(
+        output::attribution(&native),
+        "2 of 2 new flows (100%)",
+        "a native sensor reads no socket table"
     );
     let slow = pb::Attribution {
         attributed: 0,
@@ -150,7 +160,7 @@ fn attribution_shows_the_hit_rate_and_table_reads() {
     };
     assert_eq!(
         output::attribution(&slow),
-        "socket table: no new flows yet, 3 reads, last 80 ms, max 120 ms, 2 over budget"
+        "no new flows yet; socket table: 3 reads, last 80 ms, max 120 ms, 2 over budget"
     );
     assert!(!output::status(&status(), false).contains("process    "));
 }

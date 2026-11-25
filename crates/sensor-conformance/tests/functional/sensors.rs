@@ -27,5 +27,20 @@ fn pcap_sensor_conforms() {
     }
 }
 
-// TODO: linux eBPF (cfg linux), Windows ETW (cfg windows) and the macOS Network Extension
-// bridge get a test here each once their sensors exist.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "needs root, or CAP_BPF, CAP_PERFMON and CAP_NET_RAW; kernel 5.8+ (6.0+ on arm64)"]
+fn ebpf_sensor_conforms() {
+    let mut sensor = scribe_sensor_linux::EbpfSensor::default();
+    let opts = SuiteOptions {
+        expect_process_info: true,
+        names_flows: false,
+        ..Default::default()
+    };
+    if let Err(failures) = run_sensor_suite(&mut sensor, &opts) {
+        panic!("eBPF sensor failed:\n{}", failures.join("\n"));
+    }
+}
+
+// TODO: Windows ETW (cfg windows) and the macOS Network Extension bridge (option 9A) get a test
+// here each once their sensors exist.

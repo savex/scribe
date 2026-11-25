@@ -139,7 +139,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | ID | Requirement | Status | Verified by |
 |---|---|---|---|
 | FR-1 | Capture every outgoing TCP connection and UDP / QUIC flow, IPv4 and IPv6, on macOS, Linux and Windows | Partly (pcap sensor on every OS, verified live on Linux; native sensors in phases 7–9) | Sensor conformance suite; pcap fixtures |
-| FR-2 | Attribute each flow to its process (pid and path) where the sensor allows; the pcap fallback reports no process | Partly (the pcap sensor gets the process from the OS socket table, option P, which misses very short connections; native sensors for Linux and Windows in phases 7–8; macOS stays on the socket table, option 9B) | Sensor conformance (`expect_process_info`) |
+| FR-2 | Attribute each flow to its process (pid and path) where the sensor allows; the pcap fallback reports no process | Partly (Linux: the eBPF sensor gets every connection's process from the kernel, phase 7; the pcap sensor gets it from the OS socket table, option P, which misses very short connections; Windows native sensor in phase 8; macOS stays on the socket table, option 9B) | Sensor conformance (`expect_process_info`) |
 | FR-3 | Find the host name in this order: TLS SNI, HTTP `Host` header, DNS cache (IP → queried name, CNAME chains map back to the queried name) | Implemented (`scribe_enrich::Enricher`; a name the sensor reports ranks after `Host`; wired to traffic in phase 5) | pcap fixtures `tls13_sni_ipv4`, `http_plain`, `dns_cname_then_tls`, `dns_aaaa_then_tls` |
 | FR-4 | Classify each flow as `tls`, `quic`, `plaintext` or `unknown` from its first bytes, never from the port | Implemented (TCP and UDP, QUIC long headers) | Functional tests in `enrich`; every fixture end to end |
 | FR-5 | For ECH, record the outer public name and flag the flow `ech` | Implemented | Fixture `tls_ech` |
@@ -191,7 +191,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-11 | Robust parsing | Packet parsers never crash or hang on malformed input; fuzzed, crash-free for 7 runs in a row before release | Planned |
 | NFR-12 | Privacy | Store connection metadata only, never payloads; redact URL query values by default (section 12.2); data leaves the host only through sinks the admin configures | Decided (URL redaction), Proposed (rest) |
 | NFR-13 | Portability | Prebuilt binaries for `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-pc-windows-msvc` | Implemented (archives) |
-| NFR-14 | Build | Minimum Rust version follows the dependencies: 1.89 now, raised only when a dependency needs it (expected 1.98 with the eBPF sensor); CI builds with exactly that version | Decided |
+| NFR-14 | Build | Minimum Rust version follows the dependencies: 1.89 now, raised only when a dependency needs it (the eBPF sensor's `libbpf-rs` fits 1.89); CI builds with exactly that version | Decided |
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
 | NFR-16 | Extensibility | New backends, sensors and modules must pass their conformance suites | Implemented |
 | NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Implemented (`scribe-net` for webhooks and threat lists: OS verifier or pin, loopback-only http; the Postgres sink with the same verifier); custom CA files for Postgres still to come |
@@ -301,7 +301,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | Module API | `crates/module-api` (`scribe-module-api`) | `Module`, `FlowHook`, `Source`, `Manifest`, `ModuleContext`, notes, records, metric samples | core | Implemented |
 | URL module | `crates/module-url` (`scribe-module-url`, feature `url`, default on) | Plaintext HTTP request parsing, URL privacy, request counters, `scribe url` commands | module-api | Partly (module, config, hook, conformance, request parser and URL privacy; `scribe url` in phase 10) |
 | Kernel metrics module | `crates/module-kperf` (`scribe-module-kperf`, feature `kperf`) | Example of a later module: TCP retransmits, RTT, run-queue delay from kernel probes | module-api, sensors' `ProbeHost` | Idea (not planned) |
-| Linux sensor | `crates/sensor-linux` | eBPF probes in C loaded with `libbpf-rs` (plan option 7B), process lookup | core | Stub |
+| Linux sensor | `crates/sensor-linux` | eBPF programs in C loaded with `libbpf-rs` (plan option 7B): `tcp_connect` / `udp_sendmsg` records with the process, joined with packets from a socket filter | core | Implemented (privilege split left) |
 | Windows sensor | `crates/sensor-windows` | ETW kernel-network and DNS-client events, Npcap for payloads | core | Stub |
 | pcap sensor | `crates/sensor-pcap` | Capture on every OS (macOS today, the fallback on Linux and Windows), no process info of its own; libpcap / Npcap loaded at run time | core | Implemented (phase 6) |
 | Process attribution | `crates/process` (`scribe-process`) | Owner of each new flow from the OS socket table (Linux `/proc`, macOS `libproc`, Windows IP Helper); `Attributed` wraps the pcap sensor (name `pcap+sockets`) | core | Implemented (plan option P) |
@@ -773,7 +773,7 @@ than `[storage.hours] keep` (default `90d`, `""` = forever). Host totals are nev
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
-| Native capture | eBPF (C programs, `libbpf-rs`, CO-RE), kernel 5.8+ | none: pcap with `libproc` attribution (option 9B); Network Extension optional later (9A) | ETW |
+| Native capture | eBPF (C programs, `libbpf-rs`, CO-RE, `fentry` / `fexit`), kernel 5.8+ (6.0+ on arm64) | none: pcap with `libproc` attribution (option 9B); Network Extension optional later (9A) | ETW |
 | Process attribution | yes | yes | yes |
 | Packet contents (SNI) | eBPF socket filter | libpcap (Network Extension first bytes with 9A) | Npcap |
 | Fallback | libpcap | libpcap | Npcap |
@@ -1000,7 +1000,7 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 
 | # | Question | Answer / state |
 |---|---|---|
-| 1 | Minimum Rust version | **Answered:** policy *follow dependencies*; 1.89 now, 1.98 expected for the eBPF sensor (NFR-14) |
+| 1 | Minimum Rust version | **Answered:** policy *follow dependencies*; 1.89 now, no raise for the eBPF sensor (`libbpf-rs`, option 7B; NFR-14) |
 | 2 | Default config and data paths per OS | **Answered:** OS defaults on Linux and macOS; on Windows config next to the app (`<install dir>\scribe.toml`); data `<install dir>\data\` (section 9.1) |
 | 3 | Scores, threshold, usual ports, threat lists | **Answered:** draft v1 config [config/scribe.toml](../config/scribe.toml) with all defaults (section 8.3) |
 | 4 | Behaviour when the state store is unavailable | **Answered:** in-memory buffer of the latest events, oldest dropped on overflow (FR-25) |

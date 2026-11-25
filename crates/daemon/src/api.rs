@@ -38,7 +38,7 @@ pub const ALERT_BACKLOG: usize = 256;
 const EXPORT_PAGE: usize = 500;
 /// Spool or buffer use above this share of its limit is a critical metric.
 const HIGH_WATER: f64 = 0.8;
-/// Below this share of new flows with a process from the socket table, the hit rate is a
+/// Below this share of new flows with a process (socket table or native sensor), the hit rate is a
 /// critical metric (once there are [`ATTRIBUTION_MIN_FLOWS`] new flows to judge by).
 pub const ATTRIBUTION_LOW: f64 = 0.5;
 pub const ATTRIBUTION_MIN_FLOWS: u64 = 100;
@@ -73,7 +73,8 @@ pub struct SensorInfo {
     pub capturing: bool,
     /// Running without process info on a system that has a native sensor.
     pub fallback: bool,
-    /// Process lookups in the OS socket table, for a sensor that does them.
+    /// How many new flows got a process, for a sensor that reports it (socket-table lookup or
+    /// the eBPF sensor).
     pub attribution: Option<AttributionStats>,
 }
 
@@ -247,7 +248,7 @@ pub fn critical(snap: &Snapshot, view: &StorageView, layout: &Layout) -> Vec<pb:
             add(
                 "attribution_low",
                 format!(
-                    "only {} of {flows} new flows ({:.0}%) got a process from the socket table; is scribed allowed to read other processes?",
+                    "only {} of {flows} new flows ({:.0}%) got a process; is scribed allowed to read other processes?",
                     a.attributed,
                     rate * 100.0
                 ),

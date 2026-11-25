@@ -14,14 +14,15 @@ pub trait Sensor: Send {
     /// Whether an enabled module needs client bytes past the first request (set before `start`).
     /// Sensors that always send what they have can ignore it.
     fn set_payload(&mut self, _needed: bool) {}
-    /// For a sensor that looks processes up in the OS socket table: how well that works.
+    /// How many new flows got a process: the socket-table lookup (with its table reads) and
+    /// native sensors that join kernel records with packets.
     fn attribution(&self) -> Option<AttributionStats> {
         None
     }
 }
 
-/// Process lookups in the OS socket table (plan option P): new flows that got a process or not,
-/// and how long reading the table takes.
+/// Process attribution: new flows that got a process or not, and for the socket-table lookup
+/// (plan option P) how long reading the table takes (all zero for native sensors).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AttributionStats {
     /// New flows that got their process from the table.

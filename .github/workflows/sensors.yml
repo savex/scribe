@@ -30,9 +30,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
-      - name: Install capture libraries (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -yq libpcap-dev
+      - name: Build tools and capture libraries (Linux)
+        uses: ./.github/actions/linux-build-deps
+        with:
+          extra: libpcap-dev
       # TODO(windows): install Npcap silently (needs the Npcap OEM installer) for the pcap sensor.
 
       - name: Traffic generator (no privileges)

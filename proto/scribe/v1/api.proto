@@ -78,11 +78,13 @@ message Sensor {
   // "ok", "fallback" or "detached".
   string health = 3;
   bool fallback = 4;
-  // Process lookups in the OS socket table; unset when the sensor does none.
+  // How many new flows got a process (socket-table lookup or a native sensor); unset when the
+  // sensor doesn't report it.
   optional Attribution attribution = 5;
 }
 
-// New flows that got their process from the OS socket table, and the reads of that table.
+// New flows with and without a process; for the socket-table lookup also the reads of that
+// table (scans 0 for native sensors).
 message Attribution {
   uint64 attributed = 1;
   uint64 missed = 2;

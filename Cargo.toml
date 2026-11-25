@@ -84,6 +84,10 @@ minisign-verify = "0.3"
 # rustls with scribe-net's verifier (no OpenSSL).
 tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime", "with-serde_json-1"] }
 tokio-postgres-rustls = { version = "0.14", default-features = false }
+# Linux eBPF sensor (plan option 7B): libbpf vendored and linked statically; libelf and zlib from
+# the system.
+libbpf-rs = "0.27"
+libbpf-cargo = "0.27"
 # Test certificates for the HTTPS tests.
 rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 # Desktop notifications for `scribe notify` (D-Bus in pure Rust on Linux, Notification Center on

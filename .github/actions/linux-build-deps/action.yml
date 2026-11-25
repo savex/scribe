@@ -1,0 +1,17 @@
+# Build tools for the Linux eBPF sensor (plan option 7B): clang compiles the eBPF programs,
+# libelf and zlib are linked by libbpf. Does nothing on other systems.
+name: Linux build dependencies
+description: Install clang, libelf-dev and zlib1g-dev on Linux runners
+inputs:
+  extra:
+    description: More apt packages to install in the same step
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -yq --no-install-recommends clang libelf-dev zlib1g-dev ${{ inputs.extra }}

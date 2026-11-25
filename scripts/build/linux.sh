@@ -9,8 +9,10 @@
 #   scripts/build/linux.sh release                     dist/ archive for x86_64-unknown-linux-gnu
 #                                                      (and aarch64-unknown-linux-gnu with --all-targets)
 #   scripts/build/linux.sh shell                       a shell in the build container
-#   scripts/build/linux.sh run <command…>              one command in the build container (as root:
-#                                                      e.g. the capture tests, `cargo nextest run
+#   scripts/build/linux.sh run [--privileged] <command…>
+#                                                      one command in the build container (as root;
+#                                                      --privileged adds every capability, for the
+#                                                      eBPF and capture tests: `cargo nextest run
 #                                                      -p scribe-sensor-conformance --run-ignored only`)
 #   scripts/build/linux.sh clean
 #
@@ -50,6 +52,8 @@ native_doctor() {
   check "C compiler" 'command -v cc' "apt-get install build-essential"
   check "pkg-config" 'command -v pkg-config' "apt-get install pkg-config"
   check "libpcap headers" 'test -e /usr/include/pcap.h || test -e /usr/include/pcap/pcap.h' "apt-get install libpcap-dev (phase 6)"
+  check "clang (eBPF programs)" 'command -v clang' "apt-get install clang (phase 7)"
+  check "libelf and zlib headers" 'test -e /usr/include/libelf.h && test -e /usr/include/zlib.h' "apt-get install libelf-dev zlib1g-dev (phase 7)"
   check "python3" 'command -v python3' "apt-get install python3"
   check "Rust stable" 'rustup run stable rustc --version' "https://rustup.rs"
   check "Rust $msrv_version (MSRV)" "rustup run $msrv_version rustc --version" "rustup toolchain install $msrv_version"
@@ -150,11 +154,18 @@ registry_volume() { echo "scribe-cargo-registry-$ARCH"; }
 run_in() {
   local ctr=$1
   shift
-  local tty=()
+  local tty=() privileged=()
   if [[ ${1:-} == -it ]]; then tty=(-i -t); shift; fi
+  if [[ ${1:-} == --privileged ]]; then
+    case $ctr in
+      container) privileged=(--cap-add ALL) ;;
+      *) privileged=(--privileged) ;;
+    esac
+    shift
+  fi
   local volume
   volume=$(registry_volume)
-  local args=(run --rm "${tty[@]}" -v "$ROOT:/src" -v "$volume:/usr/local/cargo/registry" -w /src
+  local args=(run --rm "${tty[@]}" "${privileged[@]}" -v "$ROOT:/src" -v "$volume:/usr/local/cargo/registry" -w /src
     -e "CARGO_TARGET_DIR=/src/target/linux-$ARCH"
     -e "SCRIBE_VERSION=$(build_version)"
     -e "CARGO_TERM_COLOR=${CARGO_TERM_COLOR:-always}")

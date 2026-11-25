@@ -20,6 +20,13 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   header and its Rust reader) and the join of records with the observations built from packets
   (`scribe-sensor-linux` `record` and `owners`, tested on every system); the eBPF samples in
   `testdata/events/linux-ebpf` rewritten in that layout with pcap fixtures (FUN-SN02).
+- Linux eBPF sensor, steps 2–3: eBPF programs in C (`fentry/tcp_connect`, `fexit/udp_sendmsg` and
+  `udpv6_sendmsg`, a socket filter for packets) built by `build.rs` with `libbpf-cargo`, and `EbpfSensor`
+  (`linux-ebpf`): every flow gets its process from the kernel, short ones too, in scribed's pid namespace;
+  no libpcap needed. Kernel 5.8+ (6.0+ on arm64), else the pcap fallback. `scribe daemon status` shows its
+  hit rate. Linux builds need `clang`, `libelf-dev`, `zlib1g-dev` (build image, CI action
+  `linux-build-deps`); `scripts/build/linux.sh run --privileged` runs the eBPF tests in the container;
+  `deny.toml` allows BSD-2-Clause again (libbpf-rs).
 
 ### Changed
 
