@@ -30,6 +30,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ### Changed
 
+- Plan and status record Tests run `45658820882` and Sensor tests run `45658825832` (eBPF sensor on x86_64) as green.
 - Plan and status record Tests run `45648605321` (option 9B finished) as green on Linux, macOS and Windows.
 
 ## [0.3.0-alpha.2] - 2026-11-25
