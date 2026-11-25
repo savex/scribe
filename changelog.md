@@ -55,6 +55,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `libelf-dev` and `zlib1g-dev`. Totals updated for option P and the Postgres sink.
 - Supply chain (plan phase 14): `deny.toml` and a *Dependencies* job in Tests (`cargo deny`: RustSec advisories,
   licenses, bans, sources); every GitHub Action pinned by commit SHA; the workspace is `publish = false`.
+- Plan and status record Tests run `45533785706` as green: the new *Dependencies* job and the Postgres sink
+  tests (conformance, INT-15) passed in CI for the first time.
 - Plan and status record Tests run `45521781418` (option P) as green on Linux, macOS and Windows.
 - Tests: the SQLite counter property runs 12 cases instead of 24 and the TLS tests connect to `127.0.0.1`,
   so neither comes near the 6 s limit on the Windows runner (Tests run `45520007761` timed out once).
