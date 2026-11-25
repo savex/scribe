@@ -47,6 +47,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   there, run `45695681303`) and 5.8 mounts the host root over 9p (no virtiofs root found).
   In run `45705206686` 5.15, 6.1 and 6.18 passed; 5.8 boots with `psi=0` (5.8.0 oopses in `psi_trigger_create`
   when the runner's systemd-udevd writes a cgroup pressure file).
+- eBPF records are built in a per-CPU scratch map and copied to the ring buffer: on kernel 5.8 the verifier
+  refused the reserved ring-buffer record once its pointer was kept on the stack (run `45712003763`).
 - Plan and status record Tests run `45681530177` and Sensor tests run `45681534506` (privilege split on x86_64;
   Windows job fails only for lack of Npcap on the runner) as green.
 - Plan and status record Tests run `45658820882` and Sensor tests run `45658825832` (eBPF sensor on x86_64) as green.

@@ -117,6 +117,15 @@ struct {
 	__uint(max_entries, 1024 * 1024);
 } events SEC(".maps");
 
+/* Where a record is built before it is copied to `events`. Kernel 5.8's verifier loses track of a
+ * ring-buffer pointer kept on the stack (bpf_ringbuf_reserve), a map value's it keeps. */
+struct {
+	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, struct scribe_flow);
+} scratch SEC(".maps");
+
 /* Records lost because the ring buffer was full: index 0, summed over CPUs by scribed. */
 struct {
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
@@ -275,6 +284,19 @@ static __always_inline void peer_address(struct sock *sk, __u16 family, __u16 *d
 	}
 }
 
+static __always_inline struct scribe_flow *new_record(void)
+{
+	__u32 zero = 0;
+
+	return bpf_map_lookup_elem(&scratch, &zero);
+}
+
+static __always_inline void send_record(struct scribe_flow *e)
+{
+	if (bpf_ringbuf_output(&events, e, sizeof(*e), 0))
+		count_lost();
+}
+
 /* ---- who: connections and datagrams ---- */
 
 SEC("fentry/tcp_connect")
@@ -286,15 +308,13 @@ int BPF_PROG(tcp_connect, struct sock *sk)
 
 	if ((family != AF_INET && family != AF_INET6) || !current_ids(&id))
 		return 0;
-	e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
-	if (!e) {
-		count_lost();
+	e = new_record();
+	if (!e)
 		return 0;
-	}
 	fill_process(e, id, SCRIBE_TCP_CONNECT, family);
 	local_address(e, sk, family);
 	peer_address(sk, family, &e->dport, e->daddr);
-	bpf_ringbuf_submit(e, 0);
+	send_record(e);
 	return 0;
 }
 
@@ -337,16 +357,14 @@ static __always_inline int udp_send(struct sock *sk, struct msghdr *msg, int ret
 		return 0;
 	bpf_map_update_elem(&udp_seen, &key, &now, BPF_ANY);
 
-	e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
-	if (!e) {
-		count_lost();
+	e = new_record();
+	if (!e)
 		return 0;
-	}
 	fill_process(e, id, SCRIBE_UDP_SEND, family);
 	local_address(e, sk, family);
 	e->dport = key.dport;
 	__builtin_memcpy(e->daddr, key.daddr, 16);
-	bpf_ringbuf_submit(e, 0);
+	send_record(e);
 	return 0;
 }
 
