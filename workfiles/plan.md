@@ -70,8 +70,8 @@ plan's estimates are for the option marked **plan**. Nothing here is decided unt
 ### P. Cross-cutting first step: process attribution from socket tables (new option)
 
 **Status: implemented 2026-11-24** (`crates/process`, `[sensor] process_lookup = true`): tests find
-the test process's own sockets through the real table on macOS and in the Linux container; Windows
-is compiled and runs in the next Tests run. Took about a day, well under the 6–8 days estimated,
+the test process's own sockets through the real table on Linux, macOS and Windows (Tests run
+`45521781418`, after `45520007761` timed out once on an older SQLite test, fixed in `23d27b7`). Took about a day, well under the 6–8 days estimated,
 because one shared `Resolver` and sensor wrapper serve all three tables.
 
 Every native sensor exists mainly for **process attribution**, which the pcap fallback lacks (UC-6).

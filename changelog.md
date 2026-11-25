@@ -42,6 +42,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   specs, test list and conventions updated.
 
 ### Changed
+- Plan and status record Tests run `45521781418` (option P) as green on Linux, macOS and Windows.
 - Tests: the SQLite counter property runs 12 cases instead of 24 and the TLS tests connect to `127.0.0.1`,
   so neither comes near the 6 s limit on the Windows runner (Tests run `45520007761` timed out once).
 - `AlertOutput::notify` returns a `Result` and gains `suppressed`; `RecordingAlertSink` records both.
