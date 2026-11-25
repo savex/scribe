@@ -23,7 +23,6 @@ data_dir = '$slash/data'
 [log]
 file = '$slash/logs/scribed.log'
 "@
-$log = Join-Path $dir 'logs\scribed.log'
 $scribe = Join-Path $dir 'scribe.exe'
 $env:SCRIBE_CONFIG = $null
 
@@ -66,10 +65,21 @@ try {
     (Get-Service -Name 'scribed').WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))
     if (Test-Path (Join-Path $dir 'data\scribed.running')) { Fail 'scribed did not stop cleanly (its running marker is still there)' }
     Write-Host 'service check passed'
+} catch {
+    Write-Host '--- service'
+    Get-CimInstance Win32_Service -Filter "Name='scribed'" | Format-List State, Status, ExitCode, ServiceSpecificExitCode, ProcessId, StartName
+    Write-Host '--- Service Control Manager events'
+    Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Service Control Manager'; StartTime = (Get-Date).AddMinutes(-10) } -ErrorAction SilentlyContinue |
+        Select-Object -First 10 | Format-List TimeCreated, Id, Message
+    Write-Host '--- files and access'
+    Get-ChildItem -Recurse $dir | Format-Table FullName, Length -AutoSize
+    foreach ($p in $dir, (Join-Path $dir 'data'), (Join-Path $dir 'logs'), (Join-Path $dir 'scribe.toml')) { & icacls.exe $p }
+    throw
 } finally {
-    if (Test-Path $log) {
-        Write-Host '--- scribed.log'
-        Get-Content $log -Tail 40
+    # Rotated logs carry a date suffix (scribed.log.2026-11-25).
+    foreach ($f in Get-ChildItem (Join-Path $dir 'logs') -File -ErrorAction SilentlyContinue) {
+        Write-Host "--- $($f.Name)"
+        Get-Content $f.FullName -Tail 60
     }
     & (Join-Path $dir 'install-service.ps1') -Remove
 }

@@ -66,6 +66,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   LocalSystem; `-LocalSystem` keeps the old account, `-Writable` adds folders. `scribe` accepts a pipe server
   running as that account. Sensor tests check the installed service end to end on Windows
   (`scripts/ci/windows-service-check.ps1`).
+- The Windows service check prints scribed's logs (rotated names included), the service state, Service Control
+  Manager events and folder access when it fails: Sensor tests run `45724811859` failed with no log shown.
 - The ETW sensor takes process paths from Microsoft-Windows-Kernel-Process (start, stop and the rundown it asks
   for at start; NT paths turned into drive paths), so it needs no rights over other processes;
   `QueryFullProcessImageNameW` is only the fallback (FUN-SN03, 5 tests).
