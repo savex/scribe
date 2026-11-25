@@ -4,6 +4,7 @@ description = "Hostname resolution (DNS cache, TLS SNI, HTTP Host) and TLS detec
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
 scribe-core.workspace = true

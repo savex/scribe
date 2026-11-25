@@ -6,6 +6,8 @@ members = ["crates/*", "tests"]
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.89"
+# Nothing is published to crates.io: releases ship binaries (deny.toml treats the crates as private).
+publish = false
 
 [workspace.dependencies]
 scribe-core = { path = "crates/core" }

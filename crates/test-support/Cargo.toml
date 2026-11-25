@@ -4,7 +4,7 @@ description = "Test doubles, packet builders and fixture generator shared by scr
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish = false
+publish.workspace = true
 
 [[bin]]
 name = "gen-fixtures"

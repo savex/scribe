@@ -4,6 +4,7 @@ description = "Interface for scribed modules: manifest, lifecycle, flow hooks, s
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
 scribe-core.workspace = true

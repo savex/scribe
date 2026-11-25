@@ -4,6 +4,7 @@ description = "Policy engine: modes, scoring signals, threat lists, alert dedupe
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
 scribe-core.workspace = true

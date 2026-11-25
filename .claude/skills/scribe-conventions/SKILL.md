@@ -267,7 +267,7 @@ Full design: `workfiles/specs.md` 12.1.1. Locally, who is calling matters more t
 | Remote API | None; Postgres sink for fleet view, SSH forwarding for remote control; if ever added: off by default, client certificates only | Proposed |
 | Proposed config keys | Postgres `sslmode`, `ca`, `client_cert`, `client_key`; `[[policy.threat_lists]]` `sha256` / `minisign_key`, `max_entries`; `storage.encrypt`. Not in config v1 yet; each lands with its phase (specs 9.1.1) | Proposed |
 | Security work per phase | 5: StrictModes, hibernate cap, audit chain; 7–9: privilege split, service SID, XPC signing; 10: API access and limits; 11: HTTPS, signed webhooks, threat-list checks; 12: Postgres TLS, roles, heartbeats; 13: service hardening, release signing, optional encryption at rest; 14: `cargo deny` / `audit`, pinned Actions, review | Proposed (plan.md) |
-| Release integrity | Signed `SHA256SUMS`, build provenance attestation, `cargo deny` / `cargo audit`, Actions pinned by SHA, minimal `permissions:` | Proposed |
+| Release integrity | Signed `SHA256SUMS`, build provenance attestation (Proposed); `cargo deny` (`deny.toml`: RustSec advisories, licenses, bans, sources; it covers what `cargo audit` checks) in the Tests job *Dependencies*; every Action pinned by commit SHA with the version in a comment (no Dependabot: no scheduled automation, see section 11; re-pin by hand with `gh api repos/<owner>/<repo>/commits/<tag>`); `permissions: contents: read` except Release and Bump version; workspace `publish = false` | Implemented (supply chain, 2026-11-25) |
 
 ## 9b. Modules (implemented in phase 0b)
 
@@ -321,7 +321,7 @@ Full design: `workfiles/specs.md` 7.4 (7.4.9 lists what changed from the draft).
 Notes:
 - Bump version starts Release itself, because pushes made with `GITHUB_TOKEN` don't trigger other workflows.
 - Bump version pushes straight to `main`; it fails if `main` requires pull requests.
-- No scheduled (nightly) runs; the user chose manual triggers.
+- No scheduled (nightly) runs; the user chose manual triggers. That also rules out Dependabot schedules: Action pins are updated by hand.
 
 ## 12. Testing
 

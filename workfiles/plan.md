@@ -150,8 +150,8 @@ kernel you must support.
 
 | Choice | Options | Recommendation |
 |---|---|---|
-| Fuzzing | Scheduled nightly `cargo fuzz` in CI (the Fuzz workflow exists, never run); or OSS-Fuzz | Run the existing workflow weekly on a schedule; OSS-Fuzz only once the project is public and stable |
-| Supply chain | `cargo deny` + `cargo audit` in Tests, Actions pinned by SHA, minimal `permissions:` | Do now; it needs no product code |
+| Fuzzing | The manual Fuzz workflow (exists, never run); a schedule; or OSS-Fuzz | Run the manual workflow before each release (you chose manual triggers, conventions section 11); OSS-Fuzz only once the project is public and stable |
+| Supply chain | `cargo deny` + `cargo audit` in Tests, Actions pinned by SHA, minimal `permissions:` | **Done 2026-11-25:** `cargo deny` (advisories cover `cargo audit`) as the Tests job *Dependencies*, 41 Action uses pinned by SHA, permissions already minimal |
 | Performance | Criterion benchmarks for the parsers and pipeline; a load test replaying fixtures at high rate with memory limits from NFRs | Replay-based load test first: it checks the < 100 MB memory target directly |
 
 ### UI (after M3)
@@ -163,7 +163,7 @@ needs no installers or code signing of its own and reuses the CLI client, so it 
 
 1. ~~**P**~~ done 2026-11-24: process attribution on all three systems.
 2. **Tag the M1 release**, and send the Network Extension entitlement request (no code).
-3. **12C** sink (3 days) and the cheap part of 14 (supply chain, scheduled fuzzing; 1 day).
+3. **12C** sink (3 days) and the cheap part of 14 (supply chain done 2026-11-25; fuzzing by hand before releases).
 4. **7A** and **8A** (in parallel if two people), then **9A** when Apple approves.
 5. **13** installers, then the rest of 12 and 14.
 

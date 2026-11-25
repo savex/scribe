@@ -4,6 +4,7 @@ description = "URL tracking module: plaintext HTTP requests, URL privacy, reques
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [features]
 # The module's API service, for scribed (specs 7.4.5).

@@ -4,6 +4,7 @@ description = "Local gRPC API between scribed and its clients: protocol, transpo
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [features]
 default = []

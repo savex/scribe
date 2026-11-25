@@ -4,6 +4,7 @@ description = "Process attribution from the OS socket tables (Linux /proc, macOS
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
 scribe-core.workspace = true

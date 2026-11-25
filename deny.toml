@@ -1,0 +1,38 @@
+# Supply-chain checks (plan phase 14), run by the Tests workflow and before releases:
+#   cargo deny --all-features --locked check
+# advisories = the RustSec database (what `cargo audit` reads), licenses, bans, sources.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+# A finding we accept goes here with its id and the reason.
+ignore = []
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+# The workspace crates are not published and carry no license field.
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

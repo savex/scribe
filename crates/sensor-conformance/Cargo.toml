@@ -4,7 +4,7 @@ description = "Shared test suite every capture sensor must pass, plus a local tr
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-publish = false
+publish.workspace = true
 
 [dependencies]
 scribe-core.workspace = true

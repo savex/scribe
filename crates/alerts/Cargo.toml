@@ -4,6 +4,7 @@ description = "Alert outputs: dispatcher with per-output queues and rate limits,
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [features]
 # `WebhookOutput` (HTTPS through `scribe-net`, which needs ring's C code). The daemon turns it on;

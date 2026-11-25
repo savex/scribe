@@ -4,6 +4,7 @@ description = "SQLite storage backend (default): state store and event sink"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
 serde_json.workspace = true
