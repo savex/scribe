@@ -45,6 +45,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   in run `45688320680` 6.1 passed, 5.15 and 6.18 hung silently and 5.8 stopped after 30 s.
   Guests now boot on QEMU's standard PC machine instead of microvm (5.15 and 6.18 hung at ACPI set-up
   there, run `45695681303`) and 5.8 mounts the host root over 9p (no virtiofs root found).
+  In run `45705206686` 5.15, 6.1 and 6.18 passed; 5.8 boots with `psi=0` (5.8.0 oopses in `psi_trigger_create`
+  when the runner's systemd-udevd writes a cgroup pressure file).
 - Plan and status record Tests run `45681530177` and Sensor tests run `45681534506` (privilege split on x86_64;
   Windows job fails only for lack of Npcap on the runner) as green.
 - Plan and status record Tests run `45658820882` and Sensor tests run `45658825832` (eBPF sensor on x86_64) as green.
