@@ -41,6 +41,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ### Changed
 
+- Sensor tests `kernels` job: guests boot with their console shown (`vng -v`) and are stopped after 10 minutes;
+  in run `45688320680` 6.1 passed, 5.15 and 6.18 hung silently and 5.8 stopped after 30 s.
 - Plan and status record Tests run `45681530177` and Sensor tests run `45681534506` (privilege split on x86_64;
   Windows job fails only for lack of Npcap on the runner) as green.
 - Plan and status record Tests run `45658820882` and Sensor tests run `45658825832` (eBPF sensor on x86_64) as green.

@@ -73,7 +73,7 @@ jobs:
     name: eBPF on Linux ${{ matrix.kernel }}
     if: inputs.os == 'all' || inputs.os == 'ubuntu'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -109,7 +109,9 @@ jobs:
 
       - name: Sensor tests on ${{ matrix.kernel }}
         run: |
-          vng -r "${{ matrix.kernel }}" --user root --network user --cpus 2 -m 2G -- \
+          # -v shows the guest's boot console; a guest that hangs is stopped after 10 minutes.
+          timeout --kill-after 30s 10m \
+            vng -v -r "${{ matrix.kernel }}" --user root --network user --cpus 2 -m 2G -- \
             "$GITHUB_WORKSPACE/scripts/ci/kernel-check.sh" \
             "${{ steps.build.outputs.conformance }}" "${{ steps.build.outputs.daemon }}"
 
