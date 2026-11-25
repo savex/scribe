@@ -1,8 +1,15 @@
-//! PostgreSQL backend. Provides both a [`StateStore`] and an [`EventSink`].
+//! PostgreSQL backend (phase 12). The [`EventSink`] is implemented (plan option 12C: the fleet
+//! history of UC-9); the [`StateStore`] is not yet and reports so.
 //!
-//! Options: `url` (required) — connection string without password;
-//! `credentials` — secret reference (keychain / DPAPI / secret-service), resolved by the manager.
-//! Schema lives in `migrations/`.
+//! Options: `url` (required) — connection string without password; `credentials` — secret
+//! reference holding the password; `schema` — tables in this schema instead of `public`.
+//! TLS with full certificate checks for any server not on this machine (see `conn`). Schema
+//! lives in `migrations/`.
+
+mod conn;
+mod sink;
+
+pub use conn::Settings;
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -135,13 +142,19 @@ impl StateStore for PostgresStore {
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {
-        Box::pin(async { Health::Down("postgres backend not implemented yet".into()) })
+        Box::pin(async {
+            Health::Down(
+                "postgres as the state store is not implemented yet; use it as an event sink"
+                    .into(),
+            )
+        })
     }
 }
 
 pub struct PostgresSink {
     name: String,
     url: String,
+    conn: sink::Connection,
 }
 
 impl PostgresSink {
@@ -150,11 +163,17 @@ impl PostgresSink {
         Ok(Self {
             name: name.to_owned(),
             url: url.to_owned(),
+            conn: sink::Connection::new(Settings::from_options(options)?),
         })
     }
 
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    /// Whether the connection uses TLS (always for a server on another machine).
+    pub fn uses_tls(&self) -> bool {
+        self.conn.settings().uses_tls()
     }
 }
 
@@ -172,26 +191,27 @@ impl EventSink for PostgresSink {
     }
 
     fn migrate(&self) -> BoxFuture<'_, Result<()>> {
-        not_implemented("postgres: migrate")
+        Box::pin(self.conn.migrate())
     }
 
-    fn delete_before(&self, _cutoff: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
-        not_implemented("postgres: delete_before")
+    fn delete_before(&self, cutoff: std::time::SystemTime) -> BoxFuture<'_, Result<u64>> {
+        Box::pin(self.conn.delete_before(cutoff))
     }
 
-    fn write_batch<'a>(&'a self, _batch: &'a [StoredEvent]) -> BoxFuture<'a, Result<()>> {
-        not_implemented("postgres: write_batch")
+    fn write_batch<'a>(&'a self, batch: &'a [StoredEvent]) -> BoxFuture<'a, Result<()>> {
+        Box::pin(self.conn.write(batch.to_vec()))
     }
 
-    fn query<'a>(&'a self, _query: &'a EventQuery) -> BoxFuture<'a, Result<Page<StoredEvent>>> {
-        not_implemented("postgres: query")
+    fn query<'a>(&'a self, query: &'a EventQuery) -> BoxFuture<'a, Result<Page<StoredEvent>>> {
+        Box::pin(self.conn.query(query.clone()))
     }
 
     fn flush(&self) -> BoxFuture<'_, Result<()>> {
-        not_implemented("postgres: flush")
+        // Every write is committed when it returns.
+        Box::pin(async { Ok(()) })
     }
 
     fn health(&self) -> BoxFuture<'_, Health> {
-        Box::pin(async { Health::Down("postgres backend not implemented yet".into()) })
+        Box::pin(self.conn.health())
     }
 }

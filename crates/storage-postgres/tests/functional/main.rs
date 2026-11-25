@@ -2,3 +2,4 @@
 //! Run with `cargo nextest run -p scribe-storage-postgres -E 'binary(functional)'`.
 
 mod conformance;
+mod settings;

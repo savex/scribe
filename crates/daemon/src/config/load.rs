@@ -314,6 +314,14 @@ pub fn validate(
 
     check_backend(config.storage.state.get_ref(), "[storage.state]", ctx)
         .map_err(|m| at(config.storage.state.span(), m))?;
+    if config.storage.state.get_ref().kind == StorageKind::Postgres {
+        return Err(at(
+            config.storage.state.span(),
+            "[storage.state]: postgres as the state store is not implemented yet; keep sqlite here \
+             and use postgres in [[storage.sinks]] for the shared history"
+                .into(),
+        ));
+    }
 
     let mut names = HashSet::new();
     for sink in &config.storage.sinks {
@@ -532,11 +540,39 @@ fn check_backend(backend: &Backend, what: &str, ctx: &Context) -> Result<(), Str
                         "{what}: url must not contain a password; use `credentials` to name a stored secret"
                     ))
                 }
+                Some(url) if plaintext_to_remote(url) => {
+                    return Err(format!(
+                        "{what}: sslmode=disable is only allowed for a server on this machine; \
+                         other servers are always reached over TLS with certificate checks"
+                    ))
+                }
                 _ => {}
             }
             forbid("path", backend.path.is_some())
         }
     }
+}
+
+/// `sslmode=disable` (or `allow`) for a server that isn't on this machine (specs 12.1.1).
+fn plaintext_to_remote(url: &str) -> bool {
+    let query = url.split_once('?').map_or("", |(_, q)| q);
+    let plain = query
+        .split('&')
+        .any(|kv| matches!(kv, "sslmode=disable" | "sslmode=allow"));
+    if !plain {
+        return false;
+    }
+    let rest = url.split_once("://").map_or(url, |(_, r)| r);
+    let authority = rest.split(['/', '?']).next().unwrap_or("");
+    let hosts = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    hosts.split(',').any(|h| {
+        let host = if let Some(v6) = h.strip_prefix('[') {
+            v6.split(']').next().unwrap_or("")
+        } else {
+            h.split(':').next().unwrap_or("")
+        };
+        !host.is_empty() && !host.starts_with('/') && !scribe_net::is_loopback(host)
+    })
 }
 
 /// `postgres://user:secret@host/db` has a password; `postgres://user@host/db` doesn't.
@@ -568,6 +604,26 @@ mod tests {
             assert!(url_has_password("postgres://scribe:secret@db/scribe"));
             assert!(!url_has_password("postgres://scribe@db:5432/scribe"));
             assert!(!url_has_password("postgres://db/scribe?sslmode=require"));
+        }
+
+        #[test]
+        fn spots_plaintext_to_remote_servers() {
+            assert!(plaintext_to_remote(
+                "postgres://u@db.example.com/s?sslmode=disable"
+            ));
+            assert!(plaintext_to_remote(
+                "postgres://u@192.0.2.1:5432/s?a=1&sslmode=allow"
+            ));
+            assert!(!plaintext_to_remote(
+                "postgres://u@localhost/s?sslmode=disable"
+            ));
+            assert!(!plaintext_to_remote(
+                "postgres://u@[::1]:5432/s?sslmode=disable"
+            ));
+            assert!(!plaintext_to_remote(
+                "postgres://u@db.example.com/s?sslmode=require"
+            ));
+            assert!(!plaintext_to_remote("postgres://u@db.example.com/s"));
         }
     }
 }

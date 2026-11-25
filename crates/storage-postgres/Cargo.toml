@@ -9,7 +9,12 @@ publish.workspace = true
 [dependencies]
 serde_json.workspace = true
 scribe-storage-api.workspace = true
-# TODO: tokio-postgres (or sqlx with the postgres feature)
+scribe-net.workspace = true
+scribe-secrets.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tokio-postgres.workspace = true
+tokio-postgres-rustls.workspace = true
 
 [dev-dependencies]
 scribe-storage-conformance.workspace = true
+tempfile.workspace = true

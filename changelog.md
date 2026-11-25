@@ -11,6 +11,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- Postgres event sink (plan option 12C): history to a central Postgres over TLS with certificate checks
+  (forced for any server not on this machine), password from `credentials`, optional `schema`, migrations
+  under an advisory lock; passes the sink conformance suite and the new INT-15 against Postgres 16.
+  `scribed` refuses Postgres as the state store until that part exists, and `sslmode=disable` for a
+  remote server. `scribe_net::tls_config` is public.
 - Process attribution from the OS socket table (plan option P): new `scribe-process` crate (Linux `/proc`,
   macOS `libproc`, Windows IP Helper) and an `Attributed` sensor wrapper; the pcap sensor now reports
   each new flow's process as `pcap+sockets`; `[sensor] process_lookup = true`.

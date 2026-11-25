@@ -174,3 +174,5 @@ jobs:
           args=()
           [[ "${{ inputs.backend_conformance }}" == "true" ]] && args=(-- --ignored)
           cargo test -p scribe-storage-postgres --locked "${args[@]}"
+      - name: Through the storage manager (INT-15)
+        run: cargo test -p scribe-tests --test integration --locked the_running_storage_writes_through_to_postgres

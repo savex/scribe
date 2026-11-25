@@ -211,9 +211,12 @@ retention = "30d"         # "" = keep forever
 batch_max_events = 500    # write a batch when this many events are waiting…
 batch_max_wait = "1s"     # …or when the oldest has waited this long
 
-# Central PostgreSQL history (build with `--features postgres`).
+# Central PostgreSQL history (build with `--features postgres`). A server on another machine is
+# always reached over TLS with certificate checks (the system trust store); sslmode=disable is
+# refused for it. The state store stays SQLite: postgres there is not implemented yet.
 # The password never goes in this file: credentials name a secret in the OS store
-# (keychain: on macOS, dpapi: on Windows, secret-service: on Linux) or a root-only file (file:).
+# (keychain: on macOS, dpapi: on Windows, secret-service: on Linux) or a root-only file (file:);
+# `scribed --set-secret keychain:scribe-postgres` stores it.
 # [[storage.sinks]]
 # name = "central"
 # kind = "postgres"

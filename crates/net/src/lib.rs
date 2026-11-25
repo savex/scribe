@@ -20,7 +20,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::Arc;
 use std::time::Duration;
 
-pub use tls::parse_pin;
+pub use tls::{config as tls_config, parse_pin};
 pub use url::{checked_url, is_loopback, Target};
 
 /// What went wrong with a request; the message is meant for the log.

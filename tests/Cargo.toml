@@ -55,7 +55,7 @@ scribe-sensor-pcap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
-scribe-storage-manager = { workspace = true, features = ["sqlite"] }
+scribe-storage-manager = { workspace = true, features = ["sqlite", "postgres"] }
 scribe-storage-postgres.workspace = true
 scribe-storage-conformance.workspace = true
 scribe-test-support = { workspace = true, features = ["mock-api"] }

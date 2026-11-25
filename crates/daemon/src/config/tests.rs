@@ -148,6 +148,16 @@ const BAD: &[(&str, &str, usize)] = &[
         "url must start with postgres://",
         1,
     ),
+    (
+        "[storage.state]\nkind = \"postgres\"\nurl = \"postgres://scribe@db.example.com/s\"\n",
+        "postgres as the state store is not implemented yet",
+        1,
+    ),
+    (
+        "[[storage.sinks]]\nname = \"fleet\"\nkind = \"postgres\"\nurl = \"postgres://scribe@db.example.com/s?sslmode=disable\"\n",
+        "sslmode=disable is only allowed for a server on this machine",
+        1,
+    ),
     ("[storage.cache]\nmax_memory = \"32MB\"\n", "use binary units (MiB)", 2),
     ("[storage.spool]\nmax_size = \"150%\"\n", "invalid percentage \"150%\"", 2),
     ("[storage.buffer]\nmax_events = 0\n", "nonzero", 2),
@@ -251,9 +261,8 @@ mod functional {
         url_query = "path_only"
 
         [storage.state]
-        kind = "postgres"
-        url = "postgres://scribe@db.internal:5432/scribe"
-        credentials = "keychain:scribe-postgres"
+        kind = "sqlite"
+        path = "state.db"
 
         [[storage.sinks]]
         name = "local-history"
@@ -288,7 +297,8 @@ mod functional {
             c.privacy.url_query.as_ref().map(|q| *q.get_ref()),
             Some(UrlQuery::PathOnly)
         );
-        assert_eq!(c.storage.state.get_ref().kind, StorageKind::Postgres);
+        assert_eq!(c.storage.state.get_ref().kind, StorageKind::Sqlite);
+        assert_eq!(c.storage.sinks[1].get_ref().kind, StorageKind::Postgres);
         assert_eq!(c.storage.sinks[0].get_ref().retention, None);
         let events: Vec<_> = c.storage.sinks[1]
             .get_ref()
@@ -555,12 +565,13 @@ mod functional {
     #[test]
     fn summary_hides_credentials() {
         let s = resolve_text(
-        "[storage.state]\nkind = \"postgres\"\nurl = \"postgres://scribe@db/s\"\ncredentials = \"keychain:pg\"\n",
+        "[[storage.sinks]]\nname = \"fleet\"\nkind = \"postgres\"\nurl = \"postgres://scribe@db/s\"\ncredentials = \"keychain:pg\"\n",
     );
         let summary = s.summary().join("\n");
         assert!(
-            summary
-                .contains("state store: postgres credentials=<secret> url=postgres://scribe@db/s"),
+            summary.contains(
+                "event sink \"fleet\": postgres credentials=<secret> url=postgres://scribe@db/s"
+            ),
             "{summary}"
         );
         assert!(!summary.contains("keychain:pg"));

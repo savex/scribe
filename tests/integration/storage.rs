@@ -153,3 +153,42 @@ async fn the_running_storage_writes_through_to_sqlite() {
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items[0].kind(), EventKind::Flow);
 }
+
+/// INT-15: the running storage writes through to a Postgres event sink (SQLite stays the state
+/// store, as UC-9 describes). Needs `SCRIBE_TEST_POSTGRES_URL` (the Tests workflow's Postgres job
+/// sets it); returns at once without it.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_running_storage_writes_through_to_postgres() {
+    use scribe_storage_manager::{BackendConfig, SinkConfig};
+    let Ok(url) = std::env::var("SCRIBE_TEST_POSTGRES_URL") else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = StorageConfig::sqlite_default(dir.path().join("state.db").to_str().unwrap());
+    let schema = format!("scribe_int15_{}", std::process::id());
+    let fleet = BackendConfig {
+        kind: "postgres".into(),
+        options: [("url".to_owned(), url), ("schema".to_owned(), schema)].into(),
+    };
+    config.sinks = vec![SinkConfig::new("fleet", fleet)];
+    let manager = StorageManager::from_config(&Registry::with_builtin(), &config).unwrap();
+    manager.migrate().await.unwrap();
+    let storage = manager.start(RunOptions {
+        spool: Some(SpoolOptions::new(dir.path().join("spool"), 1 << 20, 0)),
+        ..RunOptions::default()
+    });
+    let now = std::time::SystemTime::now();
+    let events: Vec<StoredEvent> = ["a.example.com", "b.example.com", "c.example.com"]
+        .iter()
+        .map(|h| StoredEvent::Flow(flow("192.0.2.10:443").host(h).tls().at(now).build()))
+        .collect();
+    storage.publish(&events);
+    storage.flush().await;
+    let status = storage.sink_status()[0].clone();
+    assert_eq!((status.written, status.spool_events), (3, 0), "{status:?}");
+    let health = storage.health().await;
+    assert_eq!(health.overall, Health::Ok, "{health:?}");
+    let page = storage.query(&EventQuery::default()).await.unwrap();
+    assert_eq!(page.total, Some(3));
+    storage.shutdown().await;
+}

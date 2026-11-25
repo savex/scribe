@@ -255,8 +255,8 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | FUN-S07 | `many_writers_on_one_file_lose_nothing` | Four threads with their own connections to one file: no lost updates | Temp dir | 0.1 s | Exists |
 | FUN-S08 | `sqlite_in_memory_*_conforms` | Both suites on an in-memory database | In memory | 20 ms | Exists |
 | FUN-S09 | conformance `retention_removes_old_events` | The `EventSink` retention call (SQLite now, Postgres in phase 12) | Temp dir | 20 ms | Exists |
-| FUN-S10 | `postgres_*_conforms` | Postgres passes both suites | Own schema | 0.5 s | Phase 12 (needs `SCRIBE_TEST_POSTGRES_URL`) |
-| FUN-S11 | `postgres_tls_rules` | `sslmode` rules, `verify-full` default | In memory | < 10 ms | Phase 12 |
+| FUN-S10 | `postgres_*_conforms` (sink runs; state store ignored until implemented) | Postgres passes both suites | Own schema | 0.5 s | Sink exists (option 12C; needs `SCRIBE_TEST_POSTGRES_URL`) |
+| FUN-S11 | `settings::*` (5) in `scribe-storage-postgres`; daemon `spots_plaintext_to_remote_servers` and config errors | TLS forced for remote servers (`prefer` too), `sslmode=disable` refused off loopback, loopback without TLS, schema names, credentials from a secret reference and never printed, an unreachable server reported down | In memory | < 10 ms | Exists (`ca` / client certificates later) |
 | FUN-SM01 | `manager.rs` registry and routing tests (9) | Registry kinds and roles, routing by kind, errors | In memory | < 10 ms | Exists |
 | FUN-SM02 | `writer.rs` (6) | Batching by size and time, slow sink isolated, full queue drops, hourly retention, shutdown (paused Tokio time) | In memory | < 10 ms | Exists |
 | FUN-SM03 | `a_slow_sink_does_not_hold_up_others` | A slow sink doesn't delay other sinks | In memory | < 10 ms | Exists |
@@ -303,7 +303,7 @@ Grouped by area. Rows that cover many existing tests list the test names in the 
 | INT-12 | `cli::every_command_works_against_a_running_daemon`, `control_commands_outside_the_admin_group_exit_1`, `audit_verify_finds_deleted_and_edited_records`, `module_subcommands_reach_the_module_service`, `a_module_that_is_not_enabled_is_named` | Real `scribe` → local API (temp socket) → daemon → SQLite | Every command incl. export file mode, hourly counters, audit verify after tampering, `scribe url list` | Temp dir + socket | 0.5 s | Exists (`tests/integration/cli.rs`) |
 | INT-13 | `api::*` (11) | Daemon state → API: status, health, `grpc.health.v1`, hosts, alerts, watch stream, baseline, export, modules; control calls and their audit events; alert state across restarts; bucket pruning; a second daemon on a busy socket | Run state, counters, critical metrics, audit messages | Temp dir + socket | 1 s | Exists (`tests/integration/api.rs`) |
 | INT-14 | `secrets_to_backends` | Secrets crate → Postgres credentials, URL hash key | `file:` references resolved where used | Temp dir | 20 ms | URL key exists (FUN-M07); Postgres in phase 12 |
-| INT-15 | `postgres_sink_through_manager` | Storage manager → Postgres sink (TLS) | Events and module data stored | Own schema | 0.5 s | Phase 12 |
+| INT-15 | `storage::the_running_storage_writes_through_to_postgres` | Running storage manager (writer task, spool) → Postgres sink, SQLite state store | Three flows written, nothing spooled, health ok, query total 3 | Own schema | 0.2 s | Exists (needs `SCRIBE_TEST_POSTGRES_URL`) |
 | INT-16 | `xpc_bridge_with_fake_extension` | Fake extension process → XPC bridge → ingest | Flow messages arrive as observations; unsigned peer refused | Child process | 0.5 s | Phase 9 (macOS) |
 | INT-17 | `ui_commands_against_mock_api` | Tauri commands → `MockApiServer` | Requests and error mapping | Temp socket | 0.2 s | Later (UI); `MockApiServer` exists |
 | INT-19 | `commands_drive_the_run_states` | `Command`s → running daemon → storage | Hibernate, reset, wakeup, status; audit events and the `hibernated` alert stored | Temp dir | 50 ms | Exists |

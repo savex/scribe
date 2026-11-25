@@ -80,6 +80,10 @@ security-framework = "3.7"
 secret-service = { version = "6", default-features = false, features = ["rt-default", "crypto-rust"] }
 # Signed threat lists (`[[policy.threat_lists]] minisign_key`); no dependencies of its own.
 minisign-verify = "0.3"
+# Postgres backend (phase 12): async client on the backend's own worker runtime, TLS through
+# rustls with scribe-net's verifier (no OpenSSL).
+tokio-postgres = { version = "0.7.18", default-features = false, features = ["runtime", "with-serde_json-1"] }
+tokio-postgres-rustls = { version = "0.14", default-features = false }
 # Test certificates for the HTTPS tests.
 rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 # Desktop notifications for `scribe notify` (D-Bus in pure Rust on Linux, Notification Center on

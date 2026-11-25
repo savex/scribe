@@ -7,7 +7,8 @@ use rustls::{DigitallySignedStruct, SignatureScheme};
 
 use crate::{hex, NetError};
 
-/// The client TLS settings: ring, TLS 1.2 and 1.3, and the OS verifier or a pin.
+/// The client TLS settings: ring, TLS 1.2 and 1.3, and the OS verifier or a pin. Also used by
+/// the Postgres backend, so everything that leaves the host checks certificates the same way.
 pub fn config(pin_sha256: Option<&str>) -> Result<Arc<rustls::ClientConfig>, NetError> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let verifier: Arc<dyn ServerCertVerifier> = match pin_sha256 {

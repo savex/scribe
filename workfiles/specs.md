@@ -194,7 +194,7 @@ A developer adds a storage backend by implementing `StorageFactory` plus `StateS
 | NFR-14 | Build | Minimum Rust version follows the dependencies: 1.89 now, raised only when a dependency needs it (expected 1.98 with the eBPF sensor); CI builds with exactly that version | Decided |
 | NFR-15 | Quality | Coverage ≥ 80% for `core`, `enrich`, `storage-*` and the policy engine; ≥ 60% overall | Proposed (today 5% of product code) |
 | NFR-16 | Extensibility | New backends, sensors and modules must pass their conformance suites | Implemented |
-| NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Partly implemented (`scribe-net` for webhooks and threat lists: OS verifier or pin, loopback-only http; Postgres in phase 12) |
+| NFR-17 | Transport security | Everything that leaves the host (Postgres sink, webhook, threat lists) uses TLS with certificate verification; plaintext only to loopback | Implemented (`scribe-net` for webhooks and threat lists: OS verifier or pin, loopback-only http; the Postgres sink with the same verifier); custom CA files for Postgres still to come |
 | NFR-18 | Tamper evidence | Audit and alert records are hash-chained; hosts send heartbeats to the remote sink, so stopped daemons and deleted rows are visible | Partly (chain, start / stop / unclean-stop audits since phase 5; heartbeats with the remote sink in phase 12) |
 | NFR-19 | Release integrity | Release checksums signed, build provenance attested, dependencies checked by `cargo deny` / `cargo audit` | Proposed |
 | NFR-20 | Module isolation | A slow, failing or panicking module never blocks capture, storage or other modules: per-flow time budget, bounded queues with counted drops, a panic disables only that module and reports degraded health | Implemented in `ModuleHost` (budget counting, panic isolation, bounded output queue); per-module flow queues for slow hooks arrive with the pipeline (phase 5) |
@@ -822,7 +822,7 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 
 **Postgres sink (leaves the host)**
 
-- TLS on by default via `tokio-postgres-rustls`; the config check rejects `sslmode=disable` / `prefer` for any non-loopback host; default `verify-full`, optional `ca` path.
+- TLS on by default via `tokio-postgres-rustls`; the config check rejects `sslmode=disable` / `prefer` for any non-loopback host; default `verify-full`, optional `ca` path. Implemented for the event sink (option 12C): any server off this machine gets TLS with the system trust store through `scribe-net` (`prefer` is upgraded, `disable` / `allow` refused); a loopback or Unix-socket server goes without TLS unless `sslmode=require`; `ca` still to come.
 - TLS client certificates as an alternative to passwords; the key referenced like `credentials` (`keychain:` and the others).
 - Least-privilege role: the sink account has `INSERT` only on the event tables (no `SELECT` / `UPDATE` / `DELETE`); one role per host with row-level security on `host_id`, so a compromised host can't forge or erase another host's history.
 - scribed tags its own connections so its sink traffic doesn't alert; a plaintext connection from scribed itself still alerts.
