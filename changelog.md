@@ -47,6 +47,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   specs, test list and conventions updated.
 
 ### Changed
+- Plan: the Linux eBPF sensor (phase 7) will use `libbpf-rs` with eBPF programs in C (option 7B) instead
+  of `aya`; no minimum-Rust raise to 1.98 is expected any more; Linux builds will need `clang`,
+  `libelf-dev` and `zlib1g-dev`. Totals updated for option P and the Postgres sink.
 - Supply chain (plan phase 14): `deny.toml` and a *Dependencies* job in Tests (`cargo deny`: RustSec advisories,
   licenses, bans, sources); every GitHub Action pinned by commit SHA; the workspace is `publish = false`.
 - Plan and status record Tests run `45521781418` (option P) as green on Linux, macOS and Windows.

@@ -195,7 +195,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 
 ## What this means
 
-- **Phases 0, 0b, 1–6, 10 and 11 are done: milestone M1 is complete.** Remaining effort: 53.5–68.5 days (64–82 with buffer).
+- **Phases 0, 0b, 1–6, 10 and 11 are done: milestone M1 is complete.** Remaining effort: 52–66 days (62–79 with buffer), with the Linux sensor as option 7B (`libbpf-rs`, C eBPF programs).
 - **`scribed` runs end to end with the pcap sensor, is controlled through `scribe` and tells people:** log, signed webhooks and desktop notifications (`scribe notify`), threat lists from files or checked downloads, secrets in the OS key stores.
 - **Next steps:**
   0. Tag a release for M1; Tests passed on all three systems after phase 11 (run `45452687480`).

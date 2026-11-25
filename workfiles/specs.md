@@ -301,7 +301,7 @@ outputs; the CLI and UI read and control everything through the local API.
 | Module API | `crates/module-api` (`scribe-module-api`) | `Module`, `FlowHook`, `Source`, `Manifest`, `ModuleContext`, notes, records, metric samples | core | Implemented |
 | URL module | `crates/module-url` (`scribe-module-url`, feature `url`, default on) | Plaintext HTTP request parsing, URL privacy, request counters, `scribe url` commands | module-api | Partly (module, config, hook, conformance, request parser and URL privacy; `scribe url` in phase 10) |
 | Kernel metrics module | `crates/module-kperf` (`scribe-module-kperf`, feature `kperf`) | Example of a later module: TCP retransmits, RTT, run-queue delay from kernel probes | module-api, sensors' `ProbeHost` | Idea (not planned) |
-| Linux sensor | `crates/sensor-linux` | eBPF probes with `aya`, process lookup | core | Stub |
+| Linux sensor | `crates/sensor-linux` | eBPF probes in C loaded with `libbpf-rs` (plan option 7B), process lookup | core | Stub |
 | Windows sensor | `crates/sensor-windows` | ETW kernel-network and DNS-client events, Npcap for payloads | core | Stub |
 | pcap sensor | `crates/sensor-pcap` | Capture on every OS (macOS today, the fallback on Linux and Windows), no process info of its own; libpcap / Npcap loaded at run time | core | Implemented (phase 6) |
 | Process attribution | `crates/process` (`scribe-process`) | Owner of each new flow from the OS socket table (Linux `/proc`, macOS `libproc`, Windows IP Helper); `Attributed` wraps the pcap sensor (name `pcap+sockets`) | core | Implemented (plan option P) |
@@ -773,7 +773,7 @@ than `[storage.hours] keep` (default `90d`, `""` = forever). Host totals are nev
 
 | | Linux | macOS | Windows |
 |---|---|---|---|
-| Native capture | eBPF (`aya`), kernel 5.8+ | Network Extension (Swift) | ETW |
+| Native capture | eBPF (C programs, `libbpf-rs`, CO-RE), kernel 5.8+ | Network Extension (Swift) | ETW |
 | Process attribution | yes | yes | yes |
 | Packet contents (SNI) | eBPF socket filter | Network Extension first bytes | Npcap |
 | Fallback | libpcap | libpcap | Npcap |

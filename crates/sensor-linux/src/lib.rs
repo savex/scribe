@@ -1,8 +1,9 @@
-//! Linux sensor based on eBPF (planned: `aya`).
+//! Linux sensor based on eBPF (planned: C programs loaded with `libbpf-rs`, plan option 7B).
 //!
 //! Probes: `tcp_connect` / `udp_sendmsg` kprobes and cgroup sock hooks for flow + pid,
 //! a socket filter for DNS answers and TLS ClientHello payloads.
-//! The eBPF programs will live in a separate `sensor-linux-ebpf` crate built for the bpf target.
+//! The programs will live in `src/bpf/*.bpf.c` (C, CO-RE, with a checked-in `vmlinux.h`); `build.rs`
+//! compiles them with `clang -target bpf` and `libbpf-cargo` generates the Rust skeleton.
 #![cfg(target_os = "linux")]
 
 use std::sync::mpsc::Sender;

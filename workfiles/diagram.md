@@ -56,7 +56,7 @@ flowchart TB
     end
 
     subgraph sensors["Capture layer — Sensor trait (crates/core)"]
-        linux["Linux<br/>eBPF (aya)"]
+        linux["Linux<br/>eBPF (libbpf-rs)"]
         win["Windows<br/>ETW (+ Npcap)"]
         mac["macOS<br/>Network Extension (Swift)"]
         pcap["Fallback<br/>libpcap / Npcap"]
