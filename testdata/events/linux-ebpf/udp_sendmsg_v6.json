@@ -1,14 +1,18 @@
 {
   "source": "linux-ebpf",
-  "status": "draft",
-  "description": "udp_sendmsg kprobe record for a DNS query over IPv6.",
+  "status": "synthetic",
+  "description": "A DNS query over IPv6 from an unconnected UDP socket (local address :: in the udpv6_sendmsg record, matched by port), then a TCP connection from another process to the answer.",
   "records": [
-    {"type": "udp_sendmsg", "ts_ns": 1700000000000000000, "tgid": 515, "pid": 515, "uid": 101, "comm": "systemd-resolve", "cgroup_id": 12, "family": 10, "saddr": "fd00::2", "sport": 53002, "daddr": "2001:db8::53", "dport": 53, "len": 32}
+    {"kind": "udp_send", "tgid": 515, "pid": 515, "uid": 101, "comm": "systemd-resolve", "exe": "/usr/lib/systemd/systemd-resolved", "cgroup_id": 12, "src": "[::]:53002", "dst": "[2001:db8::53]:53"},
+    {"kind": "tcp_connect", "tgid": 4400, "pid": 4400, "uid": 1000, "comm": "firefox", "exe": "/usr/lib/firefox/firefox", "cgroup_id": 7778, "src": "[fd00::2]:50007", "dst": "[2001:db8::50]:443"}
   ],
+  "packets": "../../pcap/dns_aaaa_then_tls.pcap",
   "observations": [
-    {"pid": 515, "proto": "udp", "dst_ip": "2001:db8::53", "dst_port": 53, "bytes_out": 32, "kind": "new_flow", "head": null}
+    {"pid": 515, "process_path": "/usr/lib/systemd/systemd-resolved", "proto": "udp", "dst": "[2001:db8::53]:53", "kind": "new_flow"},
+    {"pid": null, "proto": "udp", "kind": "dns_response"},
+    {"pid": 4400, "process_path": "/usr/lib/firefox/firefox", "proto": "tcp", "dst": "[2001:db8::50]:443", "kind": "new_flow", "head": true}
   ],
   "enriched": [
-    {"dst_ip": "2001:db8::53", "dst_port": 53, "security": "plaintext"}
+    {"dst_ip": "2001:db8::50", "dst_port": 443, "hostname": "v6.example.com", "security": "tls"}
   ]
 }

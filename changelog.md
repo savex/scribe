@@ -16,6 +16,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   reading the table takes (`process` row; API `Sensor.attribution`); under 50% of at least 100 new flows is
   the critical metric `attribution_low` and makes health degraded. A table read over 50 ms spaces out the
   next ones (ten times its length, at most 5 s). Finishes the macOS sensor (plan option 9B).
+- Linux eBPF sensor (plan option 7B), step 1: the kernel record layout (`struct scribe_flow` v1, shared C
+  header and its Rust reader) and the join of records with the observations built from packets
+  (`scribe-sensor-linux` `record` and `owners`, tested on every system); the eBPF samples in
+  `testdata/events/linux-ebpf` rewritten in that layout with pcap fixtures (FUN-SN02).
 
 ### Changed
 

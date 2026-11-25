@@ -1,31 +1,25 @@
-//! Linux sensor based on eBPF (planned: C programs loaded with `libbpf-rs`, plan option 7B).
+//! Linux sensor based on eBPF (plan option 7B): C programs in `src/bpf/*.bpf.c` (CO-RE), loaded
+//! with `libbpf-rs`.
 //!
-//! Probes: `tcp_connect` / `udp_sendmsg` kprobes and cgroup sock hooks for flow + pid,
-//! a socket filter for DNS answers and TLS ClientHello payloads.
-//! The programs will live in `src/bpf/*.bpf.c` (C, CO-RE, with a checked-in `vmlinux.h`); `build.rs`
-//! compiles them with `clang -target bpf` and `libbpf-cargo` generates the Rust skeleton.
-#![cfg(target_os = "linux")]
+//! Two parts meet in user space:
+//! - **who**: kprobes on `tcp_connect` and `udp_sendmsg` / `udpv6_sendmsg` write a [`Record`]
+//!   (process, thread, user, cgroup and the connection's addresses) to a ring buffer when a
+//!   process opens a connection or sends a datagram;
+//! - **what**: a socket filter on an `AF_PACKET` socket passes outgoing packets and DNS answers,
+//!   cut to what enrichment needs, to the pcap sensor's flow tracker (first bytes, DNS, QUIC,
+//!   closes).
+//!
+//! [`Owners`] joins them by address, so every flow gets its process from the kernel, even one
+//! that ends at once. [`record`] and [`owners`] build on every system (their tests run
+//! everywhere); the loader is Linux only.
 
-use std::sync::mpsc::Sender;
+pub mod owners;
+pub mod record;
 
-use scribe_core::{Observation, Sensor, SensorError};
+pub use owners::{ExePath, Owner, Owners, MAX_OWNERS, OWNER_TTL};
+pub use record::{Record, RecordError, RecordKind, RECORD_SIZE, RECORD_VERSION};
 
-#[derive(Default)]
-pub struct EbpfSensor;
-
-impl Sensor for EbpfSensor {
-    fn name(&self) -> &'static str {
-        "linux-ebpf"
-    }
-
-    fn has_process_info(&self) -> bool {
-        true
-    }
-
-    fn start(&mut self, _out: Sender<Observation>) -> Result<(), SensorError> {
-        // TODO: load and attach eBPF programs, read the ring buffer.
-        Err(SensorError::Unsupported("eBPF sensor not implemented yet"))
-    }
-
-    fn stop(&mut self) {}
-}
+#[cfg(target_os = "linux")]
+mod sensor;
+#[cfg(target_os = "linux")]
+pub use sensor::EbpfSensor;

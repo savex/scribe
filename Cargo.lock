@@ -2274,6 +2274,13 @@ name = "scribe-sensor-linux"
 version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
+ "scribe-process",
+ "scribe-sensor-pcap",
+ "scribe-test-support",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]

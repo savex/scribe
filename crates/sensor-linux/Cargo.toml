@@ -8,3 +8,16 @@ publish.workspace = true
 
 [dependencies]
 scribe-core.workspace = true
+scribe-process.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+scribe-sensor-pcap.workspace = true
+scribe-test-support.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[test]]
+name = "functional"
+path = "tests/functional/main.rs"
