@@ -15,3 +15,6 @@ scribe-sensor-pcap.workspace = true
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 scribe-sensor-linux.workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+scribe-sensor-windows.workspace = true

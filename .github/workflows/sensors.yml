@@ -56,7 +56,14 @@ jobs:
         shell: bash
         run: |
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            "${{ steps.build.outputs.bin }}" --ignored sensors::   # runner is already an administrator
+            # The runner is already an administrator. Npcap isn't installed on hosted runners (its
+            # silent installer needs the OEM edition): the pcap test runs only where it is.
+            "${{ steps.build.outputs.bin }}" --ignored --exact sensors::etw_sensor_conforms
+            if [[ -f /c/Windows/System32/Npcap/wpcap.dll ]]; then
+              "${{ steps.build.outputs.bin }}" --ignored --exact sensors::pcap_sensor_conforms
+            else
+              echo "::warning::Npcap is not installed: pcap_sensor_conforms skipped"
+            fi
           else
             sudo "${{ steps.build.outputs.bin }}" --ignored sensors::
           fi

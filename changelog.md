@@ -43,6 +43,12 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   bytes (`scribe-sensor-windows` `events`), DNS answers Windows decoded passed on as DNS messages for the
   cache (`dns`), and flows from the events alone for machines without Npcap (`flows`); tested on every
   system with synthetic samples in `testdata/events/windows-etw` (FUN-SN03).
+- Windows ETW sensor, step 2: a real-time ETW session (`scribe-etw`, through `windows-sys`) on Kernel-Network
+  and DNS-Client with an event-id filter, and `EtwSensor` (`windows-etw`): every connection with its process,
+  host names from Windows' DNS answers, first bytes from Npcap when it is installed (flows from ETW alone
+  otherwise). It is scribed's sensor on Windows, with pcap as the fallback; needs Administrator. Conformance
+  test `etw_sensor_conforms` (`SuiteOptions.sees_payload` for sensors without packets); the Sensor tests
+  Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
 

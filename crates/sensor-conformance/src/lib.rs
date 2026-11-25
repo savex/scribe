@@ -23,6 +23,9 @@ pub struct SuiteOptions {
     /// The sensor itself names flows and classifies their security (native sensors). False for
     /// pcap, which leaves both to enrichment: then only the client bytes are checked.
     pub names_flows: bool,
+    /// The sensor sees packets and passes on the client's first bytes. False for a native sensor
+    /// running without packet capture (ETW without Npcap): then only the flow itself is checked.
+    pub sees_payload: bool,
     /// Longest wait for each expected event.
     pub timeout: Duration,
 }
@@ -32,6 +35,7 @@ impl Default for SuiteOptions {
         Self {
             expect_process_info: true,
             names_flows: true,
+            sees_payload: true,
             timeout: Duration::from_secs(1),
         }
     }
@@ -65,7 +69,10 @@ pub fn run_sensor_suite(sensor: &mut dyn Sensor, opts: &SuiteOptions) -> Result<
     let mut failures = Vec::new();
     for case in default_cases() {
         match traffic::send(&case) {
-            Ok((expected, receipt)) => {
+            Ok((mut expected, receipt)) => {
+                if !opts.sees_payload {
+                    expected.head = None;
+                }
                 if let Err(err) = receipt.wait() {
                     failures.push(format!("{case:?}: local server error: {err}"));
                     continue;

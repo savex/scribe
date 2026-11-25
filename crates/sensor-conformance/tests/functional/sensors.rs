@@ -42,5 +42,21 @@ fn ebpf_sensor_conforms() {
     }
 }
 
-// TODO: Windows ETW (cfg windows) and the macOS Network Extension bridge (option 9A) get a test
-// here each once their sensors exist.
+#[cfg(windows)]
+#[test]
+#[ignore = "needs Administrator rights (an ETW session)"]
+fn etw_sensor_conforms() {
+    // ETW alone, as on a machine without Npcap; events arrive about once a second.
+    let mut sensor = scribe_sensor_windows::EtwSensor::default().without_packets();
+    let opts = SuiteOptions {
+        expect_process_info: true,
+        names_flows: false,
+        sees_payload: false,
+        timeout: std::time::Duration::from_secs(5),
+    };
+    if let Err(failures) = run_sensor_suite(&mut sensor, &opts) {
+        panic!("ETW sensor failed:\n{}", failures.join("\n"));
+    }
+}
+
+// TODO: the macOS Network Extension bridge (option 9A) gets a test here once it exists.

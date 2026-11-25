@@ -2405,6 +2405,7 @@ dependencies = [
  "scribe-core",
  "scribe-sensor-linux",
  "scribe-sensor-pcap",
+ "scribe-sensor-windows",
  "scribe-test-support",
 ]
 
@@ -2449,6 +2450,8 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

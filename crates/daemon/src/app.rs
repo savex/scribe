@@ -1102,7 +1102,9 @@ fn platform_sensor(settings: &Settings) -> Box<dyn Sensor> {
     ));
     #[cfg(windows)]
     return Box::new(FallbackSensor::new(
-        Box::new(scribe_sensor_windows::EtwSensor),
+        Box::new(scribe_sensor_windows::EtwSensor::new(
+            (!iface.is_empty()).then(|| iface.to_owned()),
+        )),
         pcap,
     ));
     #[cfg(not(any(target_os = "linux", windows)))]
