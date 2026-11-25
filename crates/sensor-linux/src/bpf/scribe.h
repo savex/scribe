@@ -4,8 +4,12 @@
 #ifndef SCRIBE_H
 #define SCRIBE_H
 
-#define SCRIBE_RECORD_VERSION 1
+#define SCRIBE_RECORD_VERSION 2
 #define SCRIBE_COMM_LEN 16
+/* The executable path is written backwards from SCRIBE_PATH_MAX: path[path_off .. SCRIBE_PATH_MAX).
+ * The buffer is longer so every bounded write the verifier sees fits. */
+#define SCRIBE_PATH_MAX 512
+#define SCRIBE_PATH_BUF 768
 
 enum scribe_kind {
 	SCRIBE_TCP_CONNECT = 1, /* tcp_connect(): a new outgoing TCP connection */
@@ -26,7 +30,10 @@ struct scribe_flow {
 	__u8 saddr[16];   /* IPv4 in the first 4 bytes; all zero for an unbound UDP socket */
 	__u8 daddr[16];
 	char comm[SCRIBE_COMM_LEN];
-	__u32 pad;
-};                        /* 88 bytes */
+	__u16 path_off;   /* first byte of the path; SCRIBE_PATH_MAX when there is none */
+	__u8 path_truncated; /* 1: deeper than the walk or longer than SCRIBE_PATH_MAX */
+	__u8 pad;
+	char path[SCRIBE_PATH_BUF]; /* executable, as the process's own mount namespace names it */
+};                        /* 856 bytes */
 
 #endif

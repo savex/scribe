@@ -32,6 +32,8 @@ fn udp_record(tgid: u32, src: &str, dst: &str) -> Record {
         pid: tgid,
         uid: 0,
         comm: "dig".into(),
+        path: None,
+        path_truncated: false,
         src: addr(src),
         dst: addr(dst),
     }

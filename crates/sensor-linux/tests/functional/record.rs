@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use scribe_sensor_linux::{Record, RecordError, RecordKind, RECORD_SIZE};
+use scribe_sensor_linux::{Record, RecordError, RecordKind, PATH_MAX, RECORD_SIZE};
 
 fn addr(s: &str) -> SocketAddr {
     s.parse().unwrap()
@@ -15,6 +15,8 @@ fn sample(src: &str, dst: &str) -> Record {
         pid: 4243,
         uid: 1000,
         comm: "curl".into(),
+        path: Some("/usr/bin/curl".into()),
+        path_truncated: false,
         src: addr(src),
         dst: addr(dst),
     }
@@ -50,12 +52,20 @@ fn v4_mapped_addresses_come_back_as_ipv4_and_long_names_are_cut() {
 #[test]
 fn wrong_sizes_versions_kinds_and_families_are_refused() {
     let good = sample("10.0.0.2:1", "192.0.2.10:443").to_bytes();
-    assert_eq!(Record::parse(&good[..87]), Err(RecordError::Size(87)));
+    assert_eq!(
+        Record::parse(&good[..RECORD_SIZE - 1]),
+        Err(RecordError::Size(RECORD_SIZE - 1))
+    );
     assert_eq!(Record::parse(&[]), Err(RecordError::Size(0)));
-    let mut b = good;
-    b[31] = 2;
-    assert_eq!(Record::parse(&b), Err(RecordError::Version(2)));
-    let mut b = good;
+    assert_eq!(
+        Record::parse(&good[..88]),
+        Err(RecordError::Size(88)),
+        "v1 size"
+    );
+    let mut b = good.clone();
+    b[31] = 1;
+    assert_eq!(Record::parse(&b), Err(RecordError::Version(1)));
+    let mut b = good.clone();
     b[30] = 9;
     assert_eq!(Record::parse(&b), Err(RecordError::Kind(9)));
     let mut b = good;
@@ -69,9 +79,40 @@ fn any_bytes_of_the_right_size_never_panic() {
     let base = sample("10.0.0.2:1", "192.0.2.10:443").to_bytes();
     for at in 0..RECORD_SIZE {
         for v in [0u8, 1, 2, 10, 0x7f, 0xff] {
-            let mut b = base;
+            let mut b = base.clone();
             b[at] = v;
             let _ = Record::parse(&b);
         }
+    }
+}
+
+#[test]
+fn the_kernel_path_reads_back_and_a_long_one_keeps_its_tail() {
+    let mut r = sample("10.0.0.2:50001", "192.0.2.10:443");
+    r.path = None;
+    assert_eq!(
+        Record::parse(&r.to_bytes()).unwrap().path,
+        None,
+        "kernel thread"
+    );
+
+    let deep = format!("/{}/bin/app", "d".repeat(PATH_MAX));
+    r.path = Some(deep.clone());
+    let back = Record::parse(&r.to_bytes()).unwrap();
+    assert!(back.path_truncated);
+    let path = back.path.unwrap();
+    assert_eq!(path.len(), PATH_MAX);
+    assert!(deep.ends_with(&path), "the tail: {path}");
+
+    // Offsets past the end mean "no path"; any other offset reads what is there.
+    let mut b = sample("10.0.0.2:1", "192.0.2.10:443").to_bytes();
+    for off in [0u16, 1, 511, 512, 513, u16::MAX] {
+        b[84..86].copy_from_slice(&off.to_ne_bytes());
+        let back = Record::parse(&b).unwrap();
+        assert_eq!(
+            back.path.is_some(),
+            usize::from(off) < PATH_MAX,
+            "offset {off}"
+        );
     }
 }

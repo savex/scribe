@@ -48,7 +48,10 @@ mod unix {
     #[test]
     fn running_as_the_user_already_is_fine() {
         let dir = tempfile::tempdir().unwrap();
-        drop_to(&me(), dir.path()).unwrap();
+        assert!(
+            drop_to(&me(), dir.path()).unwrap().is_none(),
+            "nothing to keep"
+        );
     }
 
     #[test]
@@ -60,6 +63,65 @@ mod unix {
         let dir = tempfile::tempdir().unwrap();
         let err = drop_to("root", dir.path()).unwrap_err();
         assert!(err.contains("chown -R root"), "{err}");
+    }
+}
+
+/// Run alone, as root: it drops the privileges of the whole test process.
+/// `sudo <functional test binary> --ignored --exact privileges_keeper_restarts_capture_as_a_user`
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "needs root and its own process"]
+fn privileges_keeper_restarts_capture_as_a_user() {
+    use scribe_core::Sensor;
+    use std::os::unix::ffi::OsStrExt;
+
+    // SAFETY: plain libc calls; results checked.
+    assert_eq!(unsafe { libc::geteuid() }, 0, "run as root");
+    let dir = tempfile::tempdir().unwrap();
+    let path = std::ffi::CString::new(dir.path().as_os_str().as_bytes()).unwrap();
+    let nobody = unsafe { libc::getpwnam(c"nobody".as_ptr()) };
+    assert!(!nobody.is_null());
+    // SAFETY: valid path and ids.
+    assert_eq!(
+        unsafe { libc::chown(path.as_ptr(), (*nobody).pw_uid, (*nobody).pw_gid) },
+        0
+    );
+
+    let keeper = scribe_daemon::privileges::drop_to("nobody", dir.path())
+        .unwrap()
+        .expect("root had capabilities to keep");
+    assert!(
+        keeper.kept().contains(&"cap_net_raw"),
+        "{:?}",
+        keeper.kept()
+    );
+
+    let packet_socket = || {
+        // SAFETY: socket(2); the descriptor is closed right away.
+        let fd = unsafe { libc::socket(libc::AF_PACKET, libc::SOCK_DGRAM, 0) };
+        if fd >= 0 {
+            unsafe { libc::close(fd) };
+        }
+        fd >= 0
+    };
+    assert!(!packet_socket(), "this thread kept no capabilities");
+    assert!(keeper.run(packet_socket), "the keeper did");
+
+    // A capture start after hibernation: refused here, works on the keeper.
+    let mut here: Box<dyn Sensor> = Box::new(scribe_sensor_linux::EbpfSensor::default());
+    let (tx, _rx) = std::sync::mpsc::channel();
+    assert!(
+        here.start(tx.clone()).is_err(),
+        "no capabilities on this thread"
+    );
+    if keeper.kept().contains(&"cap_bpf") {
+        let mut sensor: Box<dyn Sensor> = Box::new(scribe_sensor_linux::EbpfSensor::default());
+        let started = keeper.run(move || {
+            let r = sensor.start(tx).map_err(|e| e.to_string());
+            sensor.stop();
+            r
+        });
+        started.unwrap();
     }
 }
 

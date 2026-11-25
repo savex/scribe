@@ -20,7 +20,7 @@ pub mod record;
 
 pub use join::{Joiner, HOLD};
 pub use owners::{ExePath, Owner, Owners, MAX_OWNERS, OWNER_TTL};
-pub use record::{Record, RecordError, RecordKind, RECORD_SIZE, RECORD_VERSION};
+pub use record::{Record, RecordError, RecordKind, PATH_MAX, RECORD_SIZE, RECORD_VERSION};
 
 #[cfg(target_os = "linux")]
 mod sensor;

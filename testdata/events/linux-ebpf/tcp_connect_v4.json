@@ -1,7 +1,7 @@
 {
   "source": "linux-ebpf",
   "status": "synthetic",
-  "description": "A tcp_connect record (struct scribe_flow v1) for an IPv4 connection, then its packets as the socket filter passes them: the flow gets curl as its process.",
+  "description": "A tcp_connect record (struct scribe_flow v2) for an IPv4 connection, then its packets as the socket filter passes them: the flow gets curl as its process.",
   "records": [
     {"kind": "tcp_connect", "tgid": 4242, "pid": 4243, "uid": 1000, "comm": "curl", "exe": "/usr/bin/curl", "cgroup_id": 7777, "src": "10.0.0.2:50001", "dst": "192.0.2.10:443"}
   ],

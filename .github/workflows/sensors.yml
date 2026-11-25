@@ -46,6 +46,11 @@ jobs:
           bin=$(cargo test -p scribe-sensor-conformance --test functional --no-run --locked --message-format=json \
             | jq -r 'select(.reason == "compiler-artifact" and .target.name == "functional" and .executable != null) | .executable')
           echo "bin=$bin" >> "$GITHUB_OUTPUT"
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            daemon=$(cargo test -p scribe-daemon --test functional --no-run --locked --message-format=json \
+              | jq -r 'select(.reason == "compiler-artifact" and .target.name == "functional" and .executable != null) | .executable')
+            echo "daemon=$daemon" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Run privileged tests
         shell: bash
@@ -55,6 +60,11 @@ jobs:
           else
             sudo "${{ steps.build.outputs.bin }}" --ignored sensors::
           fi
+
+      - name: Capture after dropping root (Linux)
+        if: runner.os == 'Linux'
+        # Alone in its process: the test drops the privileges of the whole test binary.
+        run: sudo "${{ steps.build.outputs.daemon }}" --ignored --exact service::privileges_keeper_restarts_capture_as_a_user
 
   # TODO: Linux kernel matrix (5.8, 5.15, 6.1, latest) with virtme-ng once the eBPF sensor exists.
   # TODO: macOS Network Extension needs a self-hosted Mac with the MDM approval profile.

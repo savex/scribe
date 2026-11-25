@@ -7,9 +7,9 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use scribe_process::{normalise, Transport};
 
 /// `sizeof(struct scribe_flow)`.
-pub const RECORD_SIZE: usize = 88;
+pub const RECORD_SIZE: usize = 856;
 /// `SCRIBE_RECORD_VERSION`: a record of another version is refused.
-pub const RECORD_VERSION: u8 = 1;
+pub const RECORD_VERSION: u8 = 2;
 pub const AF_INET: u16 = 2;
 pub const AF_INET6: u16 = 10;
 
@@ -27,6 +27,11 @@ const SADDR: usize = 36;
 const DADDR: usize = 52;
 const COMM: usize = 68;
 const COMM_LEN: usize = 16;
+const PATH_OFF: usize = 84;
+const PATH_TRUNCATED: usize = 86;
+const PATH: usize = 88;
+/// `SCRIBE_PATH_MAX`: the path ends here, written backwards from it.
+pub const PATH_MAX: usize = 512;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordKind {
@@ -58,6 +63,10 @@ pub struct Record {
     pub uid: u32,
     /// The thread's name, up to 15 bytes.
     pub comm: String,
+    /// The executable, as the process's own mount namespace names it; `None` for kernel threads.
+    pub path: Option<String>,
+    /// The path is the tail of a longer or deeper one.
+    pub path_truncated: bool,
     /// Local address; `0.0.0.0` / `::` for a UDP socket not bound to one address.
     pub src: SocketAddr,
     pub dst: SocketAddr,
@@ -124,6 +133,9 @@ impl Record {
         }
         let comm = &b[COMM..COMM + COMM_LEN];
         let comm_len = comm.iter().position(|&c| c == 0).unwrap_or(COMM_LEN);
+        let path_off = usize::from(u16_at(b, PATH_OFF));
+        let path = (path_off < PATH_MAX)
+            .then(|| String::from_utf8_lossy(&b[PATH + path_off..PATH + PATH_MAX]).into_owned());
         Ok(Self {
             kind,
             ts_ns: u64_at(b, TS_NS),
@@ -132,15 +144,17 @@ impl Record {
             pid: u32_at(b, PID),
             uid: u32_at(b, UID),
             comm: String::from_utf8_lossy(&comm[..comm_len]).into_owned(),
+            path,
+            path_truncated: b[PATH_TRUNCATED] != 0,
             src: normalise(SocketAddr::new(ip_at(b, SADDR, family), u16_at(b, SPORT))),
             dst: normalise(SocketAddr::new(ip_at(b, DADDR, family), u16_at(b, DPORT))),
         })
     }
 
     /// The bytes the kernel would write for this record (for tests and replays). Both addresses
-    /// must be of one family.
-    pub fn to_bytes(&self) -> [u8; RECORD_SIZE] {
-        let mut b = [0u8; RECORD_SIZE];
+    /// must be of one family; a path longer than [`PATH_MAX`] keeps its tail, as the kernel does.
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut b = vec![0u8; RECORD_SIZE];
         b[TS_NS..TS_NS + 8].copy_from_slice(&self.ts_ns.to_ne_bytes());
         b[CGROUP_ID..CGROUP_ID + 8].copy_from_slice(&self.cgroup_id.to_ne_bytes());
         b[TGID..TGID + 4].copy_from_slice(&self.tgid.to_ne_bytes());
@@ -161,6 +175,16 @@ impl Record {
         let comm = self.comm.as_bytes();
         let n = comm.len().min(COMM_LEN - 1);
         b[COMM..COMM + n].copy_from_slice(&comm[..n]);
+        let path = self.path.as_deref().map(str::as_bytes).unwrap_or_default();
+        let n = path.len().min(PATH_MAX);
+        let off = if self.path.is_some() {
+            PATH_MAX - n
+        } else {
+            PATH_MAX
+        };
+        b[PATH_OFF..PATH_OFF + 2].copy_from_slice(&(off as u16).to_ne_bytes());
+        b[PATH_TRUNCATED] = u8::from(self.path_truncated || n < path.len());
+        b[PATH + off..PATH + PATH_MAX].copy_from_slice(&path[path.len() - n..]);
         b
     }
 }

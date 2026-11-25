@@ -21,7 +21,7 @@ pub const OWNER_TTL: Duration = Duration::from_secs(600);
 /// Most owners kept; the least recently used ones go first.
 pub const MAX_OWNERS: usize = 65_536;
 
-/// Reads a process's executable path (`/proc/<pid>/exe` on Linux).
+/// Reads a process's executable path (`/proc/<pid>/exe` on Linux), for records that carry none.
 pub type ExePath = Box<dyn Fn(u32) -> Option<String> + Send>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,7 +98,11 @@ impl Owners {
         if self.exact.len() >= MAX_OWNERS {
             self.evict_oldest();
         }
-        let path = self.path(r.tgid, now);
+        // The kernel's path needs no rights over the process; /proc is the fallback.
+        let path = match &r.path {
+            Some(p) => Some(p.clone()),
+            None => self.path(r.tgid, now),
+        };
         let key = (r.kind.transport(), r.src, r.dst);
         self.exact.insert(
             key,

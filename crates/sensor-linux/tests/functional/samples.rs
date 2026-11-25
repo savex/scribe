@@ -1,7 +1,6 @@
 //! FUN-SN02: `testdata/events/linux-ebpf/*.json`: kernel records and the packets of a pcap
 //! fixture, joined, give the expected observations.
 
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -77,13 +76,12 @@ fn check(name: &str) {
     assert_eq!(sample.source, "linux-ebpf");
     assert_eq!(sample.status, "synthetic");
 
-    let exes: HashMap<u32, String> = sample
-        .records
-        .iter()
-        .map(|r| (r.tgid, r.exe.clone()))
-        .collect();
+    // Paths come with the records, from the kernel: /proc is never read.
     let clock = Arc::new(FakeClock::at_unix(1_800_000_000));
-    let mut owners = Owners::new(clock, Box::new(move |pid| exes.get(&pid).cloned()));
+    let mut owners = Owners::new(
+        clock,
+        Box::new(|pid| panic!("/proc read for pid {pid}: the record had the path")),
+    );
     for raw in &sample.records {
         let record = Record {
             kind: match raw.kind.as_str() {
@@ -97,6 +95,8 @@ fn check(name: &str) {
             pid: raw.pid,
             uid: raw.uid,
             comm: raw.comm.clone(),
+            path: Some(raw.exe.clone()),
+            path_truncated: false,
             src: raw.src,
             dst: raw.dst,
         };

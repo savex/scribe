@@ -816,8 +816,8 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 **Sensors and privileges (NFR-8)**
 
 - Privilege split: loading eBPF, the ETW kernel session and opening pcap stay in the small privileged part; the parsers (SNI, QUIC, HTTP, DNS) run after privileges are dropped.
-- Linux: pinned bpffs maps root-only; keep only `CAP_BPF` / `CAP_PERFMON` as needed, drop the rest after attaching.
-- systemd unit: `NoNewPrivileges`, `ProtectSystem=strict` with `ReadWritePaths` for data and logs, `PrivateTmp`, `CapabilityBoundingSet`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK`, `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute`.
+- Linux: pinned bpffs maps root-only; keep only `CAP_BPF` / `CAP_PERFMON` / `CAP_NET_RAW`, on one thread that (re)starts capture, and drop the rest; the executable path comes from the eBPF programs, so no ptrace rights over other processes are needed (implemented 2026-11-25).
+- systemd unit: `NoNewPrivileges`, `ProtectSystem=strict` with `ReadWritePaths` for data and logs, `PrivateTmp`, `CapabilityBoundingSet`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET` (`AF_PACKET` for the eBPF sensor's packet socket), `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute`.
 - Windows: service SID; processing under `NT SERVICE\scribed` instead of SYSTEM where the ETW session allows it.
 
 **Postgres sink (leaves the host)**

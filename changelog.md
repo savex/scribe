@@ -27,6 +27,13 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   hit rate. Linux builds need `clang`, `libelf-dev`, `zlib1g-dev` (build image, CI action
   `linux-build-deps`); `scripts/build/linux.sh run --privileged` runs the eBPF tests in the container;
   `deny.toml` allows BSD-2-Clause again (libbpf-rs).
+- Linux eBPF sensor, privilege split: the eBPF programs read the executable path themselves
+  (`struct scribe_flow` v2, 856 bytes: path walked through dentries and mount points), so flows of other
+  users' processes keep their path after scribed drops root. With `[daemon] user`, one thread keeps
+  `CAP_BPF`, `CAP_PERFMON` and `CAP_NET_RAW` (nothing else; every other thread has no capabilities) and
+  restarts capture after hibernation; `RLIMIT_MEMLOCK` is lifted while still root (kernels before 5.11).
+  Ring buffer 1 MiB. Root-only test `service::privileges_keeper_restarts_capture_as_a_user`, run alone in
+  the Sensors workflow.
 
 ### Changed
 

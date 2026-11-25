@@ -20,6 +20,8 @@ fn record(kind: RecordKind, tgid: u32, src: &str, dst: &str) -> Record {
         pid: tgid + 1,
         uid: 1000,
         comm: format!("app{tgid}"),
+        path: None,
+        path_truncated: false,
         src: addr(src),
         dst: addr(dst),
     }
@@ -189,4 +191,17 @@ fn a_busy_process_has_its_path_read_once_in_a_while() {
         2,
         "read again: the pid may be reused"
     );
+}
+
+#[test]
+fn the_kernel_path_wins_and_proc_is_not_read() {
+    let (mut o, _, reads) = owners();
+    let mut r = record(RecordKind::TcpConnect, 77, "10.0.0.2:1", "192.0.2.10:443");
+    r.path = Some("/usr/lib/other-user/app".into());
+    o.record(&r);
+    let owner = o
+        .lookup(Transport::Tcp, addr("10.0.0.2:1"), addr("192.0.2.10:443"))
+        .unwrap();
+    assert_eq!(owner.path.as_deref(), Some("/usr/lib/other-user/app"));
+    assert_eq!(*reads.lock().unwrap(), 0);
 }

@@ -770,10 +770,22 @@ pub async fn serve_full(
     let mut next_prune = clock.now();
 
     let user = settings.config.daemon.user.trim();
+    let mut keeper = None;
     if !user.is_empty() {
-        crate::privileges::drop_to(user, &settings.data_dir)
+        keeper = crate::privileges::drop_to(user, &settings.data_dir)
             .map_err(|e| anyhow::anyhow!("cannot run as {user}: {e}"))?;
-        info!(user, "running as {user}");
+        match &keeper {
+            Some(k) => info!(
+                user,
+                "running as {user}; capture restarts keep {}",
+                if k.kept().is_empty() {
+                    "no capabilities".to_owned()
+                } else {
+                    k.kept().join(", ")
+                }
+            ),
+            None => info!(user, "running as {user}"),
+        }
     }
     crate::service::notify("READY=1\nSTATUS=capturing");
     info!("scribed started; waiting for a stop signal");
@@ -912,7 +924,7 @@ pub async fn serve_full(
                         continue;
                     }
                 };
-                follow_state(was, &pipeline, sensor.as_mut(), &restart_tx, &mut capturing);
+                follow_state(was, &pipeline, &mut sensor, keeper.as_ref(), &restart_tx, &mut capturing);
                 let _ = reply.send(pipeline.status());
             }
             _ = hangup(&mut hup) => {
@@ -942,7 +954,7 @@ pub async fn serve_full(
                 let writes = pipeline.tick();
                 writer.apply(&storage, pipeline.profile(), writes).await;
                 writer.outputs.tick();
-                follow_state(was, &pipeline, sensor.as_mut(), &restart_tx, &mut capturing);
+                follow_state(was, &pipeline, &mut sensor, keeper.as_ref(), &restart_tx, &mut capturing);
                 pipeline.modules_mut().tick();
                 drain.run(queue.take(), &storage).await;
                 rates.sample(clock.now(), pipeline.counters().flows, events_queued(&storage));
@@ -1383,11 +1395,49 @@ impl Writer {
     }
 }
 
+/// Starts the sensor, on the thread that kept the capture capabilities when scribed dropped root.
+fn start_sensor(
+    sensor: &mut Box<dyn Sensor>,
+    keeper: Option<&crate::privileges::Keeper>,
+    tx: std::sync::mpsc::Sender<Observation>,
+) -> Result<(), scribe_core::SensorError> {
+    let Some(keeper) = keeper else {
+        return sensor.start(tx);
+    };
+    let mut owned = std::mem::replace(sensor, Box::new(Stopped));
+    let (back, result) = keeper.run(move || {
+        let result = owned.start(tx);
+        (owned, result)
+    });
+    *sensor = back;
+    result
+}
+
+/// Stands in for the sensor while it is being started on another thread.
+struct Stopped;
+
+impl Sensor for Stopped {
+    fn name(&self) -> &'static str {
+        "none"
+    }
+    fn has_process_info(&self) -> bool {
+        false
+    }
+    fn start(
+        &mut self,
+        _out: std::sync::mpsc::Sender<Observation>,
+    ) -> Result<(), scribe_core::SensorError> {
+        Ok(())
+    }
+    fn stop(&mut self) {}
+}
+
 /// Stop the sensor when the pipeline started hibernating, start it again when it woke up.
 fn follow_state(
     was_hibernating: bool,
     pipeline: &Pipeline,
-    sensor: &mut dyn Sensor,
+    sensor: &mut Box<dyn Sensor>,
+    keeper: Option<&crate::privileges::Keeper>,
     tx: &std::sync::mpsc::Sender<Observation>,
     capturing: &mut bool,
 ) {
@@ -1403,7 +1453,7 @@ fn follow_state(
                 );
             }
         }
-        (true, false) => match sensor.start(tx.clone()) {
+        (true, false) => match start_sensor(sensor, keeper, tx.clone()) {
             Ok(()) => {
                 *capturing = true;
                 info!(sensor = sensor.name(), "woke up: capture started again");

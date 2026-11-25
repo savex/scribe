@@ -3,7 +3,8 @@
  *
  * who:  fentry/tcp_connect and fexit/udp_sendmsg, fexit/udpv6_sendmsg write a struct scribe_flow
  *       to the `events` ring buffer when a process opens a TCP connection or sends a datagram
- *       (once per socket and destination every `udp_repeat_ns`).
+ *       (once per socket and destination every `udp_repeat_ns`), with the executable's path read
+ *       from the kernel (no /proc, no ptrace rights needed).
  * what: the `packets` socket filter, attached to an AF_PACKET SOCK_DGRAM socket, passes outgoing
  *       TCP and UDP packets, incoming TCP packets without data (SYN-ACK, FIN, RST, ACK) and
  *       incoming DNS answers; incoming data, which scribe never reads, and incoming connection
@@ -66,11 +67,54 @@ struct msghdr {
 	void *msg_name;
 } __attribute__((preserve_access_index));
 
+struct qstr {
+	union {
+		struct {
+			__u32 hash;
+			__u32 len;
+		};
+		__u64 hash_len;
+	};
+	const unsigned char *name;
+} __attribute__((preserve_access_index));
+
+struct dentry {
+	struct dentry *d_parent;
+	struct qstr d_name;
+} __attribute__((preserve_access_index));
+
+struct vfsmount {
+	struct dentry *mnt_root;
+} __attribute__((preserve_access_index));
+
+struct mount {
+	struct mount *mnt_parent;
+	struct dentry *mnt_mountpoint;
+	struct vfsmount mnt;
+} __attribute__((preserve_access_index));
+
+struct path {
+	struct vfsmount *mnt;
+	struct dentry *dentry;
+} __attribute__((preserve_access_index));
+
+struct file {
+	struct path f_path;
+} __attribute__((preserve_access_index));
+
+struct mm_struct {
+	struct file *exe_file;
+} __attribute__((preserve_access_index));
+
+struct task_struct {
+	struct mm_struct *mm;
+} __attribute__((preserve_access_index));
+
 /* ---- maps and settings ---- */
 
 struct {
 	__uint(type, BPF_MAP_TYPE_RINGBUF);
-	__uint(max_entries, 256 * 1024);
+	__uint(max_entries, 1024 * 1024);
 } events SEC(".maps");
 
 /* Records lost because the ring buffer was full: index 0, summed over CPUs by scribed. */
@@ -104,6 +148,10 @@ const volatile __u32 loopback_ifindex = 1;
 const volatile __u64 pidns_dev = 0;
 const volatile __u64 pidns_ino = 0;
 
+/* Deepest path walked: directories plus mount points crossed. */
+#define PATH_DEPTH 32
+#define NAME_MAX_LEN 255
+
 static __always_inline void count_lost(void)
 {
 	__u32 zero = 0;
@@ -113,18 +161,80 @@ static __always_inline void count_lost(void)
 		*n += 1;
 }
 
-/* Fills in the process; false when it is outside scribed's pid namespace. */
-static __always_inline int fill_process(struct scribe_flow *e, __u8 kind, __u16 family)
+/* The current process and thread ids as scribed sees them; false when the process is outside
+ * scribed's pid namespace. */
+static __always_inline int current_ids(__u64 *id)
 {
-	__u64 id = bpf_get_current_pid_tgid();
-
+	*id = bpf_get_current_pid_tgid();
 	if (pidns_ino) {
 		struct bpf_pidns_info ns = {};
 
 		if (bpf_get_ns_current_pid_tgid(pidns_dev, pidns_ino, &ns, sizeof(ns)))
 			return 0;
-		id = ((__u64)ns.tgid << 32) | ns.pid;
+		*id = ((__u64)ns.tgid << 32) | ns.pid;
 	}
+	return 1;
+}
+
+/* The current executable's path, written backwards into e->path, crossing mount points up to
+ * the root of the process's mount namespace.
+ *
+ * The write position lives in e->path_off and is read back through a volatile pointer: the
+ * verifier then knows only its type, not a range per iteration, so the states of the walk's
+ * branches match and get pruned (tracked in a register, 32 iterations exceed its 1M budget). */
+static __always_inline void exe_path(struct scribe_flow *e)
+{
+	struct task_struct *task = (struct task_struct *)bpf_get_current_task();
+	struct file *exe = BPF_CORE_READ(task, mm, exe_file);
+	volatile __u16 *at = &e->path_off;
+	struct dentry *d, *parent, *root;
+	struct vfsmount *vmnt;
+	struct mount *mnt, *up;
+	__u64 mnt_off = bpf_core_field_offset(struct mount, mnt);
+	__u32 off, len;
+	const unsigned char *name;
+	int i;
+
+	*at = SCRIBE_PATH_MAX;
+	e->path_truncated = 0;
+	if (!exe)
+		return; /* kernel threads */
+	d = BPF_CORE_READ(exe, f_path.dentry);
+	vmnt = BPF_CORE_READ(exe, f_path.mnt);
+	mnt = (struct mount *)((void *)vmnt - mnt_off);
+
+	for (i = 0; i < PATH_DEPTH; i++) {
+		root = BPF_CORE_READ(vmnt, mnt_root);
+		parent = BPF_CORE_READ(d, d_parent);
+		if (d == root || d == parent) {
+			/* At the root of a mount: continue from where it is mounted. */
+			up = BPF_CORE_READ(mnt, mnt_parent);
+			if (up == mnt || !up)
+				return; /* the namespace's root */
+			d = BPF_CORE_READ(mnt, mnt_mountpoint);
+			mnt = up;
+			vmnt = (struct vfsmount *)((void *)mnt + mnt_off);
+			continue;
+		}
+		len = BPF_CORE_READ(d, d_name.len);
+		name = BPF_CORE_READ(d, d_name.name);
+		off = *at;
+		if (len == 0 || len > NAME_MAX_LEN || len + 1 > off || off > SCRIBE_PATH_MAX) {
+			e->path_truncated = 1;
+			return;
+		}
+		off -= len + 1;
+		bpf_probe_read_kernel(&e->path[(off + 1) & (SCRIBE_PATH_MAX - 1)], len & NAME_MAX_LEN,
+				      name);
+		e->path[off & (SCRIBE_PATH_MAX - 1)] = '/';
+		*at = off;
+		d = parent;
+	}
+	e->path_truncated = 1; /* deeper than PATH_DEPTH */
+}
+
+static __always_inline void fill_process(struct scribe_flow *e, __u64 id, __u8 kind, __u16 family)
+{
 	e->ts_ns = bpf_ktime_get_ns();
 	e->cgroup_id = bpf_get_current_cgroup_id();
 	e->tgid = id >> 32;
@@ -133,8 +243,11 @@ static __always_inline int fill_process(struct scribe_flow *e, __u8 kind, __u16 
 	e->family = family;
 	e->kind = kind;
 	e->version = SCRIBE_RECORD_VERSION;
+	e->pad = 0;
+	__builtin_memset(e->saddr, 0, sizeof(e->saddr));
+	__builtin_memset(e->daddr, 0, sizeof(e->daddr));
 	bpf_get_current_comm(e->comm, sizeof(e->comm));
-	return 1;
+	exe_path(e);
 }
 
 static __always_inline void local_address(struct scribe_flow *e, struct sock *sk, __u16 family)
@@ -149,15 +262,16 @@ static __always_inline void local_address(struct scribe_flow *e, struct sock *sk
 	}
 }
 
-static __always_inline void remote_address(struct scribe_flow *e, struct sock *sk, __u16 family)
+/* The connected peer of `sk` into dport / daddr (16 bytes, IPv4 in the first 4). */
+static __always_inline void peer_address(struct sock *sk, __u16 family, __u16 *dport, __u8 *daddr)
 {
-	e->dport = bpf_ntohs(BPF_CORE_READ(sk, __sk_common.skc_dport));
+	*dport = bpf_ntohs(BPF_CORE_READ(sk, __sk_common.skc_dport));
 	if (family == AF_INET) {
 		__be32 d = BPF_CORE_READ(sk, __sk_common.skc_daddr);
 
-		__builtin_memcpy(e->daddr, &d, 4);
+		__builtin_memcpy(daddr, &d, 4);
 	} else {
-		BPF_CORE_READ_INTO(&e->daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr8);
+		BPF_CORE_READ_INTO(daddr, sk, __sk_common.skc_v6_daddr.in6_u.u6_addr8);
 	}
 }
 
@@ -166,65 +280,73 @@ static __always_inline void remote_address(struct scribe_flow *e, struct sock *s
 SEC("fentry/tcp_connect")
 int BPF_PROG(tcp_connect, struct sock *sk)
 {
-	struct scribe_flow e = {};
+	struct scribe_flow *e;
 	__u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
+	__u64 id;
 
-	if (family != AF_INET && family != AF_INET6)
+	if ((family != AF_INET && family != AF_INET6) || !current_ids(&id))
 		return 0;
-	if (!fill_process(&e, SCRIBE_TCP_CONNECT, family))
-		return 0;
-	local_address(&e, sk, family);
-	remote_address(&e, sk, family);
-	if (bpf_ringbuf_output(&events, &e, sizeof(e), 0))
+	e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+	if (!e) {
 		count_lost();
+		return 0;
+	}
+	fill_process(e, id, SCRIBE_TCP_CONNECT, family);
+	local_address(e, sk, family);
+	peer_address(sk, family, &e->dport, e->daddr);
+	bpf_ringbuf_submit(e, 0);
 	return 0;
 }
 
 static __always_inline int udp_send(struct sock *sk, struct msghdr *msg, int ret)
 {
-	struct scribe_flow e = {};
+	struct scribe_flow *e;
 	struct udp_key key = {};
 	__u16 family = BPF_CORE_READ(sk, __sk_common.skc_family);
 	void *name = BPF_CORE_READ(msg, msg_name);
-	__u64 now, *last;
+	__u64 id, now, *last;
 
-	if (ret < 0 || (family != AF_INET && family != AF_INET6))
+	if (ret < 0 || (family != AF_INET && family != AF_INET6) || !current_ids(&id))
 		return 0;
-	if (!fill_process(&e, SCRIBE_UDP_SEND, family))
-		return 0;
-	local_address(&e, sk, family);
 	if (!name) {
-		remote_address(&e, sk, family); /* connected socket */
+		peer_address(sk, family, &key.dport, key.daddr); /* connected socket */
 	} else if (family == AF_INET) {
 		struct sockaddr_in sin = {};
 
 		bpf_probe_read_kernel(&sin, sizeof(sin), name);
 		if (sin.sin_family != AF_INET)
 			return 0;
-		e.dport = bpf_ntohs(sin.sin_port);
-		__builtin_memcpy(e.daddr, &sin.sin_addr, 4);
+		key.dport = bpf_ntohs(sin.sin_port);
+		__builtin_memcpy(key.daddr, &sin.sin_addr, 4);
 	} else {
 		struct sockaddr_in6 sin6 = {};
 
 		bpf_probe_read_kernel(&sin6, sizeof(sin6), name);
 		if (sin6.sin6_family != AF_INET6)
 			return 0;
-		e.dport = bpf_ntohs(sin6.sin6_port);
-		__builtin_memcpy(e.daddr, &sin6.sin6_addr, 16);
+		key.dport = bpf_ntohs(sin6.sin6_port);
+		__builtin_memcpy(key.daddr, &sin6.sin6_addr, 16);
 	}
-	if (e.dport == 0)
+	if (key.dport == 0)
 		return 0;
 
 	key.sk = (__u64)sk;
-	__builtin_memcpy(key.daddr, e.daddr, 16);
-	key.dport = e.dport;
-	now = e.ts_ns;
+	now = bpf_ktime_get_ns();
 	last = bpf_map_lookup_elem(&udp_seen, &key);
 	if (last && now - *last < udp_repeat_ns)
 		return 0;
 	bpf_map_update_elem(&udp_seen, &key, &now, BPF_ANY);
-	if (bpf_ringbuf_output(&events, &e, sizeof(e), 0))
+
+	e = bpf_ringbuf_reserve(&events, sizeof(*e), 0);
+	if (!e) {
 		count_lost();
+		return 0;
+	}
+	fill_process(e, id, SCRIBE_UDP_SEND, family);
+	local_address(e, sk, family);
+	e->dport = key.dport;
+	__builtin_memcpy(e->daddr, key.daddr, 16);
+	bpf_ringbuf_submit(e, 0);
 	return 0;
 }
 
