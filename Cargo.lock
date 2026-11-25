@@ -2047,7 +2047,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scribe-alerts"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
  "scribe-net",
@@ -2060,7 +2060,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-api"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "hyper-util",
  "libc",
@@ -2082,7 +2082,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-cli"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "clap",
  "notify-rust",
@@ -2101,7 +2101,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-core"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "fs4",
  "libc",
@@ -2115,7 +2115,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-daemon"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -2157,7 +2157,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-enrich"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "proptest",
  "ring",
@@ -2167,7 +2167,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-module-api"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
  "serde",
@@ -2178,7 +2178,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-module-conformance"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
  "scribe-module-api",
@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-module-url"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "clap",
  "prost",
@@ -2214,7 +2214,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-net"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "http",
  "httparse",
@@ -2228,7 +2228,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-policy"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "proptest",
  "scribe-core",
@@ -2238,7 +2238,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-process"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "libc",
  "scribe-core",
@@ -2249,7 +2249,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-secrets"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "libc",
  "ring",
@@ -2262,7 +2262,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-sensor-conformance"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
  "scribe-sensor-pcap",
@@ -2271,14 +2271,14 @@ dependencies = [
 
 [[package]]
 name = "scribe-sensor-linux"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
 ]
 
 [[package]]
 name = "scribe-sensor-pcap"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "libloading",
  "proptest",
@@ -2290,14 +2290,14 @@ dependencies = [
 
 [[package]]
 name = "scribe-sensor-windows"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
 ]
 
 [[package]]
 name = "scribe-storage-api"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
  "serde_json",
@@ -2306,7 +2306,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-conformance"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
  "scribe-storage-api",
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-manager"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
  "scribe-storage-api",
@@ -2332,7 +2332,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-postgres"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-net",
  "scribe-secrets",
@@ -2347,7 +2347,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-storage-sqlite"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "proptest",
  "rusqlite",
@@ -2361,7 +2361,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-test-support"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "ring",
  "scribe-api",
@@ -2378,7 +2378,7 @@ dependencies = [
 
 [[package]]
 name = "scribe-tests"
-version = "0.2.0"
+version = "0.3.0-alpha.2"
 dependencies = [
  "anyhow",
  "clap",

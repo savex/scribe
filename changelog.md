@@ -10,6 +10,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ## [Unreleased]
 
+## [0.3.0-alpha.2] - 2026-11-25
+
 ### Added
 - Postgres event sink (plan option 12C): history to a central Postgres over TLS with certificate checks
   (forced for any server not on this machine), password from `credentials`, optional `schema`, migrations
@@ -385,7 +387,8 @@ design documents and phase 0.
 ### Removed
 - `config/scribe.example.toml`, replaced by `config/scribe.toml`.
 
-[Unreleased]: https://github.com/savex/scribe/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/savex/scribe/compare/v0.3.0-alpha.2...HEAD
+[0.3.0-alpha.2]: https://github.com/savex/scribe/releases/tag/v0.3.0-alpha.2
 [0.2.0]: https://github.com/savex/scribe/releases/tag/v0.2.0
 [0.1.0-alpha.1]: https://github.com/savex/scribe/releases/tag/v0.1.0-alpha.1
 [0.1.1]: https://github.com/savex/scribe/releases/tag/v0.1.1
