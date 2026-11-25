@@ -1,29 +1,28 @@
+//! FUN-SN05: `scribe_process::join`, the match of native sensors' connection reports with packet
+//! observations (eBPF records on Linux, ETW events on Windows).
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use scribe_core::FlowKind;
+use scribe_core::{FlowKind, Observation};
+use scribe_process::join::{Connection, Joiner, Owners, OWNER_TTL};
 use scribe_process::Transport;
-use scribe_sensor_linux::{Owners, Record, RecordKind, OWNER_TTL};
 use scribe_test_support::{flow, FakeClock};
 
 fn addr(s: &str) -> SocketAddr {
     s.parse().unwrap()
 }
 
-fn record(kind: RecordKind, tgid: u32, src: &str, dst: &str) -> Record {
-    Record {
-        kind,
-        ts_ns: 0,
-        cgroup_id: 1,
-        tgid,
-        pid: tgid + 1,
-        uid: 1000,
-        comm: format!("app{tgid}"),
-        path: None,
-        path_truncated: false,
+fn record(transport: Transport, pid: u32, src: &str, dst: &str) -> Connection {
+    Connection {
+        transport,
         src: addr(src),
         dst: addr(dst),
+        pid,
+        uid: Some(1000),
+        name: Some(format!("app{pid}")),
+        path: None,
     }
 }
 
@@ -42,7 +41,7 @@ fn owners() -> (Owners, Arc<FakeClock>, Arc<std::sync::Mutex<u32>>) {
 fn tcp_flows_match_by_their_exact_addresses_and_transport() {
     let (mut o, _, _) = owners();
     o.record(&record(
-        RecordKind::TcpConnect,
+        Transport::Tcp,
         42,
         "10.0.0.2:50001",
         "192.0.2.10:443",
@@ -55,8 +54,8 @@ fn tcp_flows_match_by_their_exact_addresses_and_transport() {
         )
         .unwrap();
     assert_eq!(
-        (owner.pid, owner.uid, owner.comm.as_str()),
-        (42, 1000, "app42")
+        (owner.pid, owner.uid, owner.name.as_deref()),
+        (42, Some(1000), Some("app42"))
     );
     assert_eq!(owner.path.as_deref(), Some("/opt/app42/bin/app"));
     assert!(o
@@ -78,14 +77,9 @@ fn tcp_flows_match_by_their_exact_addresses_and_transport() {
 #[test]
 fn an_unbound_udp_socket_matches_by_port_and_mapped_addresses_by_ipv4() {
     let (mut o, _, _) = owners();
+    o.record(&record(Transport::Udp, 7, "0.0.0.0:53001", "192.0.2.53:53"));
     o.record(&record(
-        RecordKind::UdpSend,
-        7,
-        "0.0.0.0:53001",
-        "192.0.2.53:53",
-    ));
-    o.record(&record(
-        RecordKind::UdpSend,
+        Transport::Udp,
         8,
         "[::]:53002",
         "[2001:db8::53]:53",
@@ -107,7 +101,7 @@ fn an_unbound_udp_socket_matches_by_port_and_mapped_addresses_by_ipv4() {
 fn observations_get_the_owner_unless_the_sensor_knew_it() {
     let (mut o, _, _) = owners();
     o.record(&record(
-        RecordKind::TcpConnect,
+        Transport::Tcp,
         42,
         "10.0.0.2:50001",
         "192.0.2.10:443",
@@ -137,30 +131,15 @@ fn observations_get_the_owner_unless_the_sensor_knew_it() {
 #[test]
 fn owners_expire_after_the_ttl_unless_used() {
     let (mut o, clock, _) = owners();
-    o.record(&record(
-        RecordKind::TcpConnect,
-        1,
-        "10.0.0.2:1",
-        "192.0.2.10:443",
-    ));
-    o.record(&record(
-        RecordKind::TcpConnect,
-        2,
-        "10.0.0.2:2",
-        "192.0.2.10:443",
-    ));
+    o.record(&record(Transport::Tcp, 1, "10.0.0.2:1", "192.0.2.10:443"));
+    o.record(&record(Transport::Tcp, 2, "10.0.0.2:2", "192.0.2.10:443"));
     clock.advance(OWNER_TTL - Duration::from_secs(1));
     // Flow 1 stays in use.
     assert!(o
         .lookup(Transport::Tcp, addr("10.0.0.2:1"), addr("192.0.2.10:443"))
         .is_some());
     clock.advance(Duration::from_secs(2));
-    o.record(&record(
-        RecordKind::TcpConnect,
-        3,
-        "10.0.0.2:3",
-        "192.0.2.10:443",
-    ));
+    o.record(&record(Transport::Tcp, 3, "10.0.0.2:3", "192.0.2.10:443"));
     assert_eq!(o.len(), 2, "flow 2 expired, 1 and 3 remain");
     assert!(o
         .lookup(Transport::Tcp, addr("10.0.0.2:2"), addr("192.0.2.10:443"))
@@ -172,7 +151,7 @@ fn a_busy_process_has_its_path_read_once_in_a_while() {
     let (mut o, clock, reads) = owners();
     for port in 1..=50 {
         o.record(&record(
-            RecordKind::TcpConnect,
+            Transport::Tcp,
             9,
             &format!("10.0.0.2:{port}"),
             "192.0.2.10:443",
@@ -180,12 +159,7 @@ fn a_busy_process_has_its_path_read_once_in_a_while() {
     }
     assert_eq!(*reads.lock().unwrap(), 1);
     clock.advance(Duration::from_secs(6));
-    o.record(&record(
-        RecordKind::TcpConnect,
-        9,
-        "10.0.0.2:99",
-        "192.0.2.10:443",
-    ));
+    o.record(&record(Transport::Tcp, 9, "10.0.0.2:99", "192.0.2.10:443"));
     assert_eq!(
         *reads.lock().unwrap(),
         2,
@@ -194,9 +168,9 @@ fn a_busy_process_has_its_path_read_once_in_a_while() {
 }
 
 #[test]
-fn the_kernel_path_wins_and_proc_is_not_read() {
+fn a_reported_path_wins_and_exe_path_is_not_read() {
     let (mut o, _, reads) = owners();
-    let mut r = record(RecordKind::TcpConnect, 77, "10.0.0.2:1", "192.0.2.10:443");
+    let mut r = record(Transport::Tcp, 77, "10.0.0.2:1", "192.0.2.10:443");
     r.path = Some("/usr/lib/other-user/app".into());
     o.record(&r);
     let owner = o
@@ -204,4 +178,91 @@ fn the_kernel_path_wins_and_proc_is_not_read() {
         .unwrap();
     assert_eq!(owner.path.as_deref(), Some("/usr/lib/other-user/app"));
     assert_eq!(*reads.lock().unwrap(), 0);
+}
+
+/// The hold of the Linux sensor; the join itself takes any.
+const HOLD: Duration = Duration::from_millis(100);
+
+fn joiner() -> (Joiner, Arc<FakeClock>) {
+    let clock = Arc::new(FakeClock::at_unix(1_800_000_000));
+    let owners = Owners::new(clock.clone(), Box::new(|pid| Some(format!("/bin/p{pid}"))));
+    (Joiner::new(owners, clock.clone(), HOLD), clock)
+}
+
+fn new_flow(src: &str, dst: &str) -> Observation {
+    let mut o = flow(dst).observe();
+    o.event.src = addr(src);
+    o.event.kind = FlowKind::NewFlow;
+    o
+}
+
+fn udp_record(pid: u32, src: &str, dst: &str) -> Connection {
+    Connection {
+        transport: Transport::Udp,
+        src: addr(src),
+        dst: addr(dst),
+        pid,
+        uid: Some(0),
+        name: Some("dig".into()),
+        path: None,
+    }
+}
+
+#[test]
+fn an_observation_waits_for_a_late_record_and_keeps_its_place() {
+    let (mut j, clock) = joiner();
+    let mut early = new_flow("10.0.0.2:53001", "192.0.2.53:53");
+    early.event.proto = scribe_core::Protocol::Udp;
+    let mut later = new_flow("10.0.0.2:53002", "192.0.2.54:53");
+    later.event.proto = scribe_core::Protocol::Udp;
+    assert!(j.push(vec![early, later]).is_empty(), "no owner yet: held");
+    assert_eq!(j.held(), 2);
+
+    // The record of the second flow arrives first: it still waits behind the first.
+    j.record(&udp_record(8, "0.0.0.0:53002", "192.0.2.54:53"));
+    assert!(j.ready().is_empty());
+    j.record(&udp_record(7, "0.0.0.0:53001", "192.0.2.53:53"));
+    let out = j.ready();
+    let pids: Vec<Option<u32>> = out.iter().map(|o| o.event.pid).collect();
+    assert_eq!(pids, [Some(7), Some(8)]);
+    assert_eq!(out[0].event.process_path.as_deref(), Some("/bin/p7"));
+    assert_eq!(j.held(), 0);
+    clock.advance(Duration::from_secs(1));
+    let s = j.stats();
+    assert_eq!((s.attributed, s.missed), (2, 0));
+}
+
+#[test]
+fn without_a_record_an_observation_goes_out_after_the_hold() {
+    let (mut j, clock) = joiner();
+    assert!(j
+        .push(vec![new_flow("10.0.0.2:1", "192.0.2.10:443")])
+        .is_empty());
+    clock.advance(HOLD - Duration::from_millis(1));
+    assert!(j.ready().is_empty());
+    clock.advance(Duration::from_millis(1));
+    let out = j.ready();
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].event.pid, None);
+    let s = j.stats();
+    assert_eq!((s.attributed, s.missed), (0, 1));
+}
+
+#[test]
+fn dns_answers_and_known_processes_pass_at_once_and_flush_empties_the_queue() {
+    let (mut j, _) = joiner();
+    let mut dns = flow("10.0.0.2:53001").observe();
+    dns.event.kind = FlowKind::DnsResponse;
+    let known = flow("192.0.2.10:443")
+        .process(5, "/usr/bin/known")
+        .observe();
+    let out = j.push(vec![dns, known]);
+    assert_eq!(out.len(), 2);
+    assert_eq!(out[0].event.pid, None, "DNS answers get no process");
+
+    assert!(j
+        .push(vec![new_flow("10.0.0.2:2", "192.0.2.10:443")])
+        .is_empty());
+    assert_eq!(j.flush().len(), 1);
+    assert_eq!(j.held(), 0);
 }

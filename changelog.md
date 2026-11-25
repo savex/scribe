@@ -39,8 +39,16 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   with virtme-ng under KVM on the Ubuntu runner, `scripts/ci/kernel-check.sh` in the guest); a kernel without
   BTF is checked with the pcap sensor only and warned about.
 
+- Windows ETW sensor (plan option 8A), step 1: Kernel-Network and DNS-Client events parsed from their
+  bytes (`scribe-sensor-windows` `events`), DNS answers Windows decoded passed on as DNS messages for the
+  cache (`dns`), and flows from the events alone for machines without Npcap (`flows`); tested on every
+  system with synthetic samples in `testdata/events/windows-etw` (FUN-SN03).
+
 ### Changed
 
+- The join of native sensors' connection reports with packet observations moved from `scribe-sensor-linux`
+  to `scribe_process::join` (`Connection`, `Owners`, `Joiner` with the hold per sensor), for the Windows
+  sensor too.
 - Sensor tests `kernels` job: guests boot with their console shown (`vng -v`) and are stopped after 10 minutes;
   in run `45688320680` 6.1 passed, 5.15 and 6.18 hung silently and 5.8 stopped after 30 s.
   Guests now boot on QEMU's standard PC machine instead of microvm (5.15 and 6.18 hung at ACPI set-up

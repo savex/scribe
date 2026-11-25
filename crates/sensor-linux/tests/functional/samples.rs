@@ -5,7 +5,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use scribe_core::{FlowKind, Observation, Protocol};
-use scribe_sensor_linux::{Owners, Record, RecordKind};
+use scribe_process::join::Owners;
+use scribe_sensor_linux::{Record, RecordKind};
 use scribe_sensor_pcap::flows::{replay, TrackerOptions};
 use scribe_test_support::{testdata, FakeClock};
 use serde::Deserialize;
@@ -102,7 +103,7 @@ fn check(name: &str) {
         };
         // Through the bytes the kernel would write.
         let parsed = Record::parse(&record.to_bytes()).unwrap();
-        owners.record(&parsed);
+        owners.record(&parsed.connection());
     }
 
     let bytes = std::fs::read(dir.join(&sample.packets)).unwrap();

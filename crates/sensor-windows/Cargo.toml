@@ -1,6 +1,6 @@
 [package]
 name = "scribe-sensor-windows"
-description = "Windows sensor: ETW kernel-network and DNS-client providers"
+description = "Windows sensor: ETW Kernel-Network and DNS-Client events joined with Npcap packets"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,3 +8,16 @@ publish.workspace = true
 
 [dependencies]
 scribe-core.workspace = true
+scribe-process.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+scribe-enrich.workspace = true
+scribe-sensor-pcap.workspace = true
+scribe-test-support.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[test]]
+name = "functional"
+path = "tests/functional/main.rs"

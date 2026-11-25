@@ -9,17 +9,18 @@
 //!   cut to what enrichment needs, to the pcap sensor's flow tracker (first bytes, DNS, QUIC,
 //!   closes).
 //!
-//! [`Owners`] joins them by address, so every flow gets its process from the kernel, even one
-//! that ends at once; [`Joiner`] holds packet observations up to [`HOLD`] for a record that is
-//! late (UDP records are written after the datagram leaves). [`record`], [`owners`] and [`join`]
-//! build on every system (their tests run everywhere); the loader is Linux only.
+//! `scribe_process::join` joins them by address, so every flow gets its process from the kernel,
+//! even one that ends at once; observations wait up to [`HOLD`] for a record that is late (UDP
+//! records are written after the datagram leaves). [`record`] builds on every system (its tests
+//! run everywhere); the loader is Linux only.
 
-pub mod join;
-pub mod owners;
+use std::time::Duration;
+
 pub mod record;
 
-pub use join::{Joiner, HOLD};
-pub use owners::{ExePath, Owner, Owners, MAX_OWNERS, OWNER_TTL};
+/// Longest wait for a connection record.
+pub const HOLD: Duration = Duration::from_millis(100);
+
 pub use record::{Record, RecordError, RecordKind, PATH_MAX, RECORD_SIZE, RECORD_VERSION};
 
 #[cfg(target_os = "linux")]

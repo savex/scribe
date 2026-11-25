@@ -14,8 +14,12 @@
 //! A connection that ends before the lookup, or a UDP socket closed right after one datagram, is
 //! not found: the flow keeps no process, as before. [`Attributed`] wraps a sensor and fills in
 //! the process of its observations.
+//!
+//! Native sensors (eBPF on Linux, ETW on Windows) report each connection with its process
+//! themselves; [`join`] matches those reports with the observations built from packets.
 
 mod attributed;
+pub mod join;
 mod os;
 mod table;
 

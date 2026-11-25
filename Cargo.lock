@@ -2442,6 +2442,13 @@ name = "scribe-sensor-windows"
 version = "0.3.0-alpha.2"
 dependencies = [
  "scribe-core",
+ "scribe-enrich",
+ "scribe-process",
+ "scribe-sensor-pcap",
+ "scribe-test-support",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

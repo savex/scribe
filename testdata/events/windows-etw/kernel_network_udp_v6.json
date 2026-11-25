@@ -1,0 +1,18 @@
+{
+  "source": "windows-etw",
+  "status": "synthetic",
+  "description": "Kernel-Network events 58 (UDPv6 datagram sent) for one socket: one flow, again after 30 s of quiet; then an event 28 (TCPv6 connection attempted) from a dual-stack socket with IPv4-mapped addresses, reported as IPv4. No Npcap.",
+  "events": [
+    {"event": "udp_send", "pid": 900, "exe": "C:\\Windows\\System32\\svchost.exe", "src": "[fd00::2]:53002", "dst": "[2001:db8::53]:53", "at_ms": 0},
+    {"event": "udp_send", "pid": 900, "src": "[fd00::2]:53002", "dst": "[2001:db8::53]:53", "at_ms": 1000},
+    {"event": "udp_send", "pid": 900, "src": "[fd00::2]:53002", "dst": "[2001:db8::53]:53", "at_ms": 32000},
+    {"event": "tcp_connect", "pid": 4400, "exe": "C:\\Program Files\\Example\\browser.exe", "src": "[::ffff:10.0.0.2]:50010", "dst": "[::ffff:192.0.2.60]:443", "at_ms": 32000}
+  ],
+  "packets": null,
+  "observations": [
+    {"pid": 900, "process_path": "C:\\Windows\\System32\\svchost.exe", "proto": "udp", "dst": "[2001:db8::53]:53", "kind": "new_flow", "head": false},
+    {"pid": 900, "process_path": "C:\\Windows\\System32\\svchost.exe", "proto": "udp", "dst": "[2001:db8::53]:53", "kind": "new_flow", "head": false},
+    {"pid": 4400, "process_path": "C:\\Program Files\\Example\\browser.exe", "proto": "tcp", "dst": "192.0.2.60:443", "kind": "new_flow", "head": false}
+  ],
+  "enriched": []
+}

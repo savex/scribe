@@ -4,6 +4,7 @@
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
+use scribe_process::join::Connection;
 use scribe_process::{normalise, Transport};
 
 /// `sizeof(struct scribe_flow)`.
@@ -113,6 +114,19 @@ fn put_ip(b: &mut [u8], at: usize, ip: IpAddr) {
 }
 
 impl Record {
+    /// The connection report for `scribe_process::join` (the process id, not the thread's).
+    pub fn connection(&self) -> Connection {
+        Connection {
+            transport: self.kind.transport(),
+            src: self.src,
+            dst: self.dst,
+            pid: self.tgid,
+            uid: Some(self.uid),
+            name: Some(self.comm.clone()),
+            path: self.path.clone(),
+        }
+    }
+
     /// Reads one ring-buffer record. IPv4-mapped IPv6 addresses come back as IPv4, so a flow
     /// from a dual-stack socket matches the packets of it.
     pub fn parse(b: &[u8]) -> Result<Self, RecordError> {

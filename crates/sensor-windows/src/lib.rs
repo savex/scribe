@@ -1,29 +1,25 @@
-//! Windows sensor based on ETW (planned: `windows` crate).
+//! Windows sensor based on ETW (plan option 8A).
 //!
-//! Providers: Microsoft-Windows-Kernel-Network (flows + pid) and
-//! Microsoft-Windows-DNS-Client (hostnames). A WFP callout or WinDivert may follow for blocking.
-#![cfg(windows)]
+//! Two parts meet in user space, as in the Linux eBPF sensor:
+//! - **who**: a real-time ETW session on `Microsoft-Windows-Kernel-Network` reports every TCP
+//!   connection attempt and UDP datagram with the process that made it ([`events::NetEvent`]),
+//!   and `Microsoft-Windows-DNS-Client` every completed query with the addresses Windows resolved
+//!   ([`events::DnsQuery`], passed on as a DNS response by [`dns`]);
+//! - **what**: packets from Npcap through the pcap sensor's flow tracker (first bytes for SNI and
+//!   URLs, DNS, QUIC, closes). Without Npcap, [`flows::EtwFlows`] makes the flows from the
+//!   Kernel-Network events alone.
+//!
+//! `scribe_process::join` matches the two by address. [`events`], [`dns`] and [`flows`] build on
+//! every system (their tests run everywhere); the ETW session is Windows only.
 
-use std::sync::mpsc::Sender;
+pub mod dns;
+pub mod events;
+pub mod flows;
 
-use scribe_core::{Observation, Sensor, SensorError};
+pub use events::{DnsQuery, EventError, NetEvent, NetKind};
+pub use flows::EtwFlows;
 
-#[derive(Default)]
-pub struct EtwSensor;
-
-impl Sensor for EtwSensor {
-    fn name(&self) -> &'static str {
-        "windows-etw"
-    }
-
-    fn has_process_info(&self) -> bool {
-        true
-    }
-
-    fn start(&mut self, _out: Sender<Observation>) -> Result<(), SensorError> {
-        // TODO: open a real-time ETW session and translate events.
-        Err(SensorError::Unsupported("ETW sensor not implemented yet"))
-    }
-
-    fn stop(&mut self) {}
-}
+#[cfg(windows)]
+mod sensor;
+#[cfg(windows)]
+pub use sensor::EtwSensor;

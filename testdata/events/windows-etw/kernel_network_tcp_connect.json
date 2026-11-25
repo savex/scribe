@@ -1,14 +1,15 @@
 {
   "source": "windows-etw",
-  "status": "draft",
-  "description": "Microsoft-Windows-Kernel-Network event 12 (TCPv4 connection attempted).",
-  "records": [
-    {"provider": "Microsoft-Windows-Kernel-Network", "provider_guid": "{7DD42A49-5329-4832-8DFD-43D979153A88}", "event_id": 12, "timestamp": "2023-11-14T22:13:20.000Z", "process_id": 6120, "properties": {"PID": 6120, "size": 0, "daddr": "192.0.2.10", "saddr": "10.0.0.2", "dport": 443, "sport": 50001, "connid": 0, "seqnum": 0}}
+  "status": "synthetic",
+  "description": "Kernel-Network event 12 (TCPv4 connection attempted) joined with the connection's packets from Npcap: the flow has its process and its first bytes (SNI).",
+  "events": [
+    {"event": "tcp_connect", "pid": 6120, "exe": "C:\\Program Files\\Example\\app.exe", "src": "10.0.0.2:50001", "dst": "192.0.2.10:443"}
   ],
+  "packets": "../../pcap/tls13_sni_ipv4.pcap",
   "observations": [
-    {"pid": 6120, "process_path": "C:\\Program Files\\Example\\app.exe", "proto": "tcp", "dst_ip": "192.0.2.10", "dst_port": 443, "kind": "new_flow", "head": null}
+    {"pid": 6120, "process_path": "C:\\Program Files\\Example\\app.exe", "proto": "tcp", "dst": "192.0.2.10:443", "kind": "new_flow", "head": true}
   ],
   "enriched": [
-    {"dst_ip": "192.0.2.10", "dst_port": 443, "hostname": null, "security": "unknown"}
+    {"dst_ip": "192.0.2.10", "dst_port": 443, "hostname": "api.example.com", "security": "tls"}
   ]
 }

@@ -6,9 +6,10 @@ need no privileges.
 
 **Status:** `linux-ebpf` is **synthetic** in the final layout (phase 7): kernel records
 (`struct scribe_flow` v2, `crates/sensor-linux/src/bpf/scribe.h`) plus a pcap fixture with the
-packets the socket filter passes; test FUN-SN02 joins them. `windows-etw` and `macos-ne` are
-**draft**: their layouts follow the planned designs (ETW provider fields, XPC message). Replace
-them with records captured in lab VMs once each sensor exists.
+packets the socket filter passes; test FUN-SN02 joins them. `windows-etw` is **synthetic** too
+(phase 8): Kernel-Network and DNS-Client events, with a pcap fixture for what Npcap would capture or
+without one (ETW alone); test FUN-SN03. `macos-ne` is **draft**: its layout follows the planned
+design (XPC message). Replace samples with records captured in lab VMs where they differ.
 
 File layout:
 
@@ -32,4 +33,9 @@ File layout:
 - `linux-ebpf` files have `records` (`kind` `tcp_connect` / `udp_send`, `tgid`, `pid`, `uid`, `comm`,
   `exe` (the path the kernel reads), `cgroup_id`, `src`, `dst`), `packets` (a pcap fixture) and `observations` (all but closes,
   which must carry the process too; `head` true / false for whether client bytes came along).
+- `windows-etw` files have `events` (`event` `tcp_connect` / `udp_send` with `pid`, `exe` (what the path
+  lookup returns), `src`, `dst`; `dns_query` with `pid`, `name`, `qtype`, `status`, `results` as
+  Windows formats them; optional `at_ms` since the first event), `packets` (a pcap fixture, or `null`
+  without Npcap: flows from the events alone) and `observations`; `enriched` is checked through the
+  DNS cache and enrichment.
 - `http_keepalive.json` covers the second request on a kept-alive connection (a `payload` observation).

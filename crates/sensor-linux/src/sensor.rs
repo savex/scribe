@@ -17,9 +17,8 @@ use scribe_core::{AttributionStats, Clock, Observation, Sensor, SensorError, Sys
 use scribe_sensor_pcap::decode::{self, LINKTYPE_RAW};
 use scribe_sensor_pcap::flows::{FlowTracker, TrackerOptions};
 
-use crate::join::Joiner;
-use crate::owners::Owners;
 use crate::record::Record;
+use scribe_process::join::{Joiner, Owners};
 
 #[allow(clippy::all, clippy::pedantic, unsafe_op_in_unsafe_fn)]
 mod skel {
@@ -291,7 +290,7 @@ impl Loop {
             ..TrackerOptions::default()
         });
         let owners = Owners::new(self.clock.clone(), Box::new(exe_path));
-        let mut joiner = Joiner::new(owners, self.clock.clone());
+        let mut joiner = Joiner::new(owners, self.clock.clone(), crate::HOLD);
         let mut buf = vec![0u8; 65_536];
         let mut last_tick = self.clock.now();
         let mut lost_seen = 0u64;
@@ -316,7 +315,7 @@ impl Loop {
             // Records first: they name the owners of the packets read next.
             let _ = ring.consume();
             for r in records.borrow_mut().drain(..) {
-                joiner.record(&r);
+                joiner.record(&r.connection());
             }
             for _ in 0..PACKETS_PER_TURN {
                 // SAFETY: `buf` is writable for its length; the address arguments may be null.
