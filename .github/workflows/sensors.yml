@@ -78,6 +78,10 @@ jobs:
       fail-fast: false
       matrix:
         kernel: [v5.8, v5.15, v6.1, v6.18]
+        include:
+          # 5.8 finds no virtiofs root (virtme-ng's default); it boots with the host root over 9p.
+          - kernel: v5.8
+            vng: --force-9p
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
@@ -110,8 +114,10 @@ jobs:
       - name: Sensor tests on ${{ matrix.kernel }}
         run: |
           # -v shows the guest's boot console; a guest that hangs is stopped after 10 minutes.
+          # A standard PC machine: on QEMU's default microvm, 5.15 and 6.18 hung at ACPI set-up.
           timeout --kill-after 30s 10m \
-            vng -v -r "${{ matrix.kernel }}" --user root --network user --cpus 2 -m 2G -- \
+            vng -v -r "${{ matrix.kernel }}" --disable-microvm ${{ matrix.vng }} \
+              --user root --network user --cpus 2 -m 2G -- \
             "$GITHUB_WORKSPACE/scripts/ci/kernel-check.sh" \
             "${{ steps.build.outputs.conformance }}" "${{ steps.build.outputs.daemon }}"
 
