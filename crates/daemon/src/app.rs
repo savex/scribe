@@ -526,8 +526,9 @@ fn events_queued(storage: &Storage) -> u64 {
 }
 
 /// Running without process info on a system that has a native sensor.
+/// Linux and Windows run the pcap sensor only when their native sensor can't start.
 fn is_fallback(sensor: &dyn Sensor) -> bool {
-    cfg!(any(target_os = "linux", windows)) && !sensor.has_process_info()
+    cfg!(any(target_os = "linux", windows)) && sensor.name().starts_with("pcap")
 }
 
 /// [`serve`] with every part chosen by the caller.
@@ -1077,19 +1078,40 @@ async fn shutdown_signal() {
 /// start (specs 8.4). macOS uses pcap until the Network Extension arrives (phase 9).
 fn platform_sensor(settings: &Settings) -> Box<dyn Sensor> {
     let iface = settings.config.sensor.interface.trim();
-    let pcap = scribe_sensor_pcap::PcapSensor::new((!iface.is_empty()).then(|| iface.to_owned()));
+    let pcap: Box<dyn Sensor> = Box::new(scribe_sensor_pcap::PcapSensor::new(
+        (!iface.is_empty()).then(|| iface.to_owned()),
+    ));
+    let pcap = with_process_lookup(settings, pcap);
     #[cfg(target_os = "linux")]
     return Box::new(FallbackSensor::new(
         Box::new(scribe_sensor_linux::EbpfSensor),
-        Box::new(pcap),
+        pcap,
     ));
     #[cfg(windows)]
     return Box::new(FallbackSensor::new(
         Box::new(scribe_sensor_windows::EtwSensor),
-        Box::new(pcap),
+        pcap,
     ));
     #[cfg(not(any(target_os = "linux", windows)))]
-    return Box::new(pcap);
+    return pcap;
+}
+
+/// The pcap sensor with process attribution from the OS socket table (`[sensor] process_lookup`,
+/// plan option P), where this system has a reader.
+pub fn with_process_lookup(settings: &Settings, sensor: Box<dyn Sensor>) -> Box<dyn Sensor> {
+    if !settings.config.sensor.process_lookup {
+        return sensor;
+    }
+    match scribe_process::os_table() {
+        Some(table) => {
+            let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+            Box::new(scribe_process::Attributed::new(
+                sensor,
+                scribe_process::Resolver::new(table, clock),
+            ))
+        }
+        None => sensor,
+    }
 }
 
 /// A native sensor with a fallback: `start` tries the native one and, if it can't run, the

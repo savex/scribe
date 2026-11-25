@@ -58,12 +58,23 @@ impl Default for Config {
 // ─── Sensor ─────────────────────────────────────────────────────────────────
 
 /// `[sensor]`: capture settings.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct SensorConfig {
     /// pcap capture device; `""` = automatic (Linux `any`, else the first device that is up with
     /// an address). Ignored by the native sensors.
     pub interface: String,
+    /// The pcap sensor looks up each new flow's process in the OS socket table.
+    pub process_lookup: bool,
+}
+
+impl Default for SensorConfig {
+    fn default() -> Self {
+        Self {
+            interface: String::new(),
+            process_lookup: true,
+        }
+    }
 }
 
 // ─── Local API ──────────────────────────────────────────────────────────────

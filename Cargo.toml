@@ -30,6 +30,7 @@ scribe-policy = { path = "crates/policy" }
 scribe-api = { path = "crates/api" }
 scribe-alerts = { path = "crates/alerts" }
 scribe-net = { path = "crates/net" }
+scribe-process = { path = "crates/process" }
 
 # Third-party. Keep versions compatible with `rust-version` (policy: follow dependencies).
 tokio = { version = "1.54", default-features = false }

@@ -164,6 +164,7 @@ earlier edit (`111411c`); they are restored.
 | `secrets` | 3, 11 | **~95%** | `file:` references with owner / mode checks and key generation; macOS keychain, Windows DPAPI, Linux Secret Service; `store` and `scribed --set-secret` | Windows ACL checks (phase 13); keychain and Secret Service round trips not run in CI | **80%** (218/272) |
 | `policy` | 4, 10 | **100%** | Signals, threat lists, `Policy::decide`; reload setters, learn countdown pause; alert state restored at start | — | **98%** (485/494) |
 | `daemon` (`scribed`) | 0, 0b, 5, 6, 10, 11 | **~95%** | Pipeline, run states, reload, audit chain, services; platform sensor with the pcap fallback; the local API (read and control calls, access checks and audit, `grpc.health.v1`, module services), alert state restored at start, hourly buckets pruned; alert outputs and webhooks from `[alerts]`, threat-list downloads, `--set-secret` | Native sensors (phases 7–9) | **90%** (3747/4150) |
+| Process attribution (`crates/process`) | P | **100%** | Socket tables on Linux, macOS, Windows; `Resolver`; `Attributed` wrapper on the pcap sensor; `[sensor] process_lookup` | Connections shorter than a lookup keep no process (native sensors, phases 7–9) | measured after the next coverage run |
 | `sensor-pcap` | 6 | **100%** | Decoder, flow tracker, pcap replay, live capture (libpcap / Npcap at run time), device choice; conformance passes live on Linux | — | **82%** (676/827; live capture runs as root, measured in the container suite, not here) |
 | `sensor-linux` (eBPF) | 7 | **~2%** | Stub, Linux only | eBPF programs, loader, process lookup | n/a (not built on macOS) |
 | `sensor-windows` (ETW) | 8 | **~2%** | Stub, Windows only | ETW session, DNS-client events, Npcap | n/a (not built on macOS) |
@@ -199,9 +200,9 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 - **Next steps:**
   0. Tag a release for M1; Tests passed on all three systems after phase 11 (run `45452687480`).
   1. Apply for Apple's Network Extension entitlement (plan risk 1).
-  2. Pick an approach for each stubbed phase: [plan.md, *Options for the stubbed phases*](plan.md#options-for-the-stubbed-phases).
-     Recommended first: process attribution from the OS socket tables on all three systems (option P, 6–8 days),
-     then the native sensors (phases 7–9), the Postgres event sink (12C) and supply-chain checks (14).
+  2. Option P (process attribution from the OS socket tables) is implemented; confirm it on Windows with a Tests run. Next from
+     [plan.md, *Options for the stubbed phases*](plan.md#options-for-the-stubbed-phases): the Postgres event sink (12C), supply-chain
+     checks (14), then the native sensors (phases 7–9).
 - **Not verified here:** Windows toasts (DPAPI and the `scribe notify` agent over the named pipe passed in run `45452687480`); real desktop notifications on any system (the agent is tested with a fake notifier); keychain and Secret Service round trips (gated: `SCRIBE_TEST_KEYCHAIN=1`, a desktop keyring); the Linux and Windows code paths beyond the Tests workflow, the workflows other than Tests and Release,
   the Postgres backend beyond loading its migrations (run `45226370809` loads 0001–0004 and the seeds), the Windows named pipe outside the Windows runner (its tests passed there in run `45226370809`) and the fuzz targets (no nightly).
   Local Linux / Windows compile checks leave out crates with C code (bundled SQLite, `ring`: the daemon, `enrich`,

@@ -115,6 +115,10 @@ query = "redact_values"
 # the Network Extension arrives). "" = automatic: Linux `any`, else the first device that is up with
 # an address. Examples: "en0", "eth0", "\\Device\\NPF_{GUID}" (Npcap).
 interface = ""
+# The pcap sensor sees no processes; with this on, scribed looks up each new flow's process in the
+# system's socket table (Linux /proc, macOS libproc, Windows IP Helper). Connections that end
+# before the lookup keep no process. Needs restart.
+process_lookup = true
 
 
 # ─── Daemon ──────────────────────────────────────────────────────────────────

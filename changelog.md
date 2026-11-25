@@ -11,6 +11,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- Process attribution from the OS socket table (plan option P): new `scribe-process` crate (Linux `/proc`,
+  macOS `libproc`, Windows IP Helper) and an `Attributed` sensor wrapper; the pcap sensor now reports
+  each new flow's process as `pcap+sockets`; `[sensor] process_lookup = true`.
 - Phase 11 step 1: `scribe-alerts` crate with the alert `Dispatcher` (a thread, a bounded queue and a
   per-minute rate limit per output, with one summary of held-back alerts per minute) and `LogOutput`;
   new `[alerts]` config section (`log`, `max_per_minute`), applied live on reload.

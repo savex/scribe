@@ -69,6 +69,11 @@ plan's estimates are for the option marked **plan**. Nothing here is decided unt
 
 ### P. Cross-cutting first step: process attribution from socket tables (new option)
 
+**Status: implemented 2026-11-24** (`crates/process`, `[sensor] process_lookup = true`): tests find
+the test process's own sockets through the real table on macOS and in the Linux container; Windows
+is compiled and runs in the next Tests run. Took about a day, well under the 6–8 days estimated,
+because one shared `Resolver` and sensor wrapper serve all three tables.
+
 Every native sensor exists mainly for **process attribution**, which the pcap fallback lacks (UC-6).
 A cheaper route gives most of it on all three systems now, without kernel programs, drivers or
 Apple's entitlement: keep the pcap sensor for packets and names, and look up the owning process of
@@ -156,7 +161,7 @@ needs no installers or code signing of its own and reuses the CLI client, so it 
 
 ### Suggested order
 
-1. **P** (6–8 days): process attribution on all three systems.
+1. ~~**P**~~ done 2026-11-24: process attribution on all three systems.
 2. **Tag the M1 release**, and send the Network Extension entitlement request (no code).
 3. **12C** sink (3 days) and the cheap part of 14 (supply chain, scheduled fuzzing; 1 day).
 4. **7A** and **8A** (in parallel if two people), then **9A** when Apple approves.

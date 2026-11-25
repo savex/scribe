@@ -207,3 +207,18 @@ fn set_secret_stores_piped_or_generated_keys() {
         Args::try_parse_from(["scribed", "--set-secret", &reference, "--check-config"]).is_err()
     );
 }
+
+#[test]
+fn the_pcap_sensor_gets_process_lookup_unless_turned_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let blind = || -> Box<dyn scribe_core::Sensor> {
+        Box::new(scribe_test_support::FakeSensor::from_observations(vec![]).without_process_info())
+    };
+    let on = with_process_lookup(&settings_in(dir.path()), blind());
+    assert!(on.has_process_info(), "wrapped with the socket table");
+    let off = with_process_lookup(
+        &settings_with(dir.path(), "[sensor]\nprocess_lookup = false\n"),
+        blind(),
+    );
+    assert!(!off.has_process_info());
+}

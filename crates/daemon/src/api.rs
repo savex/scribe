@@ -221,7 +221,14 @@ pub fn critical(snap: &Snapshot, view: &StorageView, layout: &Layout) -> Vec<pb:
     if snap.sensor.fallback {
         add(
             "fallback_sensor",
-            format!("{} sensor in use: no process info", snap.sensor.name),
+            if snap.sensor.process_info {
+                format!(
+                    "{} sensor in use: process info from the socket table (very short connections may have none)",
+                    snap.sensor.name
+                )
+            } else {
+                format!("{} sensor in use: no process info", snap.sensor.name)
+            },
         );
     }
     for m in &snap.status.modules {

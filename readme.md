@@ -193,10 +193,10 @@ Every setting is explained in [config/scribe.toml](config/scribe.toml).
 | Policy engine and alert rules | Done |
 | The daemon pipeline: counters, alerts, hibernation, config reload, audit trail | Done |
 | Running as a service (systemd, launchd, Windows) | Done |
-| Live capture with the pcap sensor (every system; no process info) | Done |
+| Live capture with the pcap sensor (every system), with the process of each connection from the system's socket table | Done |
 | Command-line queries and the local API (Unix socket, Windows named pipe) | Done |
 | Alert outputs (notifications, log, webhook), threat-list downloads, OS key stores | Done |
-| Native sensors for Linux, Windows and macOS (process attribution) | Planned |
+| Native sensors for Linux, Windows and macOS (every connection, even the shortest, with its process) | Planned |
 | PostgreSQL, installers | Planned |
 
 Details: [workfiles/status.md](workfiles/status.md) and [workfiles/plan.md](workfiles/plan.md).

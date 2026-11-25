@@ -106,7 +106,7 @@ In `caution` and `alert` modes, any plaintext flow raises an alert (`plaintext`)
 The user runs `scribe hosts` (or opens the UI) and sees every host with first / last seen, connection, request and byte counters, TLS / plaintext flags, the processes involved and whether the host is on the baseline. Unresolved hosts appear by IP. Scenario: `counters-exact`, `hostname-unresolved`.
 
 ### UC-6 Find which process talks to a host
-Hosts and alerts carry the process path and pid when the sensor can see them (native sensors). With the pcap fallback, process fields are empty and the UI says so.
+Hosts and alerts carry the process path and pid when the sensor can see them (native sensors). The pcap sensor looks each new flow up in the OS socket table (`[sensor] process_lookup`, on by default; `crates/process`): most flows get their process, connections that end before the lookup keep none, and the UI says so.
 
 ### UC-7 Handle an alert
 1. The user gets an OS notification (and a log entry, optionally a webhook call).
@@ -303,7 +303,8 @@ outputs; the CLI and UI read and control everything through the local API.
 | Kernel metrics module | `crates/module-kperf` (`scribe-module-kperf`, feature `kperf`) | Example of a later module: TCP retransmits, RTT, run-queue delay from kernel probes | module-api, sensors' `ProbeHost` | Idea (not planned) |
 | Linux sensor | `crates/sensor-linux` | eBPF probes with `aya`, process lookup | core | Stub |
 | Windows sensor | `crates/sensor-windows` | ETW kernel-network and DNS-client events, Npcap for payloads | core | Stub |
-| pcap sensor | `crates/sensor-pcap` | Capture on every OS (macOS today, the fallback on Linux and Windows), no process info; libpcap / Npcap loaded at run time | core | Implemented (phase 6) |
+| pcap sensor | `crates/sensor-pcap` | Capture on every OS (macOS today, the fallback on Linux and Windows), no process info of its own; libpcap / Npcap loaded at run time | core | Implemented (phase 6) |
+| Process attribution | `crates/process` (`scribe-process`) | Owner of each new flow from the OS socket table (Linux `/proc`, macOS `libproc`, Windows IP Helper); `Attributed` wraps the pcap sensor (name `pcap+sockets`) | core | Implemented (plan option P) |
 | macOS extension | `macos/ScribeExtension` | Network Extension + XPC bridge | — | Planned |
 | Storage API | `crates/storage-api` | `StateStore`, `EventSink`, `StorageFactory`, data model, errors | core | Implemented (interfaces) |
 | Storage manager | `crates/storage-manager` | Backend registry, routing to sinks; later host cache, batching, spool, retention | storage-api, backends | Implemented (registry, writer tasks, spool, outage buffer, host cache, health)
@@ -617,6 +618,8 @@ Loaded and checked by `crates/daemon/src/config/` (phase 0).
 | `[[storage.sinks]] events` | list of `flow`, `alert`, `audit`, `metric` and record kinds of enabled modules (e.g. `url.request`); `[]` = all | `[]` | Decided |
 | `[[storage.sinks]] retention` | duration, `""` = forever | `30d` | Draft default |
 | `[[storage.sinks]] batch_max_events`, `batch_max_wait` | integer, duration | `500`, `1s` | Draft default |
+| `[sensor] interface` | pcap capture device, `""` = automatic | `""` | Implemented (phase 6) |
+| `[sensor] process_lookup` | boolean: the pcap sensor looks up each new flow's process in the OS socket table; needs restart | `true` | Implemented (option P) |
 | `[log] level` | `error` … `trace` | `info` | Draft default |
 | `[log] format` | `text` \| `json` | `text` | Draft default |
 | `[log] output` | `file` \| `system` \| `both` | `file` | Decided |

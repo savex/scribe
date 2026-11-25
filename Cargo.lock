@@ -1949,6 +1949,7 @@ dependencies = [
  "scribe-module-url",
  "scribe-net",
  "scribe-policy",
+ "scribe-process",
  "scribe-secrets",
  "scribe-sensor-linux",
  "scribe-sensor-pcap",
@@ -2052,6 +2053,17 @@ dependencies = [
  "scribe-core",
  "scribe-test-support",
  "serde_json",
+]
+
+[[package]]
+name = "scribe-process"
+version = "0.2.0"
+dependencies = [
+ "libc",
+ "scribe-core",
+ "scribe-test-support",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

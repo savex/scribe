@@ -38,6 +38,7 @@ tokio-stream.workspace = true
 serde_json.workspace = true
 scribe-module-url = { workspace = true, optional = true }
 scribe-sensor-pcap.workspace = true
+scribe-process.workspace = true
 serde.workspace = true
 toml.workspace = true
 thiserror.workspace = true
