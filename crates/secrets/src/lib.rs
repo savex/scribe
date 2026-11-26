@@ -319,13 +319,21 @@ fn check_private(path: &Path, meta: &fs::Metadata) -> Result<(), SecretError> {
     }
     // SAFETY: geteuid has no preconditions.
     let me = unsafe { libc::geteuid() };
-    if meta.uid() != me && meta.uid() != 0 {
-        return Err(insecure(format!(
-            "owned by uid {}, not by this account or root",
-            meta.uid()
-        )));
+    if meta.uid() == me || meta.uid() == 0 {
+        return Ok(());
     }
-    Ok(())
+    // The owner of the folder holding the file can replace it anyway, so trusting them costs
+    // nothing: scribed starting as root reads keys in a data_dir that belongs to `[daemon] user`.
+    let folder = fs::canonicalize(path)
+        .ok()
+        .and_then(|p| p.parent().and_then(|d| fs::metadata(d).ok()));
+    if folder.is_some_and(|d| d.uid() == meta.uid()) {
+        return Ok(());
+    }
+    Err(insecure(format!(
+        "owned by uid {}, not by this account, root or the owner of its folder",
+        meta.uid()
+    )))
 }
 
 /// Windows: ACL checks arrive with the installer (phase 13), which sets them on `data_dir`.

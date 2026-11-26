@@ -122,6 +122,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ### Fixed
 - The Unix API socket is `0660` with the `scribe` group: members of the group could not connect before
   (the umask left it without group write).
+- scribed restarted as root (Linux, `[daemon] user`) no longer refuses `audit.key` and other `file:` secrets
+  in a `data_dir` that belongs to that user: a secret owned by its folder's owner is accepted.
 
 ## [0.3.0-alpha.2] - 2026-11-25
 
