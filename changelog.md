@@ -66,7 +66,6 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ### Changed
 - Docs: the manual install scripts recorded as green on Linux, macOS and Windows (Sensor tests run 45751039049).
-
 - The join of native sensors' connection reports with packet observations moved from `scribe-sensor-linux`
   to `scribe_process::join` (`Connection`, `Owners`, `Joiner` with the hold per sensor), for the Windows
   sensor too.
