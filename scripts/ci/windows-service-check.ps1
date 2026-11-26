@@ -1,6 +1,7 @@
 # Sensors workflow, Windows (Administrator): scribed installed as a service running as
 # NT SERVICE\scribed (packaging/windows/install-service.ps1) captures with the ETW session and
-# names the process of a connection made by another account, with no rights over that process.
+# names the process of a connection made by another account, with no rights over that process; a
+# standard user in the `scribe` group can read its status.
 #
 #   windows-service-check.ps1 <folder with scribed.exe and scribe.exe>
 param([Parameter(Mandatory)] [string]$Bin)
@@ -25,8 +26,24 @@ file = '$slash/logs/scribed.log'
 "@
 $scribe = Join-Path $dir 'scribe.exe'
 $env:SCRIBE_CONFIG = $null
+# A standard user in the read group, which must exist before scribed creates its pipe. Its password
+# is random and lives only in this run.
+$ciUser = 'scribe-ci'
+$bytes = New-Object byte[] 24
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+$plain = [Convert]::ToBase64String($bytes) + 'aA1!'
+$password = ConvertTo-SecureString $plain -AsPlainText -Force
+# Local accounts through ADSI (the LocalAccounts cmdlets need Windows PowerShell compatibility in pwsh).
+$computer = [ADSI]"WinNT://$env:COMPUTERNAME,computer"
 
 try {
+    $user = $computer.Create('User', $ciUser)
+    $user.SetPassword($plain)
+    $user.SetInfo()
+    $group = $computer.Create('Group', 'scribe')
+    $group.SetInfo()
+    $group.Add("WinNT://$env:COMPUTERNAME/$ciUser,user")
+
     & (Join-Path $dir 'install-service.ps1')
     (Get-Service -Name 'scribed').WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
 
@@ -46,6 +63,17 @@ try {
     }
     Write-Host $status
     if ($status -notmatch 'windows-etw') { Fail 'scribed does not capture with the ETW sensor as NT SERVICE\scribed' }
+
+    # A standard user can't open scribed's process: the client checks the pipe's owner instead.
+    $out = Join-Path $env:RUNNER_TEMP 'scribe-ci-status.txt'
+    $errOut = Join-Path $env:RUNNER_TEMP 'scribe-ci-status.err'
+    $credential = New-Object Management.Automation.PSCredential ".\$ciUser", $password
+    $p = Start-Process -FilePath $scribe -ArgumentList 'status' -Credential $credential -WorkingDirectory $dir `
+        -RedirectStandardOutput $out -RedirectStandardError $errOut -Wait -PassThru -WindowStyle Hidden
+    $asUser = (Get-Content $out -Raw -ErrorAction SilentlyContinue) + (Get-Content $errOut -Raw -ErrorAction SilentlyContinue)
+    Write-Host "scribe status as $ciUser (exit $($p.ExitCode)):"
+    Write-Host $asUser
+    if ($p.ExitCode -ne 0 -or $asUser -notmatch 'windows-etw') { Fail "a standard user in the scribe group cannot read scribed's status" }
 
     # A connection by this (another) account to example.com (Kernel-Network reports connections that
     # are made, not attempts that fail). Its path must come from Kernel-Process: scribed can't open
@@ -84,4 +112,6 @@ try {
         Get-Content $f.FullName -Tail 60
     }
     & (Join-Path $dir 'install-service.ps1') -Remove
+    try { $computer.Delete('User', $ciUser) } catch { }
+    try { $computer.Delete('Group', 'scribe') } catch { }
 }

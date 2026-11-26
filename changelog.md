@@ -75,6 +75,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   the session, but `EnableTraceEx2` was denied); `-Remove` takes those entries out again. scribed reads a
   pipe client's identity through the pipe when it can't open the client's process (every `scribe` call failed
   with "transport error").
+- Windows: the API pipe's owner is scribed's own account, and `scribe` checks that owner when it may not open
+  scribed's process, so standard users in the `scribe` group can use the CLI with scribed running as
+  `NT SERVICE\scribed`. The Windows service check runs `scribe status` as such a user.
 - Plan and status record Sensor tests run `45730673139` as green: scribed installed as `NT SERVICE\scribed` captures
   with ETW and names the process of another account's connection (8A step 3).
 - Kernel-Process `ImageName` is found as the first NT path in the event (Windows 10 and later put sequence

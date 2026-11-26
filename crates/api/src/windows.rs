@@ -6,7 +6,9 @@
 //! instances, so nobody else can squat the name. [`serve`] accepts connections and attaches the
 //! client's identity from its process token. Client: [`connect`] refuses a pipe server that doesn't
 //! run as SYSTEM or as scribed's service account [`SERVICE_ACCOUNT`] (or, with `RootOrSelf`, as the
-//! calling user). Only the service control manager gives a process the service account's SID.
+//! calling user), from the server's process token or, for a client that may not open that process,
+//! from the pipe's owner, which the server sets to itself. Only the service control manager gives a
+//! process the service account's SID, and only an account in a process's token can be its owner.
 
 // Some helpers serve only the server or only the client side.
 #![cfg_attr(
@@ -21,11 +23,12 @@ use std::ptr::{null, null_mut};
 
 use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, HANDLE};
 use windows_sys::Win32::Security::Authorization::{
-    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+    ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo,
+    SE_KERNEL_OBJECT,
 };
 use windows_sys::Win32::Security::{
     GetTokenInformation, LookupAccountNameW, LookupAccountSidW, TokenGroups, TokenUser,
-    SECURITY_ATTRIBUTES, SID_AND_ATTRIBUTES, TOKEN_GROUPS, TOKEN_USER,
+    OWNER_SECURITY_INFORMATION, SECURITY_ATTRIBUTES, SID_AND_ATTRIBUTES, TOKEN_GROUPS, TOKEN_USER,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcess, OpenProcessToken};
 
@@ -186,10 +189,44 @@ fn process_user_sid(pid: Option<u32>) -> io::Result<String> {
     sid_string(user.User.Sid).ok_or_else(|| io::Error::other("cannot read the token's user"))
 }
 
+/// The owner (as a string SID) of the object behind `handle`: for a pipe, the account its server
+/// set (see [`sddl`]); nobody can make another account the owner without the restore privilege.
+fn handle_owner_sid(handle: HANDLE) -> io::Result<String> {
+    let mut owner: *mut c_void = null_mut();
+    let mut sd: *mut c_void = null_mut();
+    // SAFETY: a valid handle; the descriptor is freed below and `owner` points into it.
+    let rc = unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_KERNEL_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &mut owner,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            &mut sd,
+        )
+    };
+    if rc != 0 {
+        let e = io::Error::from_raw_os_error(rc as i32);
+        return Err(io::Error::new(e.kind(), format!("GetSecurityInfo: {e}")));
+    }
+    let text = sid_string(owner);
+    // SAFETY: allocated by GetSecurityInfo, freed once.
+    unsafe { LocalFree(sd) };
+    text.ok_or_else(|| io::Error::other("cannot read the pipe's owner"))
+}
+
 /// Refuses a pipe server whose process isn't run by SYSTEM or scribed's service account (or the
-/// calling user, with `RootOrSelf`).
-fn check_server_pid(pid: u32, check: ServerCheck) -> io::Result<()> {
-    let owner = process_user_sid(Some(pid))?;
+/// calling user, with `RootOrSelf`). The account comes from the server's process token, or, when
+/// this user may not open that process (a standard user and scribed as `NT SERVICE\scribed`),
+/// from the owner of the pipe.
+fn check_server(pipe: HANDLE, pid: u32, check: ServerCheck) -> io::Result<()> {
+    let owner = match process_user_sid(Some(pid)) {
+        Ok(sid) => sid,
+        Err(e) if e.kind() == io::ErrorKind::PermissionDenied => handle_owner_sid(pipe)?,
+        Err(e) => return Err(e),
+    };
     let ok = owner == SID_SYSTEM
         || sid_of_name(SERVICE_ACCOUNT).is_some_and(|sid| owner == sid)
         || (check == ServerCheck::RootOrSelf && owner == process_user_sid(None)?);
@@ -204,10 +241,11 @@ fn check_server_pid(pid: u32, check: ServerCheck) -> io::Result<()> {
 }
 
 /// The access list of the pipe: SYSTEM, Administrators and this process's user get full
-/// access; each of `groups` that exists may read and write.
+/// access; each of `groups` that exists may read and write. The owner is this process's user, so
+/// clients that can't open this process can still tell who serves the pipe.
 fn sddl(groups: &[&str]) -> io::Result<String> {
     let me = process_user_sid(None)?;
-    let mut text = format!("D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;{me})");
+    let mut text = format!("O:{me}D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;{me})");
     for group in groups {
         if let Some(sid) = sid_of_name(group) {
             text.push_str(&format!("(A;;{CLIENT_RIGHTS};;;{sid})"));
@@ -542,7 +580,7 @@ mod client {
         if unsafe { GetNamedPipeServerProcessId(pipe.as_raw_handle() as HANDLE, &mut pid) } == 0 {
             return Err(last_error("GetNamedPipeServerProcessId"));
         }
-        check_server_pid(pid, check)?;
+        check_server(pipe.as_raw_handle() as HANDLE, pid, check)?;
         Ok(pipe)
     }
 
