@@ -5,7 +5,9 @@
 #   .\install-service.ps1 -Remove         stop and remove
 #
 # NT SERVICE\scribed is the service's own virtual account: no password, no rights beyond what is
-# granted here. It joins Performance Log Users (the ETW session), reads this folder and writes
+# granted here. It joins Performance Log Users (to start the ETW session), may enable the three ETW
+# providers scribed reads and read its session in real time (EventAccessControl, kept under
+# HKLM\SYSTEM\CurrentControlSet\Control\WMI\Security), reads this folder and writes
 # `data` and `logs` below it (add -Writable for a data_dir or log file elsewhere). Process paths
 # come from ETW, so scribed needs no rights over other processes. With Npcap installed for
 # Administrators only, packets aren't readable and flows come from ETW alone; use -LocalSystem then.
@@ -20,8 +22,61 @@ $account = "NT SERVICE\$name"
 # Performance Log Users, by SID: the name depends on the system language.
 $perfLogUsers = (New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-559').Translate([Security.Principal.NTAccount]).Value.Split('\')[-1]
 
+# ETW access: the providers' and the session's GUIDs (crates/sensor-windows), and the rights.
+$etw = @{
+    '7dd42a49-5329-4832-8dfd-43d979153a88' = 0x80    # Kernel-Network: TRACELOG_GUID_ENABLE
+    '1c95126e-7eea-49a9-a3fe-a378b03ddb4d' = 0x80    # DNS-Client
+    '22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716' = 0x80    # Kernel-Process
+    'defafa1b-0503-415d-80b4-7255907e23fe' = 0x400   # the scribe-etw session: TRACELOG_ACCESS_REALTIME
+}
+$wmiSecurity = 'HKLM:\SYSTEM\CurrentControlSet\Control\WMI\Security'
+
+function Grant-Etw([string]$Sid) {
+    if (-not ('ScribeEtw' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ScribeEtw {
+    [DllImport("advapi32.dll")]
+    public static extern uint EventAccessControl(ref Guid guid, uint operation, byte[] sid, uint rights, [MarshalAs(UnmanagedType.U1)] bool allow);
+}
+'@
+    }
+    $sidObj = New-Object Security.Principal.SecurityIdentifier $Sid
+    $bytes = New-Object byte[] $sidObj.BinaryLength
+    $sidObj.GetBinaryForm($bytes, 0)
+    foreach ($guid in $etw.Keys) {
+        $g = [Guid]$guid
+        # 2 = EventSecurityAddDACL: one more entry on the current (or default) access list.
+        $rc = [ScribeEtw]::EventAccessControl([ref]$g, 2, $bytes, [uint32]$etw[$guid], $true)
+        if ($rc -ne 0) { throw "EventAccessControl $guid failed ($rc)" }
+    }
+}
+
+# Takes the service's entries out of the ETW access lists again.
+function Revoke-Etw([string]$Sid) {
+    foreach ($guid in $etw.Keys) {
+        $value = (Get-ItemProperty -Path $wmiSecurity -Name $guid -ErrorAction SilentlyContinue).$guid
+        if (-not $value) { continue }
+        $sd = New-Object Security.AccessControl.RawSecurityDescriptor -ArgumentList $value, 0
+        $acl = $sd.DiscretionaryAcl
+        for ($i = $acl.Count - 1; $i -ge 0; $i--) {
+            if ($acl[$i].SecurityIdentifier -and $acl[$i].SecurityIdentifier.Value -eq $Sid) { $acl.RemoveAce($i) }
+        }
+        $out = New-Object byte[] $sd.BinaryLength
+        $sd.GetBinaryForm($out, 0)
+        Set-ItemProperty -Path $wmiSecurity -Name $guid -Value $out -Type Binary
+    }
+}
+
+function Get-ServiceSid {
+    try { (New-Object Security.Principal.NTAccount $account).Translate([Security.Principal.SecurityIdentifier]).Value } catch { $null }
+}
+
 if ($Remove) {
     Stop-Service -Name $name -ErrorAction SilentlyContinue
+    $sid = Get-ServiceSid
+    if ($sid) { Revoke-Etw $sid }
     & net.exe localgroup $perfLogUsers $account /delete 2>&1 | Out-Null
     sc.exe delete $name | Out-Null
     Write-Host "Removed service $name"
@@ -42,6 +97,9 @@ if (-not $LocalSystem) {
     if (-not ((& net.exe localgroup $perfLogUsers) -match [regex]::Escape($account))) {
         throw "cannot add $account to $perfLogUsers"
     }
+    $sid = Get-ServiceSid
+    if (-not $sid) { throw "cannot find the SID of $account" }
+    Grant-Etw $sid
     # Read this folder (scribed.exe, scribe.toml); write data and logs.
     & icacls.exe $PSScriptRoot /grant "${account}:(OI)(CI)RX" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "icacls $PSScriptRoot failed ($LASTEXITCODE)" }

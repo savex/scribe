@@ -266,7 +266,36 @@ mod server {
     use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
     use tonic::service::Routes;
     use tonic::transport::server::Connected;
-    use windows_sys::Win32::System::Pipes::GetNamedPipeClientProcessId;
+    use windows_sys::Win32::Security::RevertToSelf;
+    use windows_sys::Win32::System::Pipes::{
+        GetNamedPipeClientProcessId, ImpersonateNamedPipeClient,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentThread, OpenThreadToken};
+
+    /// The client's token through the pipe: an identification-level impersonation, for a server
+    /// that can't open the client's process (scribed as `NT SERVICE\scribed`, the client an
+    /// administrator). The thread reverts before returning.
+    fn pipe_client_token(pipe: &NamedPipeServer) -> io::Result<Owned> {
+        let handle = pipe.as_raw_handle() as HANDLE;
+        // SAFETY: a live, connected pipe; the impersonation ends below on every path.
+        unsafe {
+            if ImpersonateNamedPipeClient(handle) == 0 {
+                return Err(last_error("ImpersonateNamedPipeClient"));
+            }
+            let mut token: HANDLE = null_mut();
+            // OpenAsSelf: the access check uses scribed's own identity, not the client's.
+            let opened = OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, 1, &mut token);
+            let error = (opened == 0).then(|| last_error("OpenThreadToken"));
+            if RevertToSelf() == 0 {
+                // Carrying on as the client would be worse than stopping.
+                std::process::abort();
+            }
+            match error {
+                Some(e) => Err(e),
+                None => Ok(Owned(token)),
+            }
+        }
+    }
 
     /// The first pipe instance and what is needed to create the next ones.
     pub struct Listener {
@@ -325,7 +354,12 @@ mod server {
         if unsafe { GetNamedPipeClientProcessId(pipe.as_raw_handle() as HANDLE, &mut pid) } == 0 {
             return Err(last_error("GetNamedPipeClientProcessId"));
         }
-        let token = process_token(Some(pid))?;
+        // The process token when scribed may open the client's process (as SYSTEM), else through
+        // the pipe.
+        let token = match process_token(Some(pid)) {
+            Ok(t) => t,
+            Err(_) => pipe_client_token(pipe)?,
+        };
         let user_buf = token_info(&token, TokenUser)?;
         // SAFETY: TOKEN_USER written by GetTokenInformation.
         let user_sid = unsafe { (*(user_buf.as_ptr() as *const TOKEN_USER)).User.Sid };

@@ -9,10 +9,12 @@
 //!   them when there are no packets, or joins them with the pcap sensor's observations;
 //! - the pcap sensor's own threads, when Npcap loads.
 //!
-//! The session needs Administrator rights or the Performance Log Users group (the installer adds
-//! `NT SERVICE\scribed` to it). Paths come from Kernel-Process, so reading other processes needs
-//! no rights; `QueryFullProcessImageNameW` is only the fallback. Events arrive
-//! about once a second (`FlushTimer`), so packet observations wait up to [`HOLD`] for theirs.
+//! The session needs Administrator rights, or what the installer gives `NT SERVICE\scribed`:
+//! Performance Log Users (to start the session), `TRACELOG_GUID_ENABLE` on the three providers
+//! (their own access lists leave the group out) and `TRACELOG_ACCESS_REALTIME` on
+//! [`SESSION_GUID`]. Paths come from Kernel-Process, so reading other processes needs no rights;
+//! `QueryFullProcessImageNameW` is only the fallback. Events arrive about once a second
+//! (`FlushTimer`), so packet observations wait up to [`HOLD`] for theirs.
 
 use std::mem::{offset_of, size_of};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -50,6 +52,9 @@ pub const HOLD: Duration = Duration::from_millis(1500);
 /// The ETW session's name (one per machine).
 pub const SESSION: &str = "scribe-etw";
 
+/// The session's own GUID, fixed so the installer can let `NT SERVICE\scribed` read it in real
+/// time (`TRACELOG_ACCESS_REALTIME`); also in `packaging/windows/install-service.ps1`.
+pub const SESSION_GUID: GUID = GUID::from_u128(0xdefafa1b_0503_415d_80b4_7255907e23fe);
 const KERNEL_NETWORK: GUID = GUID::from_u128(0x7dd42a49_5329_4832_8dfd_43d979153a88);
 const DNS_CLIENT: GUID = GUID::from_u128(0x1c95126e_7eea_49a9_a3fe_a378b03ddb4d);
 const KERNEL_PROCESS: GUID = GUID::from_u128(0x22fb2cd6_0e7b_422b_a0c7_2fad1fd0e716);
@@ -94,6 +99,7 @@ fn properties() -> Box<Properties> {
     let mut props: Box<Properties> = Box::new(unsafe { std::mem::zeroed() });
     props.p.Wnode.BufferSize = size_of::<Properties>() as u32;
     props.p.Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+    props.p.Wnode.Guid = SESSION_GUID;
     props.p.Wnode.ClientContext = 1; // QueryPerformanceCounter time stamps
     props.p.LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
     props.p.FlushTimer = 1;
@@ -108,7 +114,7 @@ fn win32(context: &str, code: u32) -> SensorError {
     let e = std::io::Error::from_raw_os_error(code as i32);
     if code == ERROR_ACCESS_DENIED {
         SensorError::Permission(format!(
-            "{context}: {e} (the ETW session needs Administrator rights)"
+            "{context}: {e} (the ETW session needs Administrator rights, or the access install-service.ps1 grants NT SERVICE\\scribed)"
         ))
     } else {
         SensorError::Io(std::io::Error::other(format!("{context}: {e}")))

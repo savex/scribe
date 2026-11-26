@@ -69,6 +69,12 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   LocalSystem; `-LocalSystem` keeps the old account, `-Writable` adds folders. `scribe` accepts a pipe server
   running as that account. Sensor tests check the installed service end to end on Windows
   (`scripts/ci/windows-service-check.ps1`).
+- Windows service as `NT SERVICE\scribed`, from Sensor tests run `45726958181`: the installer also grants the
+  account `TRACELOG_GUID_ENABLE` on Kernel-Network, DNS-Client and Kernel-Process and
+  `TRACELOG_ACCESS_REALTIME` on the session, which now has a fixed GUID (Performance Log Users could start
+  the session, but `EnableTraceEx2` was denied); `-Remove` takes those entries out again. scribed reads a
+  pipe client's identity through the pipe when it can't open the client's process (every `scribe` call failed
+  with "transport error").
 - The Windows service check prints scribed's logs (rotated names included), the service state, Service Control
   Manager events and folder access when it fails: Sensor tests run `45724811859` failed with no log shown.
 - The ETW sensor takes process paths from Microsoft-Windows-Kernel-Process (start, stop and the rundown it asks
