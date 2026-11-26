@@ -75,6 +75,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   the session, but `EnableTraceEx2` was denied); `-Remove` takes those entries out again. scribed reads a
   pipe client's identity through the pipe when it can't open the client's process (every `scribe` call failed
   with "transport error").
+- Plan and status record Sensor tests run `45737042676` as green: a standard user in the `scribe` group reads the
+  status of scribed running as `NT SERVICE\scribed`.
 - Windows: the API pipe's owner is scribed's own account, and `scribe` checks that owner when it may not open
   scribed's process, so standard users in the `scribe` group can use the CLI with scribed running as
   `NT SERVICE\scribed`. The Windows service check runs `scribe status` as such a user.
