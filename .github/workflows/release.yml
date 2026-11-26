@@ -100,9 +100,12 @@ jobs:
           mkdir -p "dist/$name/service"
           cp packaging/README.md "dist/$name/service/"
           case "${{ matrix.target }}" in
-            *linux*) cp packaging/linux/scribed.service packaging/linux/scribe-notify.service "dist/$name/service/" ;;
-            *apple*) cp packaging/macos/io.github.savex.scribed.plist packaging/macos/io.github.savex.scribe-notify.plist "dist/$name/service/" ;;
-            *windows*) cp packaging/windows/install-service.ps1 packaging/windows/install-notify.ps1 "dist/$name/" ;;
+            *linux*) cp packaging/linux/scribed.service packaging/linux/scribe-notify.service "dist/$name/service/"
+                     cp scripts/install/linux.sh "dist/$name/install.sh" ;;
+            *apple*) cp packaging/macos/io.github.savex.scribed.plist packaging/macos/io.github.savex.scribe-notify.plist "dist/$name/service/"
+                     cp scripts/install/macos.sh "dist/$name/install.sh" ;;
+            *windows*) cp packaging/windows/install-service.ps1 packaging/windows/install-notify.ps1 "dist/$name/"
+                       cp scripts/install/windows.ps1 "dist/$name/install.ps1" ;;
           esac
           if [[ "${{ matrix.smoke }}" == "true" ]]; then
             got=$("dist/$name/scribe$exe" --version)

@@ -75,6 +75,17 @@ jobs:
           cargo build -p scribe-daemon -p scribe-cli --locked
           scripts/ci/windows-service-check.ps1 -Bin (Resolve-Path target/debug).Path
 
+      - name: Install scripts (scripts/install)
+        # Install from a debug build, read the status as a scribe group member, upgrade, purge.
+        shell: bash
+        run: |
+          cargo build -p scribe-daemon -p scribe-cli --locked
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            pwsh -NoProfile -File scripts/ci/install-check.ps1 -Bin "$(cygpath -w "$PWD/target/debug")"
+          else
+            scripts/ci/install-check.sh target/debug
+          fi
+
       - name: Capture after dropping root (Linux)
         if: runner.os == 'Linux'
         # Alone in its process: the test drops the privileges of the whole test binary.

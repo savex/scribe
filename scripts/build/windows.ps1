@@ -176,7 +176,8 @@ function Invoke-Release {
     Copy-Item (Join-Path $bins 'scribed.exe'), (Join-Path $bins 'scribe.exe') $out
     Copy-Item (Join-Path $Root 'readme.md'), (Join-Path $Root 'LICENSE-MIT'), (Join-Path $Root 'LICENSE-APACHE'), (Join-Path $Root 'config\scribe.toml') $out
     Copy-Item (Join-Path $Root 'packaging\README.md') (Join-Path $out 'service')
-    Copy-Item (Join-Path $Root 'packaging\windows\install-service.ps1') $out
+    Copy-Item (Join-Path $Root 'packaging\windows\install-service.ps1'), (Join-Path $Root 'packaging\windows\install-notify.ps1') $out
+    Copy-Item (Join-Path $Root 'scripts\install\windows.ps1') (Join-Path $out 'install.ps1')
     Invoke-Smoke $out $version
     $zip = Join-Path $dist "$name.zip"
     if (Test-Path $zip) { Remove-Item -Force $zip }

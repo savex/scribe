@@ -47,9 +47,15 @@ package() {
   cp "$ROOT/readme.md" "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/config/scribe.toml" "$out/"
   cp "$ROOT/packaging/README.md" "$out/service/"
   case $target in
-    *linux*) cp "$ROOT/packaging/linux/scribed.service" "$out/service/" ;;
-    *apple*) cp "$ROOT/packaging/macos/io.github.savex.scribed.plist" "$out/service/" ;;
-    *windows*) cp "$ROOT/packaging/windows/install-service.ps1" "$out/" ;;
+    *linux*)
+      cp "$ROOT/packaging/linux/scribed.service" "$ROOT/packaging/linux/scribe-notify.service" "$out/service/"
+      cp "$ROOT/scripts/install/linux.sh" "$out/install.sh" ;;
+    *apple*)
+      cp "$ROOT/packaging/macos/io.github.savex.scribed.plist" "$ROOT/packaging/macos/io.github.savex.scribe-notify.plist" "$out/service/"
+      cp "$ROOT/scripts/install/macos.sh" "$out/install.sh" ;;
+    *windows*)
+      cp "$ROOT/packaging/windows/install-service.ps1" "$ROOT/packaging/windows/install-notify.ps1" "$out/"
+      cp "$ROOT/scripts/install/windows.ps1" "$out/install.ps1" ;;
   esac
   if [[ $smoke == smoke ]]; then
     smoke_test "$out" "$exe" "$version"

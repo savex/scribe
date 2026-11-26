@@ -125,15 +125,38 @@ mod server {
     use tonic::service::Routes;
     use tonic::transport::server::Connected;
 
-    /// Listens at `path`. A missing directory is created `0750` (the installer sets its group);
-    /// a stale socket left by a crash is replaced; a live one, or anything that isn't a socket,
-    /// is refused.
+    /// Listens at `path`. A missing directory is created `0750` with the group
+    /// [`READ_GROUP`](crate::transport::READ_GROUP) when it exists (`/run` and `/var/run` are
+    /// emptied at boot, so the installer can't set it once); a stale socket left by a crash is
+    /// replaced; a live one, or anything that isn't a socket, is refused.
+    /// The id of group `name`, if it exists.
+    fn group_id(name: &str) -> Option<u32> {
+        let name = std::ffi::CString::new(name).ok()?;
+        let mut grp: libc::group = unsafe { std::mem::zeroed() };
+        let mut buf = vec![0 as libc::c_char; 16 * 1024];
+        let mut result: *mut libc::group = std::ptr::null_mut();
+        // SAFETY: buffers are valid for the call; `result` is checked before use.
+        let rc = unsafe {
+            libc::getgrnam_r(
+                name.as_ptr(),
+                &mut grp,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &mut result,
+            )
+        };
+        (rc == 0 && !result.is_null()).then_some(grp.gr_gid)
+    }
+
     pub fn bind(path: &Path) -> Result<UnixListener, TransportError> {
         if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
             if !dir.exists() {
                 std::fs::create_dir_all(dir).map_err(|e| io_error(dir, e))?;
                 std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o750))
                     .map_err(|e| io_error(dir, e))?;
+                if let Some(gid) = group_id(crate::transport::READ_GROUP) {
+                    std::os::unix::fs::chown(dir, None, Some(gid)).map_err(|e| io_error(dir, e))?;
+                }
             }
         }
         match std::fs::symlink_metadata(path) {

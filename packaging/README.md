@@ -1,5 +1,35 @@
 # Running scribed as a service
 
+**The quick way:** the install scripts put everything in place, from a release archive (`install.sh` /
+`install.ps1` in it) or from this repository's release build, and take it out again. They stand in for
+the packages of plan phase 13.
+
+```sh
+sudo scripts/install/linux.sh install      # systemd; scribed continues as the user `scribe`
+sudo scripts/install/macos.sh install      # launchd; scribed runs as root (pcap)
+sudo scripts/install/linux.sh uninstall    # keeps config, data and logs; --purge removes them
+```
+
+```powershell
+scripts\install\windows.ps1 install      # Administrator; C:\Program Files\scribe, NT SERVICE\scribed
+scripts\install\windows.ps1 uninstall    # -Purge also removes config, data, logs and the groups
+```
+
+| | Linux | macOS | Windows |
+|---|---|---|---|
+| Programs | `/usr/bin` | `/usr/local/bin` | `C:\Program Files\scribe` (on the PATH) |
+| Config | `/etc/scribe/scribe.toml` (`root:scribe 0640`) | `/Library/Application Support/scribe/scribe.toml` | next to the programs |
+| Data / logs | `/var/lib/scribe`, `/var/log/scribe` (user `scribe`) | `/Library/Application Support/scribe`, `/var/log/scribe` | `data\`, `logs\` next to the programs |
+| API socket | `/run/scribe` (`root:scribe 0750`, `tmpfiles.d`) | `/var/run/scribe` (group set by scribed) | `\\.\pipe\scribed` |
+
+All three create the groups `scribe` (may read the API: `scribe status`, `hosts`, `alerts`) and `scribe-admin`
+(may also control scribed), keep an existing config when run again (upgrade), and install the `scribe notify`
+unit, agent or script for each user to enable. Options: `--from <dir>` / `-From` (where the binaries are),
+`--as-root` (Linux), `-LocalSystem` and `-Dir` (Windows), `--dry-run` (Linux, macOS). Sensor tests run all
+three on GitHub's runners.
+
+**By hand**, with the service files:
+
 | System | File | Install |
 |---|---|---|
 | Linux (systemd) | [linux/scribed.service](linux/scribed.service) | copy to `/etc/systemd/system/`, `systemctl enable --now scribed` |

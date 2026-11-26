@@ -12,6 +12,12 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ### Added
 
+- Manual install scripts `scripts/install/linux.sh`, `macos.sh` and `windows.ps1` (`install`, `uninstall`,
+  `--purge`): programs, config, data and log folders with their owners, the `scribe` / `scribe-admin` groups,
+  the service started (Linux as the user `scribe`, Windows as `NT SERVICE\scribed`), the notify unit for users;
+  shipped in release archives as `install.sh` / `install.ps1` (local packaging now also ships the notify files,
+  as the Release workflow does). Sensor tests run them on all three runners. scribed gives an API socket folder
+  it creates the `scribe` group, since `/run` and `/var/run` are emptied at boot.
 - VSCodium tasks for the local build scripts (`local: doctor / build / test / check / release archives / clean`
   per system, `linux container: …` including the privileged eBPF tests and a shell, macOS `all`, Windows
   `service-test`) and test tags in the local CI sequence; the privileged sensor and Postgres tasks, the crate
