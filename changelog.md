@@ -75,6 +75,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   the session, but `EnableTraceEx2` was denied); `-Remove` takes those entries out again. scribed reads a
   pipe client's identity through the pipe when it can't open the client's process (every `scribe` call failed
   with "transport error").
+- Plan and status record Sensor tests run `45730673139` as green: scribed installed as `NT SERVICE\scribed` captures
+  with ETW and names the process of another account's connection (8A step 3).
 - Kernel-Process `ImageName` is found as the first NT path in the event (Windows 10 and later put sequence
   numbers, token elevation and a SID before it, so no path was read in Sensor tests run `45728815670`);
   `\SystemRoot\…` paths are mapped too, and the number of known paths is logged. The service check connects
