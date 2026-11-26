@@ -174,7 +174,7 @@ earlier edit (`111411c`); they are restored.
 | Alert outputs (`crates/alerts`) | 11 | **100%** | Dispatcher (queue and rate limit per output), log, signed webhook; desktop notifications through `scribe notify` | — | **96%** (288/300) |
 | Outgoing HTTPS (`crates/net`) | 11 | **100%** | HTTP/1.1 client on rustls: https only except loopback, OS trust store or pin, same-origin redirects, timeouts, size cap; webhook signature | Proxies (not planned) | **90%** (482/534) |
 | UI (Tauri) | later | **0%** | Test folders; mock API data in the protocol's JSON, checked against it; `MockApiServer` / `scribe-mock-api` serve it | Everything | n/a |
-| Packaging | 13 | **~20%** | Release archives with checksums, service files (systemd unit, launchd plist, Windows install script) and `scribe notify` login files; release smoke test | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing, hardened units | n/a |
+| Packaging | 13 | **~20%** | Release archives with checksums, service files (systemd unit, launchd plist, Windows install script) and `scribe notify` login files; manual install / uninstall scripts `scripts/install/` (green on Linux, macOS and Windows in Sensor tests run `45751039049`: install, a `scribe` group member reads the status, upgrade keeps the config, `--purge` leaves nothing); release smoke test | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing, hardened units | n/a |
 
 **Product total:** 10,784 of 12,017 measurable lines covered (**89.7%**); the new code for other systems (DPAPI, Secret Service, D-Bus) is not measurable on macOS.
 The coverage targets in the test approach (≥ 80% for `core` and the daemon config) are met.
