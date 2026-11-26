@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: (LGPL-2.1 OR BSD-2-Clause)
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
 /* scribe's eBPF programs (plan option 7B).
  *
  * who:  fentry/tcp_connect and fexit/udp_sendmsg, fexit/udpv6_sendmsg write a struct scribe_flow

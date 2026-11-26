@@ -44,7 +44,7 @@ package() {
   rm -rf "$out"
   mkdir -p "$out/service"
   cp "$bins/scribed$exe" "$bins/scribe$exe" "$out/"
-  cp "$ROOT/readme.md" "$ROOT/config/scribe.toml" "$out/"
+  cp "$ROOT/readme.md" "$ROOT/LICENSE-MIT" "$ROOT/LICENSE-APACHE" "$ROOT/config/scribe.toml" "$out/"
   cp "$ROOT/packaging/README.md" "$out/service/"
   case $target in
     *linux*) cp "$ROOT/packaging/linux/scribed.service" "$out/service/" ;;

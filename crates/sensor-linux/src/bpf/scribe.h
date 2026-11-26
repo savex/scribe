@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause */
 /* Records the eBPF programs hand to scribed through the ring buffer (plan option 7B).
  * Mirrored by crates/sensor-linux/src/record.rs: change both together and bump
  * SCRIBE_RECORD_VERSION. Integers are in host byte order, addresses in network order. */

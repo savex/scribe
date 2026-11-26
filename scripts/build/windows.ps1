@@ -174,7 +174,7 @@ function Invoke-Release {
     New-Item -ItemType Directory -Force -Path (Join-Path $out 'service') | Out-Null
     $bins = Join-Path $Root "target\$Target\release"
     Copy-Item (Join-Path $bins 'scribed.exe'), (Join-Path $bins 'scribe.exe') $out
-    Copy-Item (Join-Path $Root 'readme.md'), (Join-Path $Root 'config\scribe.toml') $out
+    Copy-Item (Join-Path $Root 'readme.md'), (Join-Path $Root 'LICENSE-MIT'), (Join-Path $Root 'LICENSE-APACHE'), (Join-Path $Root 'config\scribe.toml') $out
     Copy-Item (Join-Path $Root 'packaging\README.md') (Join-Path $out 'service')
     Copy-Item (Join-Path $Root 'packaging\windows\install-service.ps1') $out
     Invoke-Smoke $out $version

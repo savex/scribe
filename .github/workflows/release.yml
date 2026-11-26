@@ -95,7 +95,7 @@ jobs:
           exe=""; [[ "${{ matrix.target }}" == *windows* ]] && exe=".exe"
           mkdir -p "dist/$name"
           cp "target/${{ matrix.target }}/release/scribed$exe" "target/${{ matrix.target }}/release/scribe$exe" "dist/$name/"
-          cp readme.md config/scribe.toml "dist/$name/"
+          cp readme.md LICENSE-MIT LICENSE-APACHE config/scribe.toml "dist/$name/"
           # Service files for this system (packaging/README.md).
           mkdir -p "dist/$name/service"
           cp packaging/README.md "dist/$name/service/"

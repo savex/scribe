@@ -302,3 +302,16 @@ Linux, macOS and Windows binaries and publishes a GitHub Release.
 | Fuzz | manual | Fuzzes the packet parsers |
 | UI tests | manual | Desktop app against a mock API |
 | End-to-end | manual | Install, modes, upgrade and uninstall from release packages |
+
+## License
+
+scribe is licensed under either of
+
+- [Apache License, Version 2.0](LICENSE-APACHE)
+- [MIT license](LICENSE-MIT)
+
+at your option. The eBPF programs loaded into the Linux kernel (`crates/sensor-linux/src/bpf/`) are
+`GPL-2.0-only OR BSD-2-Clause`, since the kernel only lets GPL-compatible programs use some of its helpers.
+
+Unless you state otherwise, any contribution you submit for inclusion in scribe, as defined in the
+Apache-2.0 license, is dual licensed as above, without any additional terms or conditions.

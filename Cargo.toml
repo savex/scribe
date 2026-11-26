@@ -8,6 +8,7 @@ edition = "2021"
 rust-version = "1.89"
 # Nothing is published to crates.io: releases ship binaries (deny.toml treats the crates as private).
 publish = false
+license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 scribe-core = { path = "crates/core" }

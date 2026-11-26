@@ -12,6 +12,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ### Added
 
+- License: MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`, `license` in every crate, a License section in
+  the readme); release archives include both files. The eBPF programs are `GPL-2.0-only OR BSD-2-Clause`
+  (their SPDX headers said `LGPL-2.1 OR BSD-2-Clause`, unlike the `Dual BSD/GPL` the kernel sees).
 - `scribe daemon status` shows how many new flows got their process from the OS socket table and how long
   reading the table takes (`process` row; API `Sensor.attribution`); under 50% of at least 100 new flows is
   the critical metric `attribution_low` and makes health degraded. A table read over 50 ms spaces out the

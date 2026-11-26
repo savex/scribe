@@ -25,7 +25,7 @@ allow = [
     "Zlib",
 ]
 
-# The workspace crates are not published and carry no license field.
+# The workspace crates (MIT OR Apache-2.0, LICENSE-MIT / LICENSE-APACHE) are not published.
 [licenses.private]
 ignore = true
 
