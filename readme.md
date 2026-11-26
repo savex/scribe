@@ -218,6 +218,10 @@ scripts/build/linux.sh --native test  # Linux directly (CI runner, WSL2)
 pwsh -File scripts\build\windows.ps1 check   # Windows x64
 ```
 
+In VSCodium (or VS Code), **Terminal → Run Task** has the same commands: `local: …` runs this system's
+script, `linux container: …` the Linux build container, and `ci: Tests workflow (local)` the checks to pass
+before a commit. The debug configurations build and start `scribed`, `scribe` or a crate's tests under CodeLLDB.
+
 Or with cargo directly:
 
 ```sh

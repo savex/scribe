@@ -5,51 +5,66 @@
       "label": "cargo: build",
       "type": "shell",
       "command": "cargo build --workspace --all-features",
-      "group": { "kind": "build", "isDefault": true },
-      "problemMatcher": ["$rustc"]
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "cargo: test (all)",
+      "detail": "The fast run (nextest), as CLAUDE.md asks before a commit",
       "type": "shell",
-      "command": "cargo test --workspace --all-features",
-      "group": { "kind": "test", "isDefault": true },
-      "problemMatcher": ["$rustc"]
+      "command": "cargo nextest run --workspace --all-features",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "cargo: test crate",
       "type": "shell",
-      "command": "cargo test --all-features --package ${input:package}",
+      "command": "cargo nextest run --all-features --package ${input:package}",
       "group": "test",
-      "problemMatcher": ["$rustc"]
-    },
-    {
-      "label": "cargo: test (including ignored)",
-      "detail": "Runs not-yet-implemented backend and sensor tests too; expect failures",
-      "type": "shell",
-      "command": "cargo test --workspace --all-features -- --include-ignored",
-      "group": "test",
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "storage: Postgres conformance",
       "detail": "Needs a disposable Postgres database",
       "type": "shell",
-      "command": "cargo test --package scribe-storage-postgres --test postgres_conformance -- --ignored",
-      "options": { "env": { "SCRIBE_TEST_POSTGRES_URL": "${input:postgresUrl}" } },
+      "command": "cargo test --package scribe-storage-postgres --test functional",
+      "options": {
+        "env": {
+          "SCRIBE_TEST_POSTGRES_URL": "${input:postgresUrl}"
+        }
+      },
       "group": "test",
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "sensors: privileged conformance (sudo)",
-      "detail": "Builds as you, runs the sensor suite with sudo",
+      "detail": "Builds as you, runs the sensor suite with sudo (Windows: from an Administrator VSCodium)",
       "type": "shell",
-      "command": "bin=$(cargo test -p scribe-sensor-conformance --test sensors --no-run --message-format=json | jq -r 'select(.reason == \"compiler-artifact\" and .target.name == \"sensors\" and .executable != null) | .executable') && sudo \"$bin\" --ignored",
+      "command": "bin=$(cargo test -p scribe-sensor-conformance --test functional --no-run --message-format=json | jq -r 'select(.reason == \"compiler-artifact\" and .target.name == \"functional\" and .executable != null) | .executable') && sudo \"$bin\" --ignored sensors::",
       "windows": {
-        "command": "cargo test -p scribe-sensor-conformance --test sensors -- --ignored"
+        "command": "cargo test -p scribe-sensor-conformance --test functional -- --ignored sensors::"
       },
       "group": "test",
-      "presentation": { "focus": true },
-      "problemMatcher": ["$rustc"]
+      "presentation": {
+        "focus": true
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "lint: fmt check",
@@ -61,19 +76,31 @@
       "label": "lint: clippy",
       "type": "shell",
       "command": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "lint: test tags",
+      "type": "shell",
+      "command": "scripts/check-test-tags.sh",
+      "problemMatcher": []
     },
     {
       "label": "fixtures: regenerate",
       "type": "shell",
       "command": "cargo run -q -p scribe-test-support --bin gen-fixtures",
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "fixtures: check",
       "type": "shell",
       "command": "cargo run -q -p scribe-test-support --bin gen-fixtures -- --check",
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "fixtures: rebuild DB snapshots",
@@ -91,27 +118,262 @@
       "label": "run: scribed",
       "type": "shell",
       "command": "cargo run --all-features --bin scribed",
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "run: scribe CLI",
       "type": "shell",
       "command": "cargo run --bin scribe -- ${input:cliArgs}",
-      "problemMatcher": ["$rustc"]
+      "problemMatcher": [
+        "$rustc"
+      ]
     },
     {
       "label": "ci: Tests workflow (local)",
-      "detail": "Same checks as the lint + test jobs of .github/workflows/tests.yml",
+      "detail": "The pre-commit checks of CLAUDE.md: fmt, clippy, tests, test tags, fixtures, version",
       "dependsOrder": "sequence",
       "dependsOn": [
         "lint: fmt check",
         "lint: clippy",
         "cargo: test (all)",
+        "lint: test tags",
         "fixtures: check",
         "version: show"
       ],
       "group": "test",
       "problemMatcher": []
+    },
+    {
+      "label": "local: doctor",
+      "detail": "scripts/build: check the toolchain and say what's missing",
+      "type": "shell",
+      "command": "scripts/build/linux.sh --native doctor",
+      "osx": {
+        "command": "scripts/build/macos.sh doctor"
+      },
+      "linux": {
+        "command": "scripts/build/linux.sh --native doctor"
+      },
+      "windows": {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\build\\windows.ps1 doctor"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "local: build",
+      "detail": "scripts/build: debug build for this machine",
+      "type": "shell",
+      "command": "scripts/build/linux.sh --native build",
+      "osx": {
+        "command": "scripts/build/macos.sh build"
+      },
+      "linux": {
+        "command": "scripts/build/linux.sh --native build"
+      },
+      "windows": {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\build\\windows.ps1 build"
+      },
+      "group": "build",
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "local: build (release)",
+      "detail": "scripts/build: release build for this machine",
+      "type": "shell",
+      "command": "scripts/build/linux.sh --native build --release",
+      "osx": {
+        "command": "scripts/build/macos.sh build --release"
+      },
+      "linux": {
+        "command": "scripts/build/linux.sh --native build --release"
+      },
+      "windows": {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\build\\windows.ps1 build -Release"
+      },
+      "group": "build",
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "local: test",
+      "detail": "scripts/build: tests for this machine",
+      "type": "shell",
+      "command": "scripts/build/linux.sh --native test",
+      "osx": {
+        "command": "scripts/build/macos.sh test"
+      },
+      "linux": {
+        "command": "scripts/build/linux.sh --native test"
+      },
+      "windows": {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\build\\windows.ps1 test"
+      },
+      "group": "test",
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "local: check",
+      "detail": "scripts/build: fmt, clippy, tests, doc examples, tags, fixtures, MSRV (what CI checks)",
+      "type": "shell",
+      "command": "scripts/build/linux.sh --native check",
+      "osx": {
+        "command": "scripts/build/macos.sh check"
+      },
+      "linux": {
+        "command": "scripts/build/linux.sh --native check"
+      },
+      "windows": {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\build\\windows.ps1 check"
+      },
+      "group": "test",
+      "presentation": {
+        "focus": true
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "local: release archives",
+      "detail": "scripts/build: dist/ archives for this system",
+      "type": "shell",
+      "command": "scripts/build/linux.sh --native release",
+      "osx": {
+        "command": "scripts/build/macos.sh release"
+      },
+      "linux": {
+        "command": "scripts/build/linux.sh --native release"
+      },
+      "windows": {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\build\\windows.ps1 release"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "local: clean",
+      "detail": "scripts/build: remove build output",
+      "type": "shell",
+      "command": "scripts/build/linux.sh --native clean",
+      "osx": {
+        "command": "scripts/build/macos.sh clean"
+      },
+      "linux": {
+        "command": "scripts/build/linux.sh --native clean"
+      },
+      "windows": {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\build\\windows.ps1 clean"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "macOS: release for macOS and Linux",
+      "detail": "macos.sh all: macOS archives, then the Linux ones in the container",
+      "type": "shell",
+      "command": "scripts/build/macos.sh all",
+      "windows": {
+        "command": "echo 'macOS only' && exit 1"
+      },
+      "linux": {
+        "command": "echo 'macOS only' && exit 1"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "Windows: service test (Administrator)",
+      "detail": "windows.ps1 service-test: install, start, stop and remove the service as NT SERVICE\\scribed",
+      "type": "shell",
+      "command": "echo 'Windows only' && exit 1",
+      "windows": {
+        "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\build\\windows.ps1 service-test"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "linux container: check",
+      "detail": "fmt, clippy, tests, tags, fixtures, MSRV for Linux in the build container",
+      "type": "shell",
+      "command": "scripts/build/linux.sh check",
+      "windows": {
+        "command": "echo 'The Linux build container runs from macOS or Linux; on Windows use WSL2 and scripts/build/linux.sh --native' && exit 1"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "linux container: test",
+      "detail": "Linux tests in the build container",
+      "type": "shell",
+      "command": "scripts/build/linux.sh test",
+      "windows": {
+        "command": "echo 'The Linux build container runs from macOS or Linux; on Windows use WSL2 and scripts/build/linux.sh --native' && exit 1"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "linux container: release",
+      "detail": "Linux dist/ archive from the build container",
+      "type": "shell",
+      "command": "scripts/build/linux.sh release",
+      "windows": {
+        "command": "echo 'The Linux build container runs from macOS or Linux; on Windows use WSL2 and scripts/build/linux.sh --native' && exit 1"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "linux container: eBPF and capture tests",
+      "detail": "The privileged sensor tests in the container with every capability",
+      "type": "shell",
+      "command": "scripts/build/linux.sh run --privileged cargo nextest run -p scribe-sensor-conformance --run-ignored only",
+      "windows": {
+        "command": "echo 'The Linux build container runs from macOS or Linux; on Windows use WSL2 and scripts/build/linux.sh --native' && exit 1"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "linux container: image rebuild",
+      "detail": "Rebuild the build container image",
+      "type": "shell",
+      "command": "scripts/build/linux.sh image --rebuild",
+      "windows": {
+        "command": "echo 'The Linux build container runs from macOS or Linux; on Windows use WSL2 and scripts/build/linux.sh --native' && exit 1"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "linux container: shell",
+      "detail": "A shell in the build container",
+      "type": "shell",
+      "command": "scripts/build/linux.sh shell",
+      "windows": {
+        "command": "echo 'The Linux build container runs from macOS or Linux; on Windows use WSL2 and scripts/build/linux.sh --native' && exit 1"
+      },
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "presentation": {
+        "focus": true,
+        "panel": "dedicated"
+      }
     }
   ],
   "inputs": [
@@ -120,18 +382,30 @@
       "type": "pickString",
       "description": "Crate to test",
       "options": [
+        "scribe-alerts",
+        "scribe-api",
+        "scribe-cli",
         "scribe-core",
-        "scribe-enrich",
-        "scribe-storage-api",
-        "scribe-storage-manager",
-        "scribe-storage-sqlite",
-        "scribe-storage-postgres",
-        "scribe-storage-conformance",
-        "scribe-sensor-conformance",
-        "scribe-sensor-pcap",
-        "scribe-test-support",
         "scribe-daemon",
-        "scribe-cli"
+        "scribe-enrich",
+        "scribe-module-api",
+        "scribe-module-conformance",
+        "scribe-module-url",
+        "scribe-net",
+        "scribe-policy",
+        "scribe-process",
+        "scribe-secrets",
+        "scribe-sensor-conformance",
+        "scribe-sensor-linux",
+        "scribe-sensor-pcap",
+        "scribe-sensor-windows",
+        "scribe-storage-api",
+        "scribe-storage-conformance",
+        "scribe-storage-manager",
+        "scribe-storage-postgres",
+        "scribe-storage-sqlite",
+        "scribe-test-support",
+        "scribe-tests"
       ],
       "default": "scribe-enrich"
     },

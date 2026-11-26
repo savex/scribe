@@ -12,6 +12,11 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ### Added
 
+- VSCodium tasks for the local build scripts (`local: doctor / build / test / check / release archives / clean`
+  per system, `linux container: …` including the privileged eBPF tests and a shell, macOS `all`, Windows
+  `service-test`) and test tags in the local CI sequence; the privileged sensor and Postgres tasks, the crate
+  list and the debug configurations follow the current test targets (`functional`, `smoke`, `integration`,
+  `scenario`).
 - License: MIT OR Apache-2.0 (`LICENSE-MIT`, `LICENSE-APACHE`, `license` in every crate, a License section in
   the readme); release archives include both files. The eBPF programs are `GPL-2.0-only OR BSD-2-Clause`
   (their SPDX headers said `LGPL-2.1 OR BSD-2-Clause`, unlike the `Dual BSD/GPL` the kernel sees).
