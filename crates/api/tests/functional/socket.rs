@@ -47,6 +47,15 @@ async fn bind_creates_a_missing_directory_closed_to_others() {
     assert_eq!(mode & 0o777, 0o750);
 }
 
+#[tokio::test]
+async fn bind_leaves_the_socket_open_to_its_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("api.sock");
+    let _listener = unix::bind(&path).unwrap();
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o660);
+}
+
 #[test]
 fn clients_refuse_anything_but_a_socket_of_root_or_their_own() {
     let dir = tempfile::tempdir().unwrap();

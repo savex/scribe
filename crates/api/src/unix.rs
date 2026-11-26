@@ -125,10 +125,6 @@ mod server {
     use tonic::service::Routes;
     use tonic::transport::server::Connected;
 
-    /// Listens at `path`. A missing directory is created `0750` with the group
-    /// [`READ_GROUP`](crate::transport::READ_GROUP) when it exists (`/run` and `/var/run` are
-    /// emptied at boot, so the installer can't set it once); a stale socket left by a crash is
-    /// replaced; a live one, or anything that isn't a socket, is refused.
     /// The id of group `name`, if it exists.
     fn group_id(name: &str) -> Option<u32> {
         let name = std::ffi::CString::new(name).ok()?;
@@ -148,6 +144,11 @@ mod server {
         (rc == 0 && !result.is_null()).then_some(grp.gr_gid)
     }
 
+    /// Listens at `path`. A missing directory is created `0750` with the group
+    /// [`READ_GROUP`](crate::transport::READ_GROUP) when it exists (`/run` and `/var/run` are
+    /// emptied at boot, so the installer can't set it once); a stale socket left by a crash is
+    /// replaced; a live one, or anything that isn't a socket, is refused. The socket
+    /// itself is `0660` with that group, so its members can connect (the folder is the gate).
     pub fn bind(path: &Path) -> Result<UnixListener, TransportError> {
         if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
             if !dir.exists() {
@@ -178,7 +179,14 @@ mod server {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(io_error(path, e)),
         }
-        UnixListener::bind(path).map_err(|e| io_error(path, e))
+        let listener = UnixListener::bind(path).map_err(|e| io_error(path, e))?;
+        // The umask usually leaves the socket without group write, which connecting needs.
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o660))
+            .map_err(|e| io_error(path, e))?;
+        if let Some(gid) = group_id(crate::transport::READ_GROUP) {
+            std::os::unix::fs::chown(path, None, Some(gid)).map_err(|e| io_error(path, e))?;
+        }
+        Ok(listener)
     }
 
     /// Serves `routes` on `listener` until `shutdown` completes, with the limits from

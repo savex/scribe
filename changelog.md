@@ -119,6 +119,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 - Windows: scribed no longer runs as LocalSystem when installed with `install-service.ps1`; it runs as
   `NT SERVICE\scribed` (service SID), with the ETW session through Performance Log Users (specs NFR-8).
 
+### Fixed
+- The Unix API socket is `0660` with the `scribe` group: members of the group could not connect before
+  (the umask left it without group write).
+
 ## [0.3.0-alpha.2] - 2026-11-25
 
 ### Added
