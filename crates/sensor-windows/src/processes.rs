@@ -6,14 +6,16 @@
 //!
 //! | Event | Meaning | Fields used |
 //! |---|---|---|
-//! | 1 | process started | `ProcessID` u32, `CreateTime` u64, `ParentProcessID` u32, `SessionID` u32, `Flags` u32 (version 1 and later), `ImageName` (UTF-16, NUL-terminated) |
+//! | 1 | process started | `ProcessID` u32 first, `ImageName` (UTF-16, NUL-terminated) after a run of fixed fields that grows with the event version |
 //! | 2 | process stopped | `ProcessID` u32 |
 //! | 15 | process rundown (one per running process when the session asks for its state) | as event 1 |
 //!
 //! `ImageName` is an NT path (`\Device\HarddiskVolume3\Windows\System32\curl.exe`);
-//! [`DevicePaths`] turns it into the Win32 path `QueryFullProcessImageNameW` returns. Where
-//! `Flags` is depends on the event's version, so the parser takes the offset where an NT path
-//! starts.
+//! [`DevicePaths`] turns it into the Win32 path `QueryFullProcessImageNameW` returns. The fields
+//! before it differ by version: `CreateTime`, `ParentProcessID`, `SessionID` (version 0, Windows
+//! 7); `Flags` (1); process sequence numbers, token elevation and a mandatory-label SID (Windows
+//! 10 and later). So the parser takes the first NT path in the data (`\Device\`, `\??\`,
+//! `\SystemRoot\`), the first string field of every version.
 
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
@@ -48,6 +50,18 @@ pub struct ProcEvent {
     /// The NT path; `None` for a stop, and for processes without an image file (`System`,
     /// `Registry`, `MemCompression`).
     pub image: Option<String>,
+}
+
+/// How an `ImageName` starts.
+const NT_PREFIXES: [&str; 3] = ["\\Device\\", "\\??\\", "\\SystemRoot\\"];
+
+/// The offset of the first NT path in `data` after the process id.
+fn image_offset(data: &[u8]) -> Option<usize> {
+    let prefixes: Vec<Vec<u8>> = NT_PREFIXES
+        .iter()
+        .map(|p| p.encode_utf16().flat_map(u16::to_le_bytes).collect())
+        .collect();
+    (4..data.len()).find(|&at| prefixes.iter().any(|p| data[at..].starts_with(p)))
 }
 
 /// A NUL-terminated UTF-16LE string at `at`, or `None` without the NUL.
@@ -85,17 +99,12 @@ impl ProcEvent {
         let pid = u32::from_le_bytes(data[0..4].try_into().expect("4 bytes"));
         let image = match kind {
             ProcKind::Stop => None,
-            // After `Flags` (version 1 and later), else right after `SessionID`.
-            _ => [24, 20]
-                .into_iter()
-                .filter_map(|at| utf16z(data, at))
-                .find(|s| s.starts_with('\\')),
+            _ => image_offset(data).and_then(|at| utf16z(data, at)),
         };
         Ok(Some(Self { kind, pid, image }))
     }
 
-    /// The event id and user data Windows would deliver (version 2 and later, with `Flags`; for
-    /// tests and replays).
+    /// The event id and user data Windows 10 and later would deliver (for tests and replays).
     pub fn to_bytes(&self) -> (u16, Vec<u8>) {
         let id = match self.kind {
             ProcKind::Start => PROCESS_START,
@@ -105,10 +114,16 @@ impl ProcEvent {
         let mut b = Vec::new();
         b.extend_from_slice(&self.pid.to_le_bytes());
         if self.kind != ProcKind::Stop {
+            b.extend_from_slice(&7u64.to_le_bytes()); // ProcessSequenceNumber
             b.extend_from_slice(&0u64.to_le_bytes()); // CreateTime
             b.extend_from_slice(&4u32.to_le_bytes()); // ParentProcessID
+            b.extend_from_slice(&3u64.to_le_bytes()); // ParentProcessSequenceNumber
             b.extend_from_slice(&1u32.to_le_bytes()); // SessionID
             b.extend_from_slice(&0u32.to_le_bytes()); // Flags
+            b.extend_from_slice(&1u32.to_le_bytes()); // ProcessTokenElevationType
+            b.extend_from_slice(&0u32.to_le_bytes()); // ProcessTokenIsElevated
+                                                      // MandatoryLabel: S-1-16-8192 (medium integrity).
+            b.extend_from_slice(&[1, 1, 0, 0, 0, 0, 0, 16, 0, 0x20, 0, 0]);
             for u in self.image.as_deref().unwrap_or("").encode_utf16() {
                 b.extend_from_slice(&u.to_le_bytes());
             }
@@ -133,7 +148,8 @@ impl DevicePaths {
         }
     }
 
-    /// The drives of this machine (letters with no device are left out).
+    /// The drives of this machine (letters with no device are left out), and `\SystemRoot` (early
+    /// system processes such as `smss.exe`).
     #[cfg(windows)]
     pub fn system() -> Self {
         use windows_sys::Win32::Storage::FileSystem::QueryDosDeviceW;
@@ -150,6 +166,12 @@ impl DevicePaths {
             // The first of the NUL-separated targets.
             let end = buf.iter().position(|&u| u == 0).unwrap_or(n as usize);
             drives.push((String::from_utf16_lossy(&buf[..end]), drive));
+        }
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            drives.push((
+                r"\SystemRoot".to_owned(),
+                root.to_string_lossy().into_owned(),
+            ));
         }
         Self { drives }
     }

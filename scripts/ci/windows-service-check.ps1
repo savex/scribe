@@ -47,19 +47,21 @@ try {
     Write-Host $status
     if ($status -notmatch 'windows-etw') { Fail 'scribed does not capture with the ETW sensor as NT SERVICE\scribed' }
 
-    # A connection by this (another) account; documentation address, so it fails, but the attempt is
-    # reported. Its path must come from Kernel-Process: scribed can't open this process.
+    # A connection by this (another) account to example.com (Kernel-Network reports connections that
+    # are made, not attempts that fail). Its path must come from Kernel-Process: scribed can't open
+    # this process.
     $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
-    & $curl --silent --connect-timeout 2 http://192.0.2.44:8080/ | Out-Null
+    & $curl --silent --max-time 10 --output NUL http://example.com/
+    if ($LASTEXITCODE -ne 0) { Fail "curl could not reach example.com ($LASTEXITCODE)" }
     $hosts = ''
     foreach ($i in 1..20) {
         Start-Sleep -Seconds 1
         $hosts = & $scribe hosts 2>&1 | Out-String
-        if ($hosts -match '192\.0\.2\.44' -and $hosts -match 'curl\.exe') { break }
+        if ($hosts -match 'example\.com' -and $hosts -match 'curl\.exe') { break }
     }
     Write-Host $hosts
-    if ($hosts -notmatch '192\.0\.2\.44') { Fail 'the connection to 192.0.2.44 was not recorded' }
-    if ($hosts -notmatch 'curl\.exe') { Fail 'the connection to 192.0.2.44 has no process path' }
+    if ($hosts -notmatch 'example\.com') { Fail 'the connection to example.com was not recorded' }
+    if ($hosts -notmatch 'curl\.exe') { Fail 'the connection to example.com has no process path' }
 
     Stop-Service -Name 'scribed'
     (Get-Service -Name 'scribed').WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30))

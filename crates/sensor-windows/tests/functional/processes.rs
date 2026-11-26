@@ -65,6 +65,29 @@ fn process_start_version_0_without_flags() {
 }
 
 #[test]
+fn process_start_image_after_unknown_fields() {
+    // Whatever fixed fields a version adds, ImageName is the first NT path after the pid.
+    for (extra, image) in [
+        (3usize, r"\SystemRoot\System32\smss.exe"),
+        (41, CURL),
+        (0, r"\??\C:\tools\a.exe"),
+    ] {
+        let mut b = 99u32.to_le_bytes().to_vec();
+        b.extend((0..extra).map(|i| (i * 7 + 1) as u8));
+        for u in image.encode_utf16() {
+            b.extend_from_slice(&u.to_le_bytes());
+        }
+        b.extend_from_slice(&[0, 0, 5, 0, 0, 0]);
+        let e = ProcEvent::parse(PROCESS_START, &b).unwrap().unwrap();
+        assert_eq!(
+            (e.pid, e.image.as_deref()),
+            (99, Some(image)),
+            "{extra} bytes before"
+        );
+    }
+}
+
+#[test]
 fn process_events_short_or_without_image() {
     assert_eq!(
         ProcEvent::parse(PROCESS_START, &[0; 10]),
@@ -98,6 +121,11 @@ fn device_paths_to_win32() {
         "device names compare without case"
     );
     assert_eq!(d.win32(r"\??\C:\x.exe"), r"C:\x.exe");
+    let with_root = DevicePaths::new([(r"\SystemRoot".to_owned(), r"C:\Windows".to_owned())]);
+    assert_eq!(
+        with_root.win32(r"\SystemRoot\System32\smss.exe"),
+        r"C:\Windows\System32\smss.exe"
+    );
     assert_eq!(
         d.win32(r"\Device\Mup\server\share\x.exe"),
         r"\Device\Mup\server\share\x.exe",

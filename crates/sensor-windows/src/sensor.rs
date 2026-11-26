@@ -49,6 +49,8 @@ use crate::{dns, DnsQuery, EtwFlows, NetEvent};
 
 /// Longest wait of a packet observation for its ETW event.
 pub const HOLD: Duration = Duration::from_millis(1500);
+/// When the number of process paths known from Kernel-Process is logged.
+const PATHS_AFTER: Duration = Duration::from_secs(5);
 /// The ETW session's name (one per machine).
 pub const SESSION: &str = "scribe-etw";
 
@@ -315,6 +317,9 @@ fn work(
 ) {
     let owners = Owners::new(clock.clone(), exe_path());
     let mut processes = Processes::new(DevicePaths::system());
+    // Logged once, a few seconds in: how many paths the rundown and start events gave.
+    let started = clock.now();
+    let mut counted = false;
     let mut joiner = Joiner::new(owners, clock.clone(), HOLD);
     let mut flows = EtwFlows::new();
     let mut bad = 0u64;
@@ -374,6 +379,13 @@ fn work(
             Ok(Input::Packet(obs)) => ready.extend(joiner.push(vec![obs])),
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
+        }
+        if !counted && clock.now().duration_since(started).unwrap_or_default() >= PATHS_AFTER {
+            counted = true;
+            tracing::info!(
+                processes = processes.len(),
+                "process paths from Kernel-Process"
+            );
         }
         ready.extend(joiner.ready());
         *stats.lock().unwrap_or_else(|p| p.into_inner()) = joiner.stats();

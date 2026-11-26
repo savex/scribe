@@ -75,6 +75,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   the session, but `EnableTraceEx2` was denied); `-Remove` takes those entries out again. scribed reads a
   pipe client's identity through the pipe when it can't open the client's process (every `scribe` call failed
   with "transport error").
+- Kernel-Process `ImageName` is found as the first NT path in the event (Windows 10 and later put sequence
+  numbers, token elevation and a SID before it, so no path was read in Sensor tests run `45728815670`);
+  `\SystemRoot\…` paths are mapped too, and the number of known paths is logged. The service check connects
+  to `example.com` (Kernel-Network reports connections made, not failed attempts to `192.0.2.44`).
 - The Windows service check prints scribed's logs (rotated names included), the service state, Service Control
   Manager events and folder access when it fails: Sensor tests run `45724811859` failed with no log shown.
 - The ETW sensor takes process paths from Microsoft-Windows-Kernel-Process (start, stop and the rundown it asks
