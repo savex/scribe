@@ -7,7 +7,7 @@
 
   Writes dist\scribe-<version>-x86_64-pc-windows-msvc.msi (or -Out) and prints its path; the caller
   adds checksums (scripts\build\windows.ps1 release, .github\workflows\release.yml). -Version
-  defaults to SCRIBE_VERSION; the MSI's own version is its x.y.z (MSI versions are numbers only),
+  defaults to SCRIBE_VERSION, else the version scribed.exe reports; the MSI's own version is its x.y.z (MSI versions are numbers only),
   and every build gets a new ProductCode, so any build upgrades any other of the same version.
   WiX WIX_VERSION (scripts\build\config) is installed as a .NET tool into target\tools\ when
   missing, with the Util extension of the same version. Needs the .NET SDK (8 or newer).
@@ -35,7 +35,11 @@ $Bins = (Resolve-Path $Bins).Path
 foreach ($exe in 'scribed.exe', 'scribe.exe') {
     if (-not (Test-Path (Join-Path $Bins $exe))) { throw "no $exe in $Bins" }
 }
-if (-not $Version) { throw 'pass -Version or set SCRIBE_VERSION' }
+if (-not $Version) {
+    # The version the binary reports: `scribed <version>`.
+    $Version = ((& (Join-Path $Bins 'scribed.exe') --version) -split ' ', 2)[1]
+    if (-not $Version) { throw 'pass -Version: scribed.exe --version printed nothing' }
+}
 if ($Version -notmatch '^(\d+)\.(\d+)\.(\d+)') { throw "version $Version does not start with x.y.z" }
 $msiVersion = $Matches[0]
 if (-not $Out) { $Out = Join-Path $Root "dist\scribe-$Version-x86_64-pc-windows-msvc.msi" }
