@@ -2,7 +2,7 @@
 # Installs or removes scribed as a systemd service by hand, for systems without the .deb / .rpm
 # packages (scripts/build/linux-packages.sh); refused while the package is installed. Run as root.
 #
-#   scripts/install/linux.sh install [--from <dir>] [--as-root] [--dry-run]
+#   scripts/install/linux.sh install [--from <dir>] [--as-root] [--no-join] [--dry-run]
 #   scripts/install/linux.sh uninstall [--purge] [--dry-run]
 #
 # install    scribed and scribe to /usr/bin, the config to /etc/scribe/scribe.toml (kept if it is
@@ -16,10 +16,12 @@
 #            logs, user and groups unless --purge.
 # --from     the folder with scribed and scribe: an extracted release archive (the default when
 #            this script sits in one), else this repository's release build (target/release,
-#            target/<host>/release or the build container's target/linux-<arch>/<host>/release).
+#            target/<host>/release or the build container's target/linux-<arch>/<host>/release),
+#            which must be of this checkout (rebuild it otherwise).
+# --no-join  don't add the person who ran sudo to the scribe group (added by default).
 # --dry-run  prints the commands instead of running them.
 #
-# Add people to the groups with `usermod -aG scribe <name>` (they log in again to get it).
+# Add other people to the groups with `usermod -aG scribe <name>` (they log in again to get it).
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -66,6 +68,36 @@ find_file() {
   fi
 }
 
+# A build left in target/ by an older checkout installs old code: its version must be this
+# checkout's. Only for builds found in this repository; --from installs what it is given.
+check_fresh() {
+  local bins=$1 have want
+  [[ -x $ROOT/scripts/version.sh && $bins == "$ROOT"/target/* ]] || return 0
+  have=$("$bins/scribed" --version | awk '{ print $2 }')
+  # As the person who ran sudo: git refuses a repository that belongs to someone else.
+  if [[ $(id -u) == 0 && -n ${SUDO_USER:-} && $SUDO_USER != root ]]; then
+    want=$(sudo -u "$SUDO_USER" "$ROOT/scripts/version.sh" current 2>/dev/null) || want=""
+  else
+    want=$("$ROOT/scripts/version.sh" current 2>/dev/null) || want=""
+  fi
+  want=${want%.dirty}
+  want=${want%+dirty}
+  if [[ -z $want ]]; then
+    echo "    note: can't tell this checkout's version; installing scribed $have"
+  elif [[ $have != "$want" ]]; then
+    die "$bins holds scribed $have, but this checkout is $want: rebuild (scripts/build/linux.sh build --release) or pass --from $bins to install it anyway"
+  fi
+}
+
+# The person who ran `sudo … install` may read scribed's status without sudo.
+join_group() {
+  local who=${SUDO_USER:-}
+  [[ -n $who && $who != root ]] || return 0
+  if id -nG "$who" 2>/dev/null | tr ' ' '\n' | grep -qx scribe; then return 0; fi
+  run usermod -aG scribe "$who"
+  echo "    added $who to the scribe group (log in again for it to apply; --no-join skips this)"
+}
+
 need_root() {
   [[ -n $DRY || $(id -u) == 0 ]] || die "run as root (sudo $0 $*)"
 }
@@ -82,11 +114,12 @@ need_systemd() {
 }
 
 install_scribed() {
-  local from="" as_root=""
+  local from="" as_root="" join=1
   while [[ $# -gt 0 ]]; do
     case $1 in
       --from) from=${2:?--from needs a folder}; shift 2 ;;
       --as-root) as_root=1; shift ;;
+      --no-join) join=""; shift ;;
       --dry-run) DRY=1; shift ;;
       *) usage 2 ;;
     esac
@@ -96,6 +129,7 @@ install_scribed() {
   [[ -n $DRY ]] || no_package
   local bins unit user_unit config owner
   bins=$(find_bins "$from")
+  [[ -n $from ]] || check_fresh "$bins"
   unit=$(find_file "$bins" service/scribed.service packaging/linux/scribed.service)
   user_unit=$(find_file "$bins" service/scribe-notify.service packaging/linux/scribe-notify.service)
   config=$(find_file "$bins" scribe.toml config/scribe.toml)
@@ -104,6 +138,7 @@ install_scribed() {
   say "groups and user"
   getent group scribe >/dev/null || run groupadd --system scribe
   getent group scribe-admin >/dev/null || run groupadd --system scribe-admin
+  [[ -z $join ]] || join_group
   owner=root
   if [[ -z $as_root ]]; then
     owner=$ACCOUNT

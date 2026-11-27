@@ -77,6 +77,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- Install scripts: a build found in the repository's `target/` must be of the checked-out commit (an older one stopped
+  the socket fixes from reaching a manual install); `--from` installs what it is given. On Linux and macOS the
+  person who ran `sudo` joins the `scribe` group (`--no-join` skips it).
 - `.gitignore`: `workfiles/notes/` holds local working notes and is not committed.
 - Docs: release signing with the real key recorded as green (Release dry run 45930941832).
 - `scripts/build/windows-msi.ps1` clears a partly kept `target\tools\wix-<version>` before installing WiX.

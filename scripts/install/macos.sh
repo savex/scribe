@@ -2,7 +2,7 @@
 # Installs or removes scribed as a launchd daemon by hand, until the notarized .pkg of plan phase 13
 # does it. Run with sudo.
 #
-#   scripts/install/macos.sh install [--from <dir>] [--dry-run]
+#   scripts/install/macos.sh install [--from <dir>] [--no-join] [--dry-run]
 #   scripts/install/macos.sh uninstall [--purge] [--dry-run]
 #
 # install    scribed and scribe to /usr/local/bin, the config to
@@ -17,10 +17,11 @@
 # --from     the folder with scribed and scribe: an extracted release archive (the default when
 #            this script sits in one), else this repository's release build
 #            (target/<this Mac's arch>-apple-darwin/release, target/universal-apple-darwin/release,
-#            target/release).
+#            target/release), which must be of this checkout (rebuild it otherwise).
+# --no-join  don't add the person who ran sudo to the scribe group (added by default).
 # --dry-run  prints the commands instead of running them.
 #
-# Add people to the groups with `sudo dseditgroup -o edit -a <name> -t user scribe`.
+# Add other people to the groups with `sudo dseditgroup -o edit -a <name> -t user scribe`.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -64,6 +65,36 @@ find_file() {
   fi
 }
 
+# A build left in target/ by an older checkout installs old code: its version must be this
+# checkout's. Only for builds found in this repository; --from installs what it is given.
+check_fresh() {
+  local bins=$1 have want
+  [[ -x $ROOT/scripts/version.sh && $bins == "$ROOT"/target/* ]] || return 0
+  have=$("$bins/scribed" --version | awk '{ print $2 }')
+  # As the person who ran sudo: git refuses a repository that belongs to someone else.
+  if [[ $(id -u) == 0 && -n ${SUDO_USER:-} && $SUDO_USER != root ]]; then
+    want=$(sudo -u "$SUDO_USER" "$ROOT/scripts/version.sh" current 2>/dev/null) || want=""
+  else
+    want=$("$ROOT/scripts/version.sh" current 2>/dev/null) || want=""
+  fi
+  want=${want%.dirty}
+  want=${want%+dirty}
+  if [[ -z $want ]]; then
+    echo "    note: can't tell this checkout's version; installing scribed $have"
+  elif [[ $have != "$want" ]]; then
+    die "$bins holds scribed $have, but this checkout is $want: rebuild (scripts/build/macos.sh build --release) or pass --from $bins to install it anyway"
+  fi
+}
+
+# The person who ran `sudo … install` may read scribed's status without sudo.
+join_group() {
+  local who=${SUDO_USER:-}
+  [[ -n $who && $who != root ]] || return 0
+  if dseditgroup -o checkmember -m "$who" scribe >/dev/null 2>&1; then return 0; fi
+  run dseditgroup -o edit -a "$who" -t user scribe
+  echo "    added $who to the scribe group (new terminal windows have it; else log out and in; --no-join skips this)"
+}
+
 need_root() {
   [[ -n $DRY || $(id -u) == 0 ]] || die "run with sudo (sudo $0 $1 …)"
 }
@@ -89,10 +120,11 @@ make_group() {
 }
 
 install_scribed() {
-  local from=""
+  local from="" join=1
   while [[ $# -gt 0 ]]; do
     case $1 in
       --from) from=${2:?--from needs a folder}; shift 2 ;;
+      --no-join) join=""; shift ;;
       --dry-run) DRY=1; shift ;;
       *) usage 2 ;;
     esac
@@ -100,6 +132,7 @@ install_scribed() {
   need_root install
   local bins daemon agent config
   bins=$(find_bins "$from")
+  [[ -n $from ]] || check_fresh "$bins"
   daemon=$(find_file "$bins" "service/$LABEL.plist" "packaging/macos/$LABEL.plist")
   agent=$(find_file "$bins" service/io.github.savex.scribe-notify.plist packaging/macos/io.github.savex.scribe-notify.plist)
   config=$(find_file "$bins" scribe.toml config/scribe.toml)
@@ -112,6 +145,7 @@ install_scribed() {
   say "groups"
   make_group scribe "scribe API (read)"
   make_group scribe-admin "scribe API (control)"
+  [[ -z $join ]] || join_group
 
   if loaded; then
     say "stopping the running scribed"

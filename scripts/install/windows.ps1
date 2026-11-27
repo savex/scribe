@@ -18,7 +18,8 @@
              PATH entry; keeps scribe.toml, data, logs and the groups unless -Purge.
   -From      the folder with scribed.exe and scribe.exe: an extracted release archive (the default
              when this script sits in one), else this repository's release build
-             (target\x86_64-pc-windows-msvc\release, target\release).
+             (target\x86_64-pc-windows-msvc\release, target\release), which must be of this
+             checkout (rebuild it otherwise).
 
   Add people to the groups with `net localgroup scribe <name> /add` (they sign in again to get it).
   Npcap (optional, for SNI and URLs) is installed separately from npcap.com.
@@ -66,6 +67,22 @@ function Find-Bins {
     throw 'no scribed.exe found: pass -From <dir> (a release archive), or build with scripts\build\windows.ps1 build -Release'
 }
 
+# A build left in target\ by an older checkout installs old code: its version must be this
+# checkout's (same rules as scripts/version.sh current). Only for builds found in this repository.
+function Assert-Fresh([string]$Bins) {
+    if (-not $Root -or -not $Bins.StartsWith((Join-Path $Root 'target'), [StringComparison]::OrdinalIgnoreCase)) { return }
+    $have = ((& (Join-Path $Bins 'scribed.exe') --version) -split ' ', 2)[1]
+    $describe = & git -C $Root describe --tags --match 'v[0-9]*' --abbrev=7 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $describe) {
+        Write-Host "    note: can't tell this checkout's version; installing scribed $have"
+        return
+    }
+    $want = if ($describe -match '^v(.+)-(\d+)-(g[0-9a-f]+)$') { "$($Matches[1])+$($Matches[2]).$($Matches[3])" } else { $describe.TrimStart('v') }
+    if ($have -ne $want) {
+        throw "$Bins holds scribed $have, but this checkout is ${want}: rebuild (scripts\build\windows.ps1 build -Release) or pass -From $Bins to install it anyway"
+    }
+}
+
 # A file from the release archive (<bins>\<name>) or this repository (<repo path>).
 function Find-File([string]$Bins, [string]$Name, [string]$RepoPath) {
     $a = Join-Path $Bins $Name
@@ -91,6 +108,7 @@ function Assert-NoMsi {
 function Install-Scribed {
     Assert-NoMsi
     $bins = Find-Bins
+    if (-not $From) { Assert-Fresh $bins }
     $service = Find-File $bins 'install-service.ps1' 'packaging\windows\install-service.ps1'
     $notify = Find-File $bins 'install-notify.ps1' 'packaging\windows\install-notify.ps1'
     $config = Find-File $bins 'scribe.toml' 'config\scribe.toml'

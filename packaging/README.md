@@ -55,7 +55,10 @@ scripts\install\windows.ps1 uninstall    # -Purge also removes config, data, log
 
 All three create the groups `scribe` (may read the API: `scribe status`, `hosts`, `alerts`) and `scribe-admin`
 (may also control scribed), keep an existing config when run again (upgrade), and install the `scribe notify`
-unit, agent or script for each user to enable. Options: `--from <dir>` / `-From` (where the binaries are),
+unit, agent or script for each user to enable. On Linux and macOS they also add the person who ran `sudo` to
+`scribe` (`--no-join` skips it). A build found in this repository's `target/` must be of the checked-out
+commit, or the script stops and says to rebuild (an older build installs older code). Options: `--from <dir>` /
+`-From` (where the binaries are, installed as they are),
 `--as-root` (Linux), `-LocalSystem` and `-Dir` (Windows), `--dry-run` (Linux, macOS). Sensor tests run all
 three on GitHub's runners; on Ubuntu they also install, upgrade and purge the `.deb` and install and
 remove the `.rpm` in a Fedora container (`scripts/ci/package-check.sh`), and on Windows install, upgrade and
