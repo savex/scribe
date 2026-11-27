@@ -1,6 +1,15 @@
 # Automatic: builds and publishes a GitHub Release for every pushed version tag.
 # Also dispatched by "Bump version" (pushes made with GITHUB_TOKEN don't trigger tag events),
 # and can be re-run by hand for an existing tag.
+#
+# Signing (plan phase 13, open question 13): SHA256SUMS is signed with minisign (secret
+# MINISIGN_SECRET_KEY, an unencrypted key made with `minisign -G -W`; its public key is
+# packaging/minisign.pub, and once that file exists a release without the secret fails), and every
+# file gets a GitHub build-provenance attestation (`gh attestation verify <file> -R <repo>`).
+#
+# Dry run (dispatch with dry_run, any branch): builds, packages and signs what that branch builds
+# (with a key made in the job when the secret is missing), and uploads it as the run's artifact
+# `release-dry-run`; no tag needed, no release, no attestations.
 name: Release
 
 on:
@@ -9,9 +18,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to release, e.g. v1.2.0"
-        required: true
+        description: "Existing tag to release, e.g. v1.2.0 (empty with dry run: the branch dispatched)"
+        required: false
         type: string
+      dry_run:
+        description: "Build, package and sign without publishing"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -39,7 +53,17 @@ jobs:
 
       - name: Check tag, Cargo.toml and branch
         id: version
+        env:
+          DRY_RUN: ${{ inputs.dry_run || false }}
         run: |
+          if [[ $DRY_RUN == true && $TAG != v* ]]; then
+            version=$(scripts/version.sh current)
+            version=${version%.dirty}; version=${version%+dirty}
+            echo "dry run of $TAG: version $version"
+            echo "version=$version" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "::error::tag $TAG not found"; exit 1; }
           version=${TAG#v}
           scripts/version.sh validate "$version"
@@ -137,14 +161,24 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish release
+    name: ${{ inputs.dry_run && 'Sign (dry run)' || 'Sign and publish release' }}
     needs: [verify, build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       VERSION: ${{ needs.verify.outputs.version }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ env.TAG }}
+          sparse-checkout: packaging
+
       - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           pattern: dist-*
@@ -155,7 +189,50 @@ jobs:
         working-directory: dist
         run: sha256sum * > SHA256SUMS && cat SHA256SUMS
 
+      - name: Sign SHA256SUMS (minisign)
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          sudo apt-get update -q >/dev/null && sudo apt-get install -yq --no-install-recommends minisign >/dev/null
+          key=$RUNNER_TEMP/minisign.key
+          pub=packaging/minisign.pub
+          if [[ -n $MINISIGN_SECRET_KEY ]]; then
+            printf '%s\n' "$MINISIGN_SECRET_KEY" > "$key"
+          elif [[ $DRY_RUN == true ]]; then
+            echo "::notice::no MINISIGN_SECRET_KEY: signing with a key made for this dry run"
+            pub=$RUNNER_TEMP/minisign.pub
+            minisign -G -W -f -p "$pub" -s "$key"
+          elif [[ -f $pub ]]; then
+            echo "::error::$pub exists but the MINISIGN_SECRET_KEY secret is not set"; exit 1
+          else
+            echo "::warning::not signed: add packaging/minisign.pub and the MINISIGN_SECRET_KEY secret (packaging/README.md)"
+            exit 0
+          fi
+          chmod 600 "$key"
+          minisign -S -s "$key" -m dist/SHA256SUMS -t "scribe $VERSION SHA256SUMS"
+          rm -f "$key"
+          if [[ -f $pub ]]; then
+            minisign -V -p "$pub" -m dist/SHA256SUMS
+          else
+            echo "::warning::signed, but there is no packaging/minisign.pub to check the signature against"
+          fi
+
+      - name: Build provenance
+        if: env.DRY_RUN != 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      - name: Dry-run files
+        if: env.DRY_RUN == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: release-dry-run
+          path: dist/*
+          if-no-files-found: error
+
       - name: Create or update release
+        if: env.DRY_RUN != 'true'
         run: |
           flags=()
           [[ "${{ needs.verify.outputs.prerelease }}" == "true" ]] && flags+=(--prerelease)

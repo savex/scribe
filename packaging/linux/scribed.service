@@ -1,7 +1,8 @@
-# systemd unit for scribed (plan phase 5). The .deb / .rpm put it in /usr/lib/systemd/system/,
+# systemd unit for scribed (plan phases 5 and 13). The .deb / .rpm put it in /usr/lib/systemd/system/,
 # scripts/install/linux.sh in /etc/systemd/system/; by hand:
 #   systemctl daemon-reload && systemctl enable --now scribed
-# The hardening options come later in plan phase 13.
+# `systemd-analyze security scribed` rates the sandbox below. Change it with a drop-in
+# (`systemctl edit scribed`), e.g. ReadWritePaths= for a data_dir or log file elsewhere.
 [Unit]
 Description=scribe outgoing connection tracker
 Documentation=https://github.com/savex/scribe
@@ -17,6 +18,42 @@ ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=30s
+
+# Sandbox (plan phase 13). scribed starts as root, opens storage and the sensor, then continues as
+# `[daemon] user` (packages: scribe), one thread keeping CAP_BPF, CAP_PERFMON and CAP_NET_RAW to
+# start capture again after hibernation. The capabilities below are all it may ever hold:
+#   BPF, PERFMON, NET_RAW, NET_ADMIN  eBPF programs (fentry / fexit, socket filter), packet sockets
+#   SYS_RESOURCE                      the locked-memory limit (kernels before 5.11)
+#   SETUID, SETGID                    leaving root
+#   CHOWN, FOWNER, DAC_OVERRIDE       data, logs and the socket folder belong to scribe:scribe
+#   DAC_READ_SEARCH, SYS_PTRACE       /proc/<pid>/fd and /exe of every process (attribution while root)
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_NET_RAW CAP_NET_ADMIN CAP_SYS_RESOURCE CAP_SETUID CAP_SETGID CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+NoNewPrivileges=yes
+# The file system is read-only but for these; /proc stays visible (attribution reads every process).
+ProtectSystem=strict
+ReadWritePaths=-/var/lib/scribe -/var/log/scribe -/run/scribe
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+UMask=0027
+# Unix sockets (API, journal), IP (webhooks, threat lists, Postgres), netlink, packet sockets.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET
+SystemCallArchitectures=native
+# bpf() and perf_event_open() stay allowed; these groups scribed never needs.
+SystemCallFilter=~@clock @cpu-emulation @module @mount @obsolete @raw-io @reboot @swap
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target

@@ -97,3 +97,40 @@ read scribed's socket (the `scribe` group).
 | Windows (logon) | [windows/install-notify.ps1](windows/install-notify.ps1) | run next to `scribe.exe`, no Administrator needed |
 
 `scribe notify --print` prints the notifications instead, to check a setup.
+
+## Checking a download
+
+Each release has `SHA256SUMS`, signed with minisign (`SHA256SUMS.minisig`, public key
+[`minisign.pub`](minisign.pub)), and a GitHub build-provenance attestation for every file:
+
+```sh
+minisign -Vm SHA256SUMS -p minisign.pub              # the signature
+sha256sum -c SHA256SUMS --ignore-missing             # the files you downloaded (shasum -a 256 -c on macOS)
+gh attestation verify scribe_<version>_amd64.deb -R savex/scribe   # built by this repository's Release workflow
+```
+
+**Setting up the key (once, by the repository owner):**
+
+```sh
+minisign -G -W -p packaging/minisign.pub -s ~/scribe-minisign.key   # -W: no password (CI has no prompt)
+gh secret set MINISIGN_SECRET_KEY < ~/scribe-minisign.key
+git add packaging/minisign.pub
+```
+
+Keep `scribe-minisign.key` offline (or delete it: the secret is the copy CI uses). Until
+`minisign.pub` is in the repository, releases go out unsigned with a warning; once it is there, a release
+without the secret fails. A dry run (Release, dispatched with *dry run* on a branch) builds, packages and
+signs that branch without publishing (with a throwaway key if the secret is missing) and leaves the files
+as the run's artifact `release-dry-run`.
+
+## The systemd sandbox
+
+`linux/scribed.service` runs scribed with a capability bounding set (BPF, PERFMON, NET_RAW, NET_ADMIN,
+SYS_RESOURCE, SETUID, SETGID, CHOWN, FOWNER, DAC_OVERRIDE, DAC_READ_SEARCH, SYS_PTRACE), a read-only file
+system except `/var/lib/scribe`, `/var/log/scribe` and `/run/scribe`, no new privileges, private `/tmp` and
+devices, kernel, cgroup and clock protection and a system-call filter; `systemd-analyze security scribed`
+rates it. A `data_dir` or log file elsewhere needs a drop-in:
+
+```sh
+sudo systemctl edit scribed      # [Service] ReadWritePaths=/srv/scribe
+```

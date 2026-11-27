@@ -11,6 +11,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- Release signing: `SHA256SUMS` signed with minisign (`SHA256SUMS.minisig`, secret `MINISIGN_SECRET_KEY`, public key
+  `packaging/minisign.pub`) and a build-provenance attestation for every file; Release dispatched with `dry_run` builds,
+  packages and signs a branch without publishing. How to check a download: `packaging/README.md`.
 - Windows MSI built with WiX 6 (`packaging/windows/scribe.wxs`, `scripts/build/windows-msi.ps1`), attached to releases
   and made by `scripts\build\windows.ps1 release`: installs to `C:\Program Files\scribe` on the PATH, sets up the
   service with `install-service.ps1`, upgrades in place keeping `scribe.toml`, keeps config, data and logs on
@@ -73,6 +76,9 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- The systemd unit is sandboxed: capability bounding set, read-only file system but for data, logs and the socket
+  folder, no new privileges, private tmp and devices, kernel and cgroup protection, address-family and system-call
+  filters. The package check asserts eBPF capture and process attribution under it.
 - Docs: the Windows MSI recorded as green (Sensor tests run 45924956173).
 - `install-service.ps1` creates the `scribe` and `scribe-admin` groups when they are missing (before, only
   `scripts\install\windows.ps1` did); that script refuses to run while the MSI is installed.

@@ -2,7 +2,8 @@
 # Sensors workflow, Ubuntu (sudo, systemd, docker): the .deb and .rpm from
 # scripts/build/linux-packages.sh.
 #   .deb on this runner: apt installs it with its dependencies, scribed runs as `scribe` with the
-#        config root:scribe 0640, a member of the scribe group reads its status, a reinstall keeps
+#        config root:scribe 0640 and captures with eBPF inside the hardened unit (a curl to
+#        example.com is recorded with its process), a member of the scribe group reads its status, a reinstall keeps
 #        the changed config and restarts scribed, `apt-get purge` leaves nothing behind.
 #   .rpm in a Fedora container (no systemd there): dnf installs it with its dependencies, the user,
 #        groups, folders and config modes are in place, scribed accepts the config, `rpm -e`
@@ -62,6 +63,20 @@ sudo usermod -aG scribe "$me"
 status=$(sudo -u "$me" scribe status)
 echo "$status"
 grep -q '^sensor ' <<<"$status" || fail "a member of the scribe group cannot read scribed's status"
+grep -q '^sensor *linux-ebpf' <<<"$status" || fail "scribed does not capture with eBPF inside the unit's sandbox"
+echo "--- systemd-analyze security scribed"
+systemd-analyze security scribed --no-pager | tail -1
+
+# A connection by another process, with its path: eBPF and attribution work inside the sandbox.
+curl --silent --max-time 10 --output /dev/null http://example.com/ || fail "curl could not reach example.com"
+for i in $(seq 20); do
+  hosts=$(sudo -u "$me" scribe hosts 2>&1 || true)
+  grep -q 'example\.com' <<<"$hosts" && grep -q 'curl' <<<"$hosts" && break
+  sleep 1
+done
+echo "$hosts"
+grep -q 'example\.com' <<<"$hosts" || fail "the connection to example.com was not recorded"
+grep -q 'curl' <<<"$hosts" || fail "the connection to example.com has no process"
 
 echo "::group::.deb reinstall (upgrade path)"
 echo "# kept across upgrades" | sudo tee -a /etc/scribe/scribe.toml >/dev/null
