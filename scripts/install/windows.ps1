@@ -83,7 +83,8 @@ function Test-OnPath { (Get-MachinePath) -split ';' | Where-Object { $_.TrimEnd(
 
 # The MSI puts the same files in place and removes them itself.
 function Assert-NoMsi {
-    $by = (Get-ItemProperty -Path 'HKLM:\Software\scribe' -Name InstalledBy -ErrorAction SilentlyContinue).InstalledBy
+    $by = $null
+    try { $by = Get-ItemPropertyValue -Path 'HKLM:\Software\scribe' -Name InstalledBy -ErrorAction Stop } catch { }
     if ($by -eq 'msi') { throw 'scribe is installed from its MSI: upgrade it with a newer MSI, or remove it in Settings > Apps (msiexec /x)' }
 }
 
