@@ -66,6 +66,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 
 ### Changed
 - Docs: the manual install scripts recorded as green on Linux, macOS and Windows (Sensor tests run 45751039049).
+- Docs: phase 8 (8A) and milestone M2 marked done; the Npcap mode of the ETW sensor stays unchecked (deferred: no
+  Npcap on hosted runners). Remaining 14.5–21 days (17.5–25 with buffer).
 - The join of native sensors' connection reports with packet observations moved from `scribe-sensor-linux`
   to `scribe_process::join` (`Connection`, `Owners`, `Joiner` with the hold per sensor), for the Windows
   sensor too.
