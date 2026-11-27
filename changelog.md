@@ -77,6 +77,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- Docs: release signing with the real key recorded as green (Release dry run 45930941832).
 - `scripts/build/windows-msi.ps1` clears a partly kept `target\tools\wix-<version>` before installing WiX.
 - Docs: the hardened systemd unit and the Release dry run with signing recorded as green (Sensor tests run
   45927716545, Release run 45927719670).
