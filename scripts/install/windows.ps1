@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-  Installs or removes scribed as a Windows service by hand, until the MSI of plan phase 13 does it.
-  Run from an Administrator PowerShell.
+  Installs or removes scribed as a Windows service by hand, without the MSI
+  (scripts\build\windows-msi.ps1); refused while the MSI is installed. Run from an Administrator
+  PowerShell.
 
 .DESCRIPTION
   scripts\install\windows.ps1 install [-From <dir>] [-Dir <dir>] [-LocalSystem]
@@ -49,12 +50,6 @@ $computer = [ADSI]"WinNT://$env:COMPUTERNAME,computer"
 function Test-Group([string]$Name) {
     try { [ADSI]::Exists("WinNT://$env:COMPUTERNAME/$Name,group") } catch { $false }
 }
-function New-Group([string]$Name, [string]$What) {
-    if (Test-Group $Name) { return }
-    $g = $computer.Create('Group', $Name)
-    $g.Put('Description', $What)
-    $g.SetInfo()
-}
 
 function Find-Bins {
     if ($From) {
@@ -86,18 +81,20 @@ function Get-MachinePath { [Environment]::GetEnvironmentVariable('Path', 'Machin
 function Set-MachinePath([string]$Value) { [Environment]::SetEnvironmentVariable('Path', $Value, 'Machine') }
 function Test-OnPath { (Get-MachinePath) -split ';' | Where-Object { $_.TrimEnd('\') -ieq $Dir.TrimEnd('\') } }
 
+# The MSI puts the same files in place and removes them itself.
+function Assert-NoMsi {
+    $by = (Get-ItemProperty -Path 'HKLM:\Software\scribe' -Name InstalledBy -ErrorAction SilentlyContinue).InstalledBy
+    if ($by -eq 'msi') { throw 'scribe is installed from its MSI: upgrade it with a newer MSI, or remove it in Settings > Apps (msiexec /x)' }
+}
+
 function Install-Scribed {
+    Assert-NoMsi
     $bins = Find-Bins
     $service = Find-File $bins 'install-service.ps1' 'packaging\windows\install-service.ps1'
     $notify = Find-File $bins 'install-notify.ps1' 'packaging\windows\install-notify.ps1'
     $config = Find-File $bins 'scribe.toml' 'config\scribe.toml'
     $version = & (Join-Path $bins 'scribed.exe') --version
     Say "installing $version from $bins to $Dir"
-
-    # The groups must exist before scribed creates its pipe (they are read into its access list).
-    Say 'groups'
-    New-Group 'scribe' 'scribe API (read)'
-    New-Group 'scribe-admin' 'scribe API (control)'
 
     $installed = Join-Path $Dir 'install-service.ps1'
     if ((Get-Service -Name 'scribed' -ErrorAction SilentlyContinue) -and (Test-Path $installed)) {
@@ -134,6 +131,7 @@ function Install-Scribed {
 }
 
 function Uninstall-Scribed {
+    Assert-NoMsi
     $installed = Join-Path $Dir 'install-service.ps1'
     Say 'removing the service'
     if (Test-Path $installed) {

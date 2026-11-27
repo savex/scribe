@@ -17,9 +17,23 @@ upgrades as a changed config file), and enables and starts scribed on a first in
 restarts it if it runs; without systemd, as in containers, it only puts the files in place). The install
 scripts below refuse to run while the package is installed.
 
+**Windows MSI:** each release has `scribe-<version>-x86_64-pc-windows-msvc.msi`, built with WiX 6 from
+[`windows/scribe.wxs`](windows/scribe.wxs) by `scripts/build/windows-msi.ps1` (also part of
+`scripts\build\windows.ps1 release` when the .NET SDK is installed). It installs to
+`C:\Program Files\scribe`, puts the folder on the system PATH and runs `install-service.ps1` there: the
+groups, NT SERVICE\scribed with its ETW and folder grants, started. A newer MSI (or another build of the
+same version) upgrades in place; uninstalling in Settings > Apps removes the service, the programs and
+the PATH entry and keeps `scribe.toml`, `data\` and `logs\` (delete the folder to remove them).
+
+```powershell
+msiexec /i scribe-<version>-x86_64-pc-windows-msvc.msi /qn    # or double-click it
+msiexec /x scribe-<version>-x86_64-pc-windows-msvc.msi /qn    # or Settings > Apps
+```
+
 **The quick way without packages:** the install scripts put everything in place, from a release archive
 (`install.sh` / `install.ps1` in it) or from this repository's release build, and take it out again. On
-macOS and Windows they stand in for the `.pkg` and the MSI of plan phase 13.
+macOS they stand in for the `.pkg` of plan phase 13; on Windows `install.ps1` refuses to run while the MSI is
+installed.
 
 ```sh
 sudo scripts/install/linux.sh install      # systemd; scribed continues as the user `scribe`
@@ -44,7 +58,8 @@ All three create the groups `scribe` (may read the API: `scribe status`, `hosts`
 unit, agent or script for each user to enable. Options: `--from <dir>` / `-From` (where the binaries are),
 `--as-root` (Linux), `-LocalSystem` and `-Dir` (Windows), `--dry-run` (Linux, macOS). Sensor tests run all
 three on GitHub's runners; on Ubuntu they also install, upgrade and purge the `.deb` and install and
-remove the `.rpm` in a Fedora container (`scripts/ci/package-check.sh`).
+remove the `.rpm` in a Fedora container (`scripts/ci/package-check.sh`), and on Windows install, upgrade and
+uninstall the MSI (`scripts/ci/msi-check.ps1`).
 
 **By hand**, with the service files:
 

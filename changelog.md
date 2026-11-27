@@ -11,6 +11,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- Windows MSI built with WiX 6 (`packaging/windows/scribe.wxs`, `scripts/build/windows-msi.ps1`), attached to releases
+  and made by `scripts\build\windows.ps1 release`: installs to `C:\Program Files\scribe` on the PATH, sets up the
+  service with `install-service.ps1`, upgrades in place keeping `scribe.toml`, keeps config, data and logs on
+  uninstall. Sensor tests check it (`scripts/ci/msi-check.ps1`).
 - Linux packages: `.deb` and `.rpm` built with nfpm (`packaging/linux/nfpm.yaml`, `scripts/build/linux-packages.sh`,
   nfpm 2.49.0 pinned by checksum), attached to releases and made by `scripts/build/linux.sh release`. They create the
   `scribe` user and groups, ship the config with `user = "scribe"`, enable and start scribed; a deb purge removes
@@ -69,6 +73,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- `install-service.ps1` creates the `scribe` and `scribe-admin` groups when they are missing (before, only
+  `scripts\install\windows.ps1` did); that script refuses to run while the MSI is installed.
 - Docs: the Linux packages recorded as green (Sensor tests run 45920143732).
 - `scripts/install/linux.sh` refuses to run while the scribe package is installed.
 - Release signing decided (open question 13): minisign-signed `SHA256SUMS` plus build-provenance attestations.

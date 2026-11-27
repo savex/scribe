@@ -8,7 +8,8 @@
   scripts\build\windows.ps1 test
   scripts\build\windows.ps1 check            fmt, clippy, tests, doc examples, fixtures, MSRV
                                              (+ test tags and the version script when Git Bash is installed)
-  scripts\build\windows.ps1 release          dist\ zip for x86_64-pc-windows-msvc, smoke-tested
+  scripts\build\windows.ps1 release          dist\ zip for x86_64-pc-windows-msvc, smoke-tested, and
+                                             the MSI (WiX, when the .NET SDK is installed)
   scripts\build\windows.ps1 service-test     install, start, stop and remove the service (Administrator)
   scripts\build\windows.ps1 clean
 
@@ -163,6 +164,17 @@ function Invoke-Smoke([string]$Dir, [string]$Version) {
 }
 
 # dist\scribe-<version>-x86_64-pc-windows-msvc.zip, laid out as release.yml lays it out, added to dist\SHA256SUMS.
+# SHA256SUMS: "<hash>  <file>" lines with LF endings, sorted by file name, as sha256sum writes them.
+function Add-Sum([string]$Sums, [string]$File) {
+    $base = Split-Path -Leaf $File
+    $lines = @()
+    if (Test-Path $Sums) { $lines = @(Get-Content $Sums | Where-Object { $_ -and $_ -notmatch "  $([regex]::Escape($base))$" }) }
+    $hash = (Get-FileHash -Algorithm SHA256 $File).Hash.ToLowerInvariant()
+    $lines += "$hash  $base"
+    $sorted = $lines | Sort-Object { ($_ -split '  ', 2)[1] }
+    [IO.File]::WriteAllText($Sums, (($sorted -join "`n") + "`n"))
+}
+
 function Invoke-Release {
     $version = Get-BuildVersion
     $env:SCRIBE_VERSION = $version
@@ -184,15 +196,18 @@ function Invoke-Release {
     Compress-Archive -Path $out -DestinationPath $zip
     Remove-Item -Recurse -Force $out
 
-    # SHA256SUMS: "<hash>  <file>" lines with LF endings, sorted by file name, as sha256sum writes them.
     $sums = Join-Path $dist 'SHA256SUMS'
-    $lines = @()
-    if (Test-Path $sums) { $lines = @(Get-Content $sums | Where-Object { $_ -and $_ -notmatch "  $([regex]::Escape("$name.zip"))$" }) }
-    $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
-    $lines += "$hash  $name.zip"
-    $sorted = $lines | Sort-Object { ($_ -split '  ', 2)[1] }
-    [IO.File]::WriteAllText($sums, (($sorted -join "`n") + "`n"))
+    Add-Sum $sums $zip
     Say "packaged dist\$name.zip"
+
+    # The MSI too, when the .NET SDK is there for WiX.
+    if (Get-Command dotnet -ErrorAction SilentlyContinue) {
+        $msi = & (Join-Path $PSScriptRoot 'windows-msi.ps1') -Bins $bins -Version $version
+        Add-Sum $sums $msi
+        Say "packaged dist\$(Split-Path -Leaf $msi)"
+    } else {
+        Write-Warning 'no MSI: install the .NET SDK (winget install Microsoft.DotNet.SDK.8) for WiX'
+    }
 }
 
 # Install the release build as a service from a throwaway folder, start it, stop it, remove it.

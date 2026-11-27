@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSI for scribe (plan phase 13), built with WiX 6 by scripts/build/windows-msi.ps1:
+    wix build scribe.wxs -arch x64 -ext WixToolset.Util.wixext -d Version=0.3.0 -d Bins=<dir> -d Root=<repo>
+
+  The same layout as scripts\install\windows.ps1: C:\Program Files\scribe holds the programs, the
+  service and notify scripts, scribe.toml, and data\ and logs\ below it; the folder is on the system
+  PATH. The service itself is set up by install-service.ps1 (NT SERVICE\scribed, its groups, ETW and
+  folder grants), run as a deferred custom action, and removed by it before the files go.
+
+  Upgrades: a major upgrade with a new ProductCode for every build (same versions too), the old
+  product removed first. scribe.toml is never overwritten and stays on uninstall, with data\ and
+  logs\ (the MSI doesn't own them); delete the folder to remove them.
+
+  UpgradeCode never changes: every scribe MSI must upgrade the ones before it.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+  <Package Name="scribe"
+           Manufacturer="scribe contributors"
+           Version="$(var.Version)"
+           UpgradeCode="836ab687-5cb7-4cf9-8a25-e12a74e887ea"
+           Scope="perMachine"
+           Compressed="yes">
+    <SummaryInformation Description="scribe: tracker of outgoing connections" />
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  Schedule="afterInstallInitialize"
+                  DowngradeErrorMessage="A newer scribe is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/savex/scribe" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="scribe" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="Programs" Directory="INSTALLFOLDER">
+      <Component>
+        <File Source="$(var.Bins)\scribed.exe" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.Bins)\scribe.exe" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.Root)\packaging\windows\install-service.ps1" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.Root)\packaging\windows\install-notify.ps1" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.Root)\readme.md" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.Root)\LICENSE-MIT" KeyPath="yes" />
+      </Component>
+      <Component>
+        <File Source="$(var.Root)\LICENSE-APACHE" KeyPath="yes" />
+      </Component>
+      <!-- Edited in place by the admin: never replaced, kept on uninstall. -->
+      <Component NeverOverwrite="yes" Permanent="yes">
+        <File Id="ScribeToml" Source="$(var.Root)\config\scribe.toml" KeyPath="yes" />
+      </Component>
+      <!-- The folder on the system PATH; the registry value marks an MSI install
+           (scripts\install\windows.ps1 refuses to run over it). -->
+      <Component Id="SystemPath">
+        <Environment Id="PATH" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no" />
+        <RegistryValue Root="HKLM" Key="Software\scribe" Name="InstalledBy" Value="msi" Type="string" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="scribe" Level="1">
+      <ComponentGroupRef Id="Programs" />
+    </Feature>
+
+    <!-- install-service.ps1 through WixQuietExec: elevated (deferred, not impersonated), output in
+         the MSI log. Its command line is the custom action data, set just before it. -->
+    <SetProperty Id="InstallService" Sequence="execute" Before="InstallService"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]install-service.ps1&quot;" />
+    <SetProperty Id="InstallServiceRollback" Sequence="execute" Before="InstallServiceRollback"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]install-service.ps1&quot; -Remove" />
+    <SetProperty Id="RemoveService" Sequence="execute" Before="RemoveService"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]install-service.ps1&quot; -Remove" />
+
+    <CustomAction Id="InstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec"
+                  Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="InstallServiceRollback" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec"
+                  Execute="rollback" Impersonate="no" Return="ignore" />
+    <CustomAction Id="RemoveService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec"
+                  Execute="deferred" Impersonate="no" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RemoveService" Before="RemoveFiles" Condition="REMOVE~=&quot;ALL&quot;" />
+      <Custom Action="InstallServiceRollback" Before="InstallService" Condition="NOT REMOVE~=&quot;ALL&quot;" />
+      <Custom Action="InstallService" Before="InstallFinalize" Condition="NOT REMOVE~=&quot;ALL&quot;" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

@@ -1,5 +1,7 @@
 # Registers scribed as a Windows service (plan phases 5 and 8). Run as Administrator from the folder
-# that holds scribed.exe and scribe.toml. The MSI does this itself from phase 13.
+# that holds scribed.exe and scribe.toml. The MSI (packaging\windows\scribe.wxs) and
+# scripts\install\windows.ps1 run it. It also creates the local groups `scribe` (may read the API)
+# and `scribe-admin` (may also control scribed) when they are missing; nothing removes them.
 #   .\install-service.ps1                 install and start, as NT SERVICE\scribed
 #   .\install-service.ps1 -LocalSystem    install and start, as LocalSystem
 #   .\install-service.ps1 -Remove         stop and remove
@@ -84,6 +86,17 @@ if ($Remove) {
 }
 $exe = Join-Path $PSScriptRoot 'scribed.exe'
 if (-not (Test-Path $exe)) { throw "scribed.exe not found next to this script" }
+
+# The groups must exist before scribed creates its pipe (they are read into its access list).
+$computer = [ADSI]"WinNT://$env:COMPUTERNAME,computer"
+foreach ($g in @(@('scribe', 'scribe API (read)'), @('scribe-admin', 'scribe API (control)'))) {
+    $exists = try { [ADSI]::Exists("WinNT://$env:COMPUTERNAME/$($g[0]),group") } catch { $false }
+    if (-not $exists) {
+        $group = $computer.Create('Group', $g[0])
+        $group.Put('Description', $g[1])
+        $group.SetInfo()
+    }
+}
 New-Service -Name $name -DisplayName 'scribe outgoing connection tracker' `
     -BinaryPathName "`"$exe`" --service" -StartupType Automatic | Out-Null
 sc.exe failure $name reset= 86400 actions= restart/5000/restart/5000/""/0 | Out-Null

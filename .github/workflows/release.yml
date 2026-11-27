@@ -121,6 +121,11 @@ jobs:
           if [[ -n "$exe" ]]; then 7z a -tzip "$name.zip" "$name" >/dev/null; else tar czf "$name.tar.gz" "$name"; fi
           rm -rf "$name"
 
+      - name: Windows MSI
+        if: contains(matrix.target, 'windows')
+        shell: pwsh
+        run: scripts/build/windows-msi.ps1 -Bins "target/${{ matrix.target }}/release" -Version $env:VERSION
+
       - name: Linux packages (.deb, .rpm)
         if: contains(matrix.target, 'linux')
         run: scripts/build/linux-packages.sh "target/${{ matrix.target }}/release" "${{ matrix.target }}" "$VERSION"

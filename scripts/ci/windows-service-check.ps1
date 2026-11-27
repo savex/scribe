@@ -114,4 +114,6 @@ try {
     & (Join-Path $dir 'install-service.ps1') -Remove
     try { $computer.Delete('User', $ciUser) } catch { }
     try { $computer.Delete('Group', 'scribe') } catch { }
+    # install-service.ps1 creates it when missing.
+    try { $computer.Delete('Group', 'scribe-admin') } catch { }
 }
