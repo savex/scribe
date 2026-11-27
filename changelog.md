@@ -76,6 +76,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- Docs: the hardened systemd unit and the Release dry run with signing recorded as green (Sensor tests run
+  45927716545, Release run 45927719670).
 - The systemd unit is sandboxed: capability bounding set, read-only file system but for data, logs and the socket
   folder, no new privileges, private tmp and devices, kernel and cgroup protection, address-family and system-call
   filters. The package check asserts eBPF capture and process attribution under it.
