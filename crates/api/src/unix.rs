@@ -144,6 +144,16 @@ mod server {
         (rc == 0 && !result.is_null()).then_some(grp.gr_gid)
     }
 
+    /// Hands `path` to group `gid`. Only root (or a member of the group) may: scribed run by
+    /// someone else (tests, a user's own instance) keeps their group, which the socket's owner
+    /// can always use.
+    fn give_group(path: &Path, gid: u32) -> Result<(), TransportError> {
+        match std::os::unix::fs::chown(path, None, Some(gid)) {
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Ok(()),
+            other => other.map_err(|e| io_error(path, e)),
+        }
+    }
+
     /// Listens at `path`. A missing directory is created `0750` with the group
     /// [`READ_GROUP`](crate::transport::READ_GROUP) when it exists (`/run` and `/var/run` are
     /// emptied at boot, so the installer can't set it once); a stale socket left by a crash is
@@ -156,7 +166,7 @@ mod server {
                 std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o750))
                     .map_err(|e| io_error(dir, e))?;
                 if let Some(gid) = group_id(crate::transport::READ_GROUP) {
-                    std::os::unix::fs::chown(dir, None, Some(gid)).map_err(|e| io_error(dir, e))?;
+                    give_group(dir, gid)?;
                 }
             }
         }
@@ -184,7 +194,7 @@ mod server {
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o660))
             .map_err(|e| io_error(path, e))?;
         if let Some(gid) = group_id(crate::transport::READ_GROUP) {
-            std::os::unix::fs::chown(path, None, Some(gid)).map_err(|e| io_error(path, e))?;
+            give_group(path, gid)?;
         }
         Ok(listener)
     }

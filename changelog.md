@@ -151,6 +151,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   `NT SERVICE\scribed` (service SID), with the ETW session through Performance Log Users (specs NFR-8).
 
 ### Fixed
+- scribed run by a user who is not in the `scribe` group (tests, a user's own instance) could not open its socket
+  once that group existed: handing the socket and its folder to the group is skipped when the system refuses it.
 - The Unix API socket is `0660` with the `scribe` group: members of the group could not connect before
   (the umask left it without group write).
 - scribed restarted as root (Linux, `[daemon] user`) no longer refuses `audit.key` and other `file:` secrets
