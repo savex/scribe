@@ -73,6 +73,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- Docs: the Windows MSI recorded as green (Sensor tests run 45924956173).
 - `install-service.ps1` creates the `scribe` and `scribe-admin` groups when they are missing (before, only
   `scripts\install\windows.ps1` did); that script refuses to run while the MSI is installed.
 - Docs: the Linux packages recorded as green (Sensor tests run 45920143732).
