@@ -186,8 +186,11 @@ Every setting is explained in [docs/configuration.md](docs/configuration.md), wi
 ## Documentation
 
 The [docs](docs/README.md) folder has guides in plain language:
-[how scribe works](docs/how-it-works.md), [status and health](docs/status-and-health.md),
-[configuration](docs/configuration.md), the [local API](docs/api.md) and the [tech stack](docs/tech-stack.md).
+[how scribe works](docs/how-it-works.md), [install](docs/install.md),
+[status and health](docs/status-and-health.md), [troubleshooting](docs/troubleshooting.md),
+[configuration](docs/configuration.md), [privacy](docs/privacy.md), [security](docs/security.md),
+[many computers with Postgres](docs/fleet-postgres.md), the [local API](docs/api.md),
+[writing a module](docs/writing-a-module.md) and the [tech stack](docs/tech-stack.md).
 
 ## Project status
 

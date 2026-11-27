@@ -11,6 +11,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- More docs in `docs/`: install and uninstall, troubleshooting, privacy and data, security model,
+  fleet history with Postgres, writing a module.
 - User docs in `docs/`: how scribe works (with a diagram), status and health warnings, configuration,
   the local API and the tech stack; linked from the readme.
 - The minisign public key `packaging/minisign.pub`: releases are signed from now on.
