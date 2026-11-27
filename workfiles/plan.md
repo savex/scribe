@@ -155,7 +155,7 @@ plug in as a native sensor ahead of the pcap one, as on Linux and Windows. 9C st
 
 | Choice | Options | Recommendation |
 |---|---|---|
-| Linux packages | `cargo-deb` + `cargo-generate-rpm` (read `Cargo.toml`, Rust tools); or `nfpm` (one YAML for `.deb`, `.rpm`, `.apk`) | **Decided 2026-11-26: `nfpm`**, done: `packaging/linux/nfpm.yaml`, `scripts/build/linux-packages.sh` (nfpm 2.49.0 pinned by checksum), in Release and `linux.sh release`, checked by `scripts/ci/package-check.sh` |
+| Linux packages | `cargo-deb` + `cargo-generate-rpm` (read `Cargo.toml`, Rust tools); or `nfpm` (one YAML for `.deb`, `.rpm`, `.apk`) | **Decided 2026-11-26: `nfpm`**, done: `packaging/linux/nfpm.yaml`, `scripts/build/linux-packages.sh` (nfpm 2.49.0 pinned by checksum), in Release and `linux.sh release`, checked by `scripts/ci/package-check.sh`, green in Sensor tests run `45920143732` |
 | Windows installer | WiX v5 through `cargo-wix`; or MSIX | WiX: MSIX can't install a classic service with files next to the app (specs 9.1) |
 | macOS package | `pkgbuild` / `productbuild` + `notarytool` | The `.pkg` ships the daemon, CLI and the `scribe notify` agent; the extension joins only if 9A is picked later |
 | Release signing (open question 13) | cosign keyless (GitHub OIDC, Rekor log); or minisign (a key you keep; offline checks; scribe already verifies minisign for threat lists) | **Decided 2026-11-26:** minisign-signed `SHA256SUMS` plus GitHub build-provenance attestations; the key is made and stored as a repository secret by the owner (last step of phase 13) |

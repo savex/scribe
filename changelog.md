@@ -69,6 +69,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- Docs: the Linux packages recorded as green (Sensor tests run 45920143732).
 - `scripts/install/linux.sh` refuses to run while the scribe package is installed.
 - Release signing decided (open question 13): minisign-signed `SHA256SUMS` plus build-provenance attestations.
 - Docs: the manual install scripts recorded as green on Linux, macOS and Windows (Sensor tests run 45751039049).
