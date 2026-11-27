@@ -11,6 +11,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- The minisign public key `packaging/minisign.pub`: releases are signed from now on.
 - Release signing: `SHA256SUMS` signed with minisign (`SHA256SUMS.minisig`, secret `MINISIGN_SECRET_KEY`, public key
   `packaging/minisign.pub`) and a build-provenance attestation for every file; Release dispatched with `dry_run` builds,
   packages and signs a branch without publishing. How to check a download: `packaging/README.md`.
@@ -76,6 +77,7 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- `scripts/build/windows-msi.ps1` clears a partly kept `target\tools\wix-<version>` before installing WiX.
 - Docs: the hardened systemd unit and the Release dry run with signing recorded as green (Sensor tests run
   45927716545, Release run 45927719670).
 - The systemd unit is sandboxed: capability bounding set, read-only file system but for data, logs and the socket

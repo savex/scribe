@@ -50,6 +50,9 @@ $tools = Join-Path $Root "target\tools\wix-$wixVersion"
 $wix = Join-Path $tools 'wix.exe'
 if (-not (Test-Path $wix)) {
     Write-Host "==> installing WiX $wixVersion" -ForegroundColor Cyan
+    # A folder without wix.exe is a leftover (an interrupted install, a build cache that kept part of
+    # target\): dotnet tool install refuses it.
+    if (Test-Path $tools) { Remove-Item -Recurse -Force $tools }
     & dotnet tool install wix --version $wixVersion --tool-path $tools | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "dotnet tool install wix $wixVersion failed ($LASTEXITCODE)" }
 }
