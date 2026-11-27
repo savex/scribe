@@ -121,6 +121,10 @@ jobs:
           if [[ -n "$exe" ]]; then 7z a -tzip "$name.zip" "$name" >/dev/null; else tar czf "$name.tar.gz" "$name"; fi
           rm -rf "$name"
 
+      - name: Linux packages (.deb, .rpm)
+        if: contains(matrix.target, 'linux')
+        run: scripts/build/linux-packages.sh "target/${{ matrix.target }}/release" "${{ matrix.target }}" "$VERSION"
+
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: dist-${{ matrix.target }}

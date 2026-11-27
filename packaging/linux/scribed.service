@@ -1,6 +1,7 @@
-# systemd unit for scribed (plan phase 5). Install to /etc/systemd/system/, then
+# systemd unit for scribed (plan phase 5). The .deb / .rpm put it in /usr/lib/systemd/system/,
+# scripts/install/linux.sh in /etc/systemd/system/; by hand:
 #   systemctl daemon-reload && systemctl enable --now scribed
-# The hardened unit, the scribe user and groups and file modes come with the packages (plan phase 13).
+# The hardening options come later in plan phase 13.
 [Unit]
 Description=scribe outgoing connection tracker
 Documentation=https://github.com/savex/scribe

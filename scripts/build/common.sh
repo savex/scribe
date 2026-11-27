@@ -73,14 +73,19 @@ package() {
   )
   rm -rf "$out"
   archive=$(ls "$dist/$name".* | head -1)
-  local sums="$dist/SHA256SUMS" base
-  base=$(basename "$archive")
+  add_sum "$archive"
+  say "packaged dist/$(basename "$archive")"
+}
+
+# add_sum <file in dist/>: puts its SHA-256 into dist/SHA256SUMS, replacing an older line for it.
+add_sum() {
+  local file=$1 sums="$ROOT/dist/SHA256SUMS" base
+  base=$(basename "$file")
   touch "$sums"
   grep -v "  $base\$" "$sums" > "$sums.tmp" || true
-  echo "$(sha256_of "$archive")  $base" >> "$sums.tmp"
+  echo "$(sha256_of "$file")  $base" >> "$sums.tmp"
   sort -k2 "$sums.tmp" > "$sums"
   rm -f "$sums.tmp"
-  say "packaged dist/$base"
 }
 
 # smoke_test <unpacked dir> <exe suffix> <version>: the checks release.yml runs.

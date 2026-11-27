@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Installs or removes scribed as a systemd service by hand, until the .deb / .rpm packages of plan
-# phase 13 do it. Run as root.
+# Installs or removes scribed as a systemd service by hand, for systems without the .deb / .rpm
+# packages (scripts/build/linux-packages.sh); refused while the package is installed. Run as root.
 #
 #   scripts/install/linux.sh install [--from <dir>] [--as-root] [--dry-run]
 #   scripts/install/linux.sh uninstall [--purge] [--dry-run]
@@ -70,6 +70,13 @@ need_root() {
   [[ -n $DRY || $(id -u) == 0 ]] || die "run as root (sudo $0 $*)"
 }
 
+# The .deb / .rpm puts the same files elsewhere (/usr/lib/systemd) and removes them itself.
+no_package() {
+  if dpkg-query -W -f='${Status}' scribe 2>/dev/null | grep -q 'ok installed' || rpm -q scribe >/dev/null 2>&1; then
+    die "the scribe package is installed: upgrade or remove it with apt / dnf (or remove it first)"
+  fi
+}
+
 need_systemd() {
   [[ -n $DRY || -d /run/systemd/system ]] || die "systemd is not running here; start scribed another way (see packaging/README.md)"
 }
@@ -86,6 +93,7 @@ install_scribed() {
   done
   need_root install
   need_systemd
+  [[ -n $DRY ]] || no_package
   local bins unit user_unit config owner
   bins=$(find_bins "$from")
   unit=$(find_file "$bins" service/scribed.service packaging/linux/scribed.service)
@@ -172,6 +180,7 @@ uninstall_scribed() {
     esac
   done
   need_root uninstall
+  [[ -n $DRY ]] || no_package
   say "stopping and removing the service"
   if [[ -n $DRY ]] || systemctl list-unit-files scribed.service >/dev/null 2>&1; then
     run systemctl disable --now scribed || true

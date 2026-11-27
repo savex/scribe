@@ -853,7 +853,7 @@ everything that leaves the host uses TLS plus authentication. All crypto uses `r
 
 **Releases and supply chain (NFR-19)**
 
-- `SHA256SUMS` signed (Sigstore cosign keyless with GitHub OIDC, or minisign); `actions/attest-build-provenance`; Authenticode (Windows), notarization (macOS), signed `.deb` / `.rpm` repositories.
+- `SHA256SUMS` signed with minisign (decided 2026-11-26; the same tool scribe uses for threat lists, checked offline); `actions/attest-build-provenance`; Authenticode (Windows), notarization (macOS), signed `.deb` / `.rpm` repositories.
 - `cargo deny` and `cargo audit` in the Tests workflow.
 - Actions pinned by commit SHA; minimal `permissions:` per job, most of all for Bump version, which pushes to `main`.
 
@@ -1012,7 +1012,7 @@ How each requirement group is tested (see [test-approach.md](test-approach.md)):
 | 10 | Names: `hibernate` / `wakeup` with aliases `hybernate`, `sleep`, `wake`; `scribe status` kept as short form of `scribe daemon status` | **Proposed** (section 6.2.1) |
 | 11 | Default for `daemon.max_hibernate`, and whether admins may set it to unlimited | **Answered:** `4h`; `""` (unlimited) allowed but logged as a warning at every start (section 12.1.1) |
 | 12 | Group names `scribe` (read) and `scribe-admin` (control); who creates them | **Proposed:** these names, created by the installers in phase 13 |
-| 13 | Release signing: Sigstore cosign keyless or minisign | **Open** (section 12.1.1, NFR-19) |
+| 13 | Release signing: Sigstore cosign keyless or minisign | **Answered 2026-11-26:** minisign-signed `SHA256SUMS` plus `actions/attest-build-provenance` (section 12.1.1, NFR-19) |
 | 14 | When to build the module framework | **Answered:** phase 0b, done before phase 1 (plan.md) |
 | 15 | How long `privacy.url_query` stays as a deprecated alias | **Proposed:** one minor version, with a warning at start |
 | 16 | Out-of-process or WebAssembly modules for third parties | **Open**, not needed for v1 (section 7.4.1) |

@@ -1,8 +1,25 @@
 # Running scribed as a service
 
-**The quick way:** the install scripts put everything in place, from a release archive (`install.sh` /
-`install.ps1` in it) or from this repository's release build, and take it out again. They stand in for
-the packages of plan phase 13.
+**Linux packages:** each release has a `.deb` and an `.rpm` (x86_64), built with nfpm from
+[`linux/nfpm.yaml`](linux/nfpm.yaml) by `scripts/build/linux-packages.sh` (also part of
+`scripts/build/linux.sh release`). They need glibc 2.39 or newer (Ubuntu 24.04, Debian 13, Fedora 40)
+and put the files where the table below says, with the units in `/usr/lib/systemd/` and
+`/usr/lib/tmpfiles.d/scribe.conf`:
+
+```sh
+sudo apt install ./scribe_<version>_amd64.deb      # or: sudo dnf install ./scribe-<version>.x86_64.rpm
+sudo apt remove scribe                             # keeps config, data and logs; `apt purge` removes them,
+                                                   # the user and the groups (rpm -e keeps them)
+```
+
+The package creates the groups and the user `scribe`, ships the config with `user = "scribe"` (kept on
+upgrades as a changed config file), and enables and starts scribed on a first install (on an upgrade it
+restarts it if it runs; without systemd, as in containers, it only puts the files in place). The install
+scripts below refuse to run while the package is installed.
+
+**The quick way without packages:** the install scripts put everything in place, from a release archive
+(`install.sh` / `install.ps1` in it) or from this repository's release build, and take it out again. On
+macOS and Windows they stand in for the `.pkg` and the MSI of plan phase 13.
 
 ```sh
 sudo scripts/install/linux.sh install      # systemd; scribed continues as the user `scribe`
@@ -26,7 +43,8 @@ All three create the groups `scribe` (may read the API: `scribe status`, `hosts`
 (may also control scribed), keep an existing config when run again (upgrade), and install the `scribe notify`
 unit, agent or script for each user to enable. Options: `--from <dir>` / `-From` (where the binaries are),
 `--as-root` (Linux), `-LocalSystem` and `-Dir` (Windows), `--dry-run` (Linux, macOS). Sensor tests run all
-three on GitHub's runners.
+three on GitHub's runners; on Ubuntu they also install, upgrade and purge the `.deb` and install and
+remove the `.rpm` in a Fedora container (`scripts/ci/package-check.sh`).
 
 **By hand**, with the service files:
 

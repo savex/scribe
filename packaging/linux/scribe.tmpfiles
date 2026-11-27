@@ -1,0 +1,2 @@
+# scribed API socket folder: members of the scribe group may connect (systemd-tmpfiles, at boot).
+d /run/scribe 0750 root scribe -

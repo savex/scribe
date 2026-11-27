@@ -6,8 +6,9 @@
 #   scripts/build/linux.sh build [--release] [--target <triple>]
 #   scripts/build/linux.sh test                        tests for the build machine's architecture
 #   scripts/build/linux.sh check                       fmt, clippy, tests, doc examples, tags, fixtures, MSRV
-#   scripts/build/linux.sh release                     dist/ archive for x86_64-unknown-linux-gnu
-#                                                      (and aarch64-unknown-linux-gnu with --all-targets)
+#   scripts/build/linux.sh release                     dist/ archive, .deb and .rpm for
+#                                                      x86_64-unknown-linux-gnu (and
+#                                                      aarch64-unknown-linux-gnu with --all-targets)
 #   scripts/build/linux.sh shell                       a shell in the build container
 #   scripts/build/linux.sh run [--privileged] <command…>
 #                                                      one command in the build container (as root;
@@ -77,6 +78,10 @@ native_release() {
     local smoke=""
     [[ $t == "$host" ]] && smoke=smoke
     package "$t" "${CARGO_TARGET_DIR:-$ROOT/target}/$t/release" "$version" "$smoke"
+    local pkg
+    for pkg in $("$BUILD_DIR/linux-packages.sh" "${CARGO_TARGET_DIR:-$ROOT/target}/$t/release" "$t" "$version"); do
+      add_sum "$pkg"
+    done
   done
 }
 

@@ -11,6 +11,10 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- Linux packages: `.deb` and `.rpm` built with nfpm (`packaging/linux/nfpm.yaml`, `scripts/build/linux-packages.sh`,
+  nfpm 2.49.0 pinned by checksum), attached to releases and made by `scripts/build/linux.sh release`. They create the
+  `scribe` user and groups, ship the config with `user = "scribe"`, enable and start scribed; a deb purge removes
+  everything. Sensor tests check them (`scripts/ci/package-check.sh`: the .deb on Ubuntu, the .rpm in Fedora 44).
 
 - Manual install scripts `scripts/install/linux.sh`, `macos.sh` and `windows.ps1` (`install`, `uninstall`,
   `--purge`): programs, config, data and log folders with their owners, the `scribe` / `scribe-admin` groups,
@@ -65,6 +69,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
   Windows job runs the pcap test only where Npcap is installed.
 
 ### Changed
+- `scripts/install/linux.sh` refuses to run while the scribe package is installed.
+- Release signing decided (open question 13): minisign-signed `SHA256SUMS` plus build-provenance attestations.
 - Docs: the manual install scripts recorded as green on Linux, macOS and Windows (Sensor tests run 45751039049).
 - Docs: phase 8 (8A) and milestone M2 marked done; the Npcap mode of the ETW sensor stays unchecked (deferred: no
   Npcap on hosted runners). Remaining 14.5–21 days (17.5–25 with buffer).

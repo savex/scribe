@@ -86,6 +86,12 @@ jobs:
             scripts/ci/install-check.sh target/debug
           fi
 
+      - name: Linux packages (.deb on the runner, .rpm in Fedora)
+        # Build both with nfpm from the debug build; install, upgrade and purge the .deb with
+        # systemd; install and remove the .rpm in a container.
+        if: runner.os == 'Linux'
+        run: scripts/ci/package-check.sh target/debug
+
       - name: Capture after dropping root (Linux)
         if: runner.os == 'Linux'
         # Alone in its process: the test drops the privileges of the whole test binary.

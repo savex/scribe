@@ -12,5 +12,12 @@ LINUX_IMAGE=scribe-build-linux
 CONTAINER_CPUS=8
 CONTAINER_MEMORY=8G
 
+# nfpm builds the .deb and .rpm (scripts/build/linux-packages.sh); downloaded from its GitHub
+# release when this version is not on the PATH, and checked against these SHA-256 sums.
+NFPM_VERSION=2.49.0
+NFPM_SHA256_LINUX_X86_64=2afaa5ffb5e3493402e31e7c67a5a1fb42133e3f66fc315ca0051934125561c7
+NFPM_SHA256_LINUX_ARM64=d4eee71839e92c68cbd3b101640bad32d2856fc551acae0635be9118e48c9d9c
+NFPM_SHA256_DARWIN_ARM64=27728af45782962ab59a8ff13ae041c7d955fe51dd94ab7883d9c5966a233f5d
+
 # Packages that make the release binaries.
 RELEASE_PACKAGES=scribe-daemon scribe-cli

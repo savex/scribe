@@ -174,7 +174,7 @@ earlier edit (`111411c`); they are restored.
 | Alert outputs (`crates/alerts`) | 11 | **100%** | Dispatcher (queue and rate limit per output), log, signed webhook; desktop notifications through `scribe notify` | — | **96%** (288/300) |
 | Outgoing HTTPS (`crates/net`) | 11 | **100%** | HTTP/1.1 client on rustls: https only except loopback, OS trust store or pin, same-origin redirects, timeouts, size cap; webhook signature | Proxies (not planned) | **90%** (482/534) |
 | UI (Tauri) | later | **0%** | Test folders; mock API data in the protocol's JSON, checked against it; `MockApiServer` / `scribe-mock-api` serve it | Everything | n/a |
-| Packaging | 13 | **~20%** | Release archives with checksums, service files (systemd unit, launchd plist, Windows install script) and `scribe notify` login files; manual install / uninstall scripts `scripts/install/` (green on Linux, macOS and Windows in Sensor tests run `45751039049`: install, a `scribe` group member reads the status, upgrade keeps the config, `--purge` leaves nothing); release smoke test | `.deb` / `.rpm`, MSI, notarized `.pkg`, signing, hardened units | n/a |
+| Packaging | 13 | **~30%** | Release archives with checksums, service files (systemd unit, launchd plist, Windows install script) and `scribe notify` login files; `.deb` / `.rpm` with nfpm (`packaging/linux/nfpm.yaml`, `scripts/build/linux-packages.sh`, in Release; checked locally in Ubuntu 24.04 and Fedora 44 containers, the Sensors step not yet run); manual install / uninstall scripts `scripts/install/` (green on Linux, macOS and Windows in Sensor tests run `45751039049`: install, a `scribe` group member reads the status, upgrade keeps the config, `--purge` leaves nothing); release smoke test | MSI, notarized `.pkg`, signing (minisign + attestations), hardened units | n/a |
 
 **Product total:** 10,784 of 12,017 measurable lines covered (**89.7%**); the new code for other systems (DPAPI, Secret Service, D-Bus) is not measurable on macOS.
 The coverage targets in the test approach (≥ 80% for `core` and the daemon config) are met.
@@ -196,7 +196,7 @@ The coverage targets in the test approach (≥ 80% for `core` and the daemon con
 
 ## What this means
 
-- **Phases 0, 0b, 1–11 (7B, 8A, 9B) are done: milestone M1 is complete, M2 is complete (7B, 8A, 9B; the Npcap mode of 8A unchecked).** Remaining effort: 14.5–21 days (17.5–25 with buffer), with the Linux sensor as option 7B (`libbpf-rs`, C eBPF programs) and macOS on option 9B; option 9A (Network Extension, 13–17 days) stays outside the totals.
+- **Phases 0, 0b, 1–11 (7B, 8A, 9B) are done: milestone M1 is complete, M2 is complete (7B, 8A, 9B; the Npcap mode of 8A unchecked).** Remaining effort: 13–19.5 days (15.5–23.5 with buffer), with the Linux sensor as option 7B (`libbpf-rs`, C eBPF programs) and macOS on option 9B; option 9A (Network Extension, 13–17 days) stays outside the totals.
 - **`scribed` runs end to end with the pcap sensor, is controlled through `scribe` and tells people:** log, signed webhooks and desktop notifications (`scribe notify`), threat lists from files or checked downloads, secrets in the OS key stores.
 - **Next steps:**
   1. M1 tagged as `v0.3.0-alpha.2` (2026-11-25, Bump version; Tests green in run `45533785706`). The Network Extension entitlement is needed only if option 9A is picked later.
