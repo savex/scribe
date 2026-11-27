@@ -47,3 +47,6 @@ fuzz/coverage/
 
 # Local release archives (scripts/build/*)
 /dist/
+
+# Local working notes (not shared)
+/workfiles/notes/
