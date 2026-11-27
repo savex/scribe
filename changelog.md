@@ -11,6 +11,8 @@ Sections: **Added**, **Changed**, **Deprecated**, **Removed**, **Fixed**, **Secu
 ## [Unreleased]
 
 ### Added
+- User docs in `docs/`: how scribe works (with a diagram), status and health warnings, configuration,
+  the local API and the tech stack; linked from the readme.
 - The minisign public key `packaging/minisign.pub`: releases are signed from now on.
 - Release signing: `SHA256SUMS` signed with minisign (`SHA256SUMS.minisig`, secret `MINISIGN_SECRET_KEY`, public key
   `packaging/minisign.pub`) and a build-provenance attestation for every file; Release dispatched with `dry_run` builds,

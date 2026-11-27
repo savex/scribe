@@ -180,7 +180,14 @@ then = "caution"      # ... then switch to caution
 query = "redact_values"
 ```
 
-Every setting is explained in [config/scribe.toml](config/scribe.toml).
+Every setting is explained in [docs/configuration.md](docs/configuration.md), with all defaults in
+[config/scribe.toml](config/scribe.toml).
+
+## Documentation
+
+The [docs](docs/README.md) folder has guides in plain language:
+[how scribe works](docs/how-it-works.md), [status and health](docs/status-and-health.md),
+[configuration](docs/configuration.md), the [local API](docs/api.md) and the [tech stack](docs/tech-stack.md).
 
 ## Project status
 
